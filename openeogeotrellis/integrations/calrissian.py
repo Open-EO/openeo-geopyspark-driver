@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import kubernetes.client
+import pystac
 import requests
 import yaml
 from openeo.util import ContextTimer, deep_get, dict_no_none
@@ -832,38 +833,47 @@ def find_stac_root(paths: set, stac_root_filename: Optional[str] = "catalog.json
     return None
 
 
-def _write_stac_collection_for_write_assets_result(
-    output_dir: Path, items: Dict[str, dict], collection_id: str
-) -> Path:
+def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[str, dict], collection_id: str) -> Path:
     """
     Build a minimal but valid STAC collection (collection.json + one Item file per output item)
     from the "items" dict as produced by `SaveResult.write_assets`/`GeopysparkDataCube.write_assets`.
     """
     item_files = []
+    item_assets = {}
     bboxes = []
     for item_id, item in items.items():
         bbox = item.get("bbox")
         if bbox:
             bboxes.append(bbox)
+
+        assets = {}
+        for asset_id, asset in item.get("assets", {}).items():
+            # STAC 1.1 unifies "eo:bands"/"raster:bands" into a single "bands" field.
+            bands = asset.get("bands") or asset.get("raster:bands")
+            asset_dict = dict_no_none(
+                href=str(asset["href"]),
+                roles=asset.get("roles"),
+                type=asset.get("type"),
+                bands=bands,
+            )
+            assets[asset_id] = asset_dict
+            item_assets[asset_id] = dict_no_none(
+                roles=asset.get("roles"),
+                type=asset.get("type"),
+            )
+
         stac_item = {
             "type": "Feature",
-            "stac_version": "1.0.0",
+            "stac_version": "1.1.0",
             "id": item_id,
             "geometry": item.get("geometry"),
             "bbox": bbox,
             "properties": {"datetime": item.get("datetime")},
             "links": [],
-            "assets": {
-                asset_id: dict_no_none(
-                    href=str(asset["href"]),
-                    roles=asset.get("roles"),
-                    type=asset.get("type"),
-                )
-                for asset_id, asset in item.get("assets", {}).items()
-            },
+            "assets": assets,
         }
         item_file = output_dir / f"{item_id}.json"
-        item_file.write_text(json.dumps(stac_item))
+        item_file.write_text(json.dumps(stac_item, indent=2))
         item_files.append(item_file)
 
     if bboxes:
@@ -874,7 +884,7 @@ def _write_stac_collection_for_write_assets_result(
 
     stac_collection = {
         "type": "Collection",
-        "stac_version": "1.0.0",
+        "stac_version": "1.1.0",
         "id": collection_id,
         "description": f"STAC metadata for openEO CWL input {collection_id!r}",
         "license": "unknown",
@@ -885,10 +895,25 @@ def _write_stac_collection_for_write_assets_result(
         "links": [
             {"href": f"./{item_file.name}", "rel": "item", "type": "application/geo+json"} for item_file in item_files
         ],
+        "item_assets": item_assets,
     }
 
     collection_file = output_dir / "collection.json"
-    collection_file.write_text(json.dumps(stac_collection))
+    collection_file.write_text(json.dumps(stac_collection, indent=2))
+    pystac.Collection.from_file(str(collection_file)).validate_all()
+
+    stac_catalogue = {
+        "stac_version": "1.1.0",
+        "id": "catalog",
+        "type": "Catalog",
+        "description": f"STAC metadata for openEO CWL input {collection_id!r}",
+        "links": [{"type": "application/json", "rel": "item", "href": str(collection_file)}],
+    }
+
+    catalog_file = output_dir / "catalog.json"
+    catalog_file.write_text(json.dumps(stac_catalogue, indent=2))
+    pystac.Catalog.from_file(str(catalog_file)).validate_all()
+
     return collection_file
 
 
@@ -920,13 +945,15 @@ def cwl_to_stac(
                 f"but got a raw {type(val).__name__} that could not be converted to one."
             )
 
-            job_id = get_job_id(default="unknown-job")
-            output_dir = Path(get_backend_config().batch_job_work_dir_root) / job_id / "cwl_input" / str(key)
+            correlation_id = get_job_id(default=None) or get_request_id(default=None)
+            assert correlation_id
+
+            output_dir = Path(get_backend_config().batch_job_work_dir_root) / correlation_id / "cwl_input" / str(key)
             output_dir.mkdir(parents=True, exist_ok=True)
 
             items = save_result.write_assets(output_dir / "out")
-            collection_file = _write_stac_collection_for_write_assets_result(
-                output_dir=output_dir, items=items, collection_id=f"{job_id}_{key}"
+            collection_file = _write_stac_catalog_for_write_assets_result(
+                output_dir=output_dir, items=items, collection_id=f"{correlation_id}_{key}"
             )
 
             res_url = str(collection_file)
