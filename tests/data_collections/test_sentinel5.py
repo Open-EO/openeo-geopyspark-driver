@@ -20,68 +20,9 @@ if __name__ == "__main__":
 
 from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_product
 
+np.random.seed(42)
+
 _log = logging.getLogger(__name__)
-
-def _create_synthetic_co_nc(path: Path) -> None:
-    """Create a minimal synthetic Sentinel-5P CO NetCDF file for unit tests.
-
-    The file covers lon 4.0–4.9 °E, lat 50.2–51.1 °N, 2024-09-02 10:00–10:19 UTC,
-    with 20 scanlines × 10 pixels and QA values ≥ 0.5 throughout.
-    """
-    from netCDF4 import Dataset
-
-    n_scanlines = 20
-    n_pixels = 10
-
-    ref_epoch = calendar.timegm(datetime(2010, 1, 1).timetuple())
-    orbit_start = calendar.timegm(datetime(2024, 9, 2, 9, 41, 32).timetuple())
-
-    scan_start = calendar.timegm(datetime(2024, 9, 2, 10, 0, 0).timetuple())
-    scan_end = calendar.timegm(datetime(2024, 9, 2, 10, 19, 0).timetuple())
-    scan_times_s = np.linspace(scan_start, scan_end, n_scanlines)
-
-    lats = np.linspace(51.1, 50.2, n_scanlines)
-    lons = np.linspace(4.0, 4.9, n_pixels)
-    lat2d = np.tile(lats[:, np.newaxis], (1, n_pixels))
-    lon2d = np.tile(lons[np.newaxis, :], (n_scanlines, 1))
-
-    np.random.seed(42)
-    co_col = np.random.uniform(0.025, 0.040, (n_scanlines, n_pixels)).astype(np.float32)
-    co_col_corr = (co_col * 1.05).astype(np.float32)
-    qa = np.full((n_scanlines, n_pixels), 0.75, dtype=np.float32)
-
-    with Dataset(path, "w", format="NETCDF4") as ds:
-        ds.createDimension("time", 1)
-        ds.createDimension("scanline", n_scanlines)
-        ds.createDimension("ground_pixel", n_pixels)
-
-        grp = ds.createGroup("PRODUCT")
-
-        t_var = grp.createVariable("time", "f8", ("time",))
-        t_var.units = "seconds since 2010-01-01"
-        t_var[0] = orbit_start - ref_epoch
-
-        dt_var = grp.createVariable("delta_time", "f8", ("time", "scanline"))
-        dt_var.units = "milliseconds since 2010-01-01"
-        dt_var[0, :] = (scan_times_s - ref_epoch) * 1000
-
-        lat_var = grp.createVariable("latitude", "f4", ("time", "scanline", "ground_pixel"))
-        lat_var[0] = lat2d
-
-        lon_var = grp.createVariable("longitude", "f4", ("time", "scanline", "ground_pixel"))
-        lon_var[0] = lon2d
-
-        qa_var = grp.createVariable("qa_value", "f4", ("time", "scanline", "ground_pixel"))
-        qa_var[0] = qa
-
-        co_var = grp.createVariable("carbonmonoxide_total_column", "f4", ("time", "scanline", "ground_pixel"))
-        co_var[0] = co_col
-
-        co_corr_var = grp.createVariable(
-            "carbonmonoxide_total_column_corrected", "f4", ("time", "scanline", "ground_pixel")
-        )
-        co_corr_var[0] = co_col_corr
-
 
 def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
     """Create a minimal synthetic Sentinel-5P NetCDF file for unit tests.
@@ -138,81 +79,70 @@ def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
             var[0] = data
 
 
-@pytest.fixture(scope="module")
-def synthetic_co_file(tmp_path_factory):
-    path = (
-        tmp_path_factory.mktemp("sentinel5p")
-        / "S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
-    )
-    _create_synthetic_co_nc(path)
-    return path
+# Per-product spec used to synthesize NetCDF fixtures and to drive the parametrized
+# "default bands" test below: name -> (filename product code, band builder, qa_value, expected default band count).
+def _co_bands():
+    co_col = np.random.uniform(0.025, 0.040, (20, 10)).astype(np.float32)
+    return {
+        "carbonmonoxide_total_column": co_col,
+        "carbonmonoxide_total_column_corrected": (co_col * 1.05).astype(np.float32),
+    }
 
 
-@pytest.fixture(scope="module")
-def synthetic_no2_file(tmp_path_factory):
-    path = (
-        tmp_path_factory.mktemp("sentinel5p_no2")
-        / "S5P_OFFL_L2__NO2____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
-    )
-    np.random.seed(7)
-    no2_col = np.random.uniform(1e-5, 5e-5, (20, 10)).astype(np.float32)
-    _create_synthetic_s5p_nc(path, bands={"nitrogendioxide_tropospheric_column": no2_col}, qa_value=0.8)
-    return path
+def _no2_bands():
+    return {"nitrogendioxide_tropospheric_column": np.random.uniform(1e-5, 5e-5, (20, 10)).astype(np.float32)}
 
 
-@pytest.fixture(scope="module")
-def synthetic_ch4_file(tmp_path_factory):
-    path = (
-        tmp_path_factory.mktemp("sentinel5p_ch4")
-        / "S5P_OFFL_L2__CH4____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
-    )
-    np.random.seed(13)
+def _ch4_bands():
     ch4_ratio = np.random.uniform(1800, 1900, (20, 10)).astype(np.float32)
-    _create_synthetic_s5p_nc(
-        path,
-        bands={
-            "methane_mixing_ratio": ch4_ratio,
-            "methane_mixing_ratio_bias_corrected": (ch4_ratio * 1.01).astype(np.float32),
-        },
-        qa_value=0.6,
-    )
-    return path
+    return {
+        "methane_mixing_ratio": ch4_ratio,
+        "methane_mixing_ratio_bias_corrected": (ch4_ratio * 1.01).astype(np.float32),
+    }
+
+
+def _so2_bands():
+    return {"sulfurdioxide_total_vertical_column": np.random.uniform(-1e-4, 5e-4, (20, 10)).astype(np.float32)}
+
+
+def _hcho_bands():
+    return {"formaldehyde_tropospheric_vertical_column": np.random.uniform(1e-5, 1e-4, (20, 10)).astype(np.float32)}
+
+
+def _o3_bands():
+    return {"ozone_total_vertical_column": np.random.uniform(0.05, 0.09, (20, 10)).astype(np.float32)}
+
+
+SYNTHETIC_PRODUCT_SPECS = {
+    "co": ("CO_____", _co_bands, 0.75, 1),
+    "no2": ("NO2____", _no2_bands, 0.8, 1),
+    "ch4": ("CH4____", _ch4_bands, 0.6, 1),
+    "so2": ("SO2____", _so2_bands, 0.6, 1),
+    "hcho": ("HCHO___", _hcho_bands, 0.6, 1),
+    "o3": ("O3_____", _o3_bands, 0.6, 1),
+}
 
 
 @pytest.fixture(scope="module")
-def synthetic_so2_file(tmp_path_factory):
-    path = (
-        tmp_path_factory.mktemp("sentinel5p_so2")
-        / "S5P_OFFL_L2__SO2____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
-    )
-    np.random.seed(17)
-    so2_col = np.random.uniform(-1e-4, 5e-4, (20, 10)).astype(np.float32)
-    _create_synthetic_s5p_nc(path, bands={"sulfurdioxide_total_vertical_column": so2_col}, qa_value=0.6)
-    return path
+def synthetic_products(tmp_path_factory) -> dict:
+    """Build a synthetic NetCDF file for every product in SYNTHETIC_PRODUCT_SPECS.
+
+    :return: mapping of product name to its generated file path.
+    """
+    paths = {}
+    for name, (product_code, bands_fn, qa_value, _expected_band_count) in SYNTHETIC_PRODUCT_SPECS.items():
+        path = (
+            tmp_path_factory.mktemp(f"sentinel5p_{name}")
+            / f"S5P_OFFL_L2__{product_code}20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
+        )
+        _create_synthetic_s5p_nc(path, bands=bands_fn(), qa_value=qa_value)
+        paths[name] = path
+    return paths
 
 
 @pytest.fixture(scope="module")
-def synthetic_hcho_file(tmp_path_factory):
-    path = (
-        tmp_path_factory.mktemp("sentinel5p_hcho")
-        / "S5P_OFFL_L2__HCHO___20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
-    )
-    np.random.seed(19)
-    hcho_col = np.random.uniform(1e-5, 1e-4, (20, 10)).astype(np.float32)
-    _create_synthetic_s5p_nc(path, bands={"formaldehyde_tropospheric_vertical_column": hcho_col}, qa_value=0.6)
-    return path
-
-
-@pytest.fixture(scope="module")
-def synthetic_o3_file(tmp_path_factory):
-    path = (
-        tmp_path_factory.mktemp("sentinel5p_o3")
-        / "S5P_OFFL_L2__O3_____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
-    )
-    np.random.seed(23)
-    o3_col = np.random.uniform(0.05, 0.09, (20, 10)).astype(np.float32)
-    _create_synthetic_s5p_nc(path, bands={"ozone_total_vertical_column": o3_col}, qa_value=0.6)
-    return path
+def synthetic_co_file(synthetic_products):
+    return synthetic_products["co"]
 
 
 # ---------------------------------------------------------------------------
@@ -317,8 +247,10 @@ def test_invalid_time_exception():
     assert ["Input temporal extent is not in the file" in str(excinfo.value)]
 
 
-def test_no2_read_product_default_bands(synthetic_no2_file):
-    """read_product uses default NO2 band when band_names is empty."""
+@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3"])
+def test_read_product_default_bands_per_product(synthetic_products, product_name):
+    """read_product uses each product's default band(s) when band_names is empty."""
+    _product_code, _bands_fn, _qa_value, expected_band_count = SYNTHETIC_PRODUCT_SPECS[product_name]
     instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
     features = [
         {
@@ -328,98 +260,16 @@ def test_no2_read_product_default_bands(synthetic_no2_file):
         }
     ]
     result = read_product(
-        (synthetic_no2_file, features),
+        (synthetic_products[product_name], features),
         band_names=[],
         tile_size=4,
         resolution=0.1,
     )
     assert len(result) > 0
     _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default NO2 band"
-
-
-def test_ch4_read_product_default_bands(synthetic_ch4_file):
-    """read_product uses default CH4 band when band_names is empty."""
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (synthetic_ch4_file, features),
-        band_names=[],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0
-    _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default CH4 band (bias-corrected)"
-
-
-def test_so2_read_product_default_bands(synthetic_so2_file):
-    """read_product uses default SO2 band when band_names is empty."""
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (synthetic_so2_file, features),
-        band_names=[],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0
-    _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default SO2 band"
-
-
-def test_hcho_read_product_default_bands(synthetic_hcho_file):
-    """read_product uses default HCHO band when band_names is empty."""
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (synthetic_hcho_file, features),
-        band_names=[],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0
-    _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default HCHO band"
-
-
-def test_o3_read_product_default_bands(synthetic_o3_file):
-    """read_product uses default O3 band when band_names is empty."""
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (synthetic_o3_file, features),
-        band_names=[],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0
-    _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default O3 band"
+    assert (
+        tile.cells.shape[0] == expected_band_count
+    ), f"Expected {expected_band_count} default band(s) for {product_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -494,151 +344,64 @@ class TestSentinel5:
         self.spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
-    def test_sentinel5p_l2_co(self, api110, tmp_path) -> None:
+    @pytest.mark.parametrize(
+        "collection_id, spatial_extent, temporal_extent, bands",
+        [
+            (
+                "SENTINEL5P_L2_CO",
+                {"west": 4, "south": 50, "east": 11, "north": 55},
+                ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
+                ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_NO2",
+                {"west": 4, "south": 50, "east": 11, "north": 55},
+                ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
+                ["nitrogendioxide_tropospheric_column", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CH4",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_SO2",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["sulfurdioxide_total_vertical_column", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_HCHO",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["formaldehyde_tropospheric_vertical_column", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_O3",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["ozone_total_vertical_column", "qa_value"],
+            ),
+        ],
+        ids=["co", "no2", "ch4", "so2", "hcho", "o3"],
+    )
+    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "id": "SENTINEL5P_L2_CO",
-                    "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                    "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
-                    "bands": [
-                        "carbonmonoxide_total_column",
-                        "carbonmonoxide_total_column_corrected",
-                        "qa_value",
-                    ],
+                    "id": collection_id,
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": temporal_extent,
+                    "bands": bands,
                 },
                 "result": True,
             },
         }
         response = api110.check_result(process_graph)
 
-        output_file = tmp_path / "test_sentinel5p_l2_co.tif"
-        with output_file.open(mode="wb") as f:
-            f.write(response.data)
-
-        assert_tif_file_is_healthy(output_file)
-
-        with rasterio.open(output_file) as ds:
-            print(ds.bounds)
-            assert ds.bounds.right == 11.0
-
-    def test_sentinel5p_l2_no2(self, api110, tmp_path) -> None:
-        process_graph = {
-            "loadcollection1": {
-                "process_id": "load_collection",
-                "arguments": {
-                    "id": "SENTINEL5P_L2_NO2",
-                    "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                    "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
-                    "bands": ["nitrogendioxide_tropospheric_column", "qa_value"],
-                },
-                "result": True,
-            },
-        }
-        response = api110.check_result(process_graph)
-
-        output_file = tmp_path / "test_SENTINEL5P_L2_NO2.tif"
-        with output_file.open(mode="wb") as f:
-            f.write(response.data)
-
-        assert_tif_file_is_healthy(output_file)
-
-        with rasterio.open(output_file) as ds:
-            print(ds.bounds)
-            assert ds.bounds.right == 11.0
-
-    def test_sentinel5p_l2_ch4(self, api110, tmp_path) -> None:
-        process_graph = {
-            "loadcollection1": {
-                "process_id": "load_collection",
-                "arguments": {
-                    "id": "SENTINEL5P_L2_CH4",
-                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
-                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                    "bands": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
-                },
-                "result": True,
-            },
-        }
-        response = api110.check_result(process_graph)
-
-        output_file = tmp_path / "test_SENTINEL5P_L2_CH4.tif"
-        with output_file.open(mode="wb") as f:
-            f.write(response.data)
-
-        assert_tif_file_is_healthy(output_file)
-
-        with rasterio.open(output_file) as ds:
-            print(ds.bounds)
-            assert ds.bounds.right == 11.0
-
-    def test_sentinel5p_l2_so2(self, api110, tmp_path) -> None:
-        process_graph = {
-            "loadcollection1": {
-                "process_id": "load_collection",
-                "arguments": {
-                    "id": "SENTINEL5P_L2_SO2",
-                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
-                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                    "bands": ["sulfurdioxide_total_vertical_column", "qa_value"],
-                },
-                "result": True,
-            },
-        }
-        response = api110.check_result(process_graph)
-
-        output_file = tmp_path / "test_SENTINEL5P_L2_SO2.tif"
-        with output_file.open(mode="wb") as f:
-            f.write(response.data)
-
-        assert_tif_file_is_healthy(output_file)
-
-        with rasterio.open(output_file) as ds:
-            print(ds.bounds)
-            assert ds.bounds.right == 11.0
-
-    def test_sentinel5p_l2_hcho(self, api110, tmp_path) -> None:
-        process_graph = {
-            "loadcollection1": {
-                "process_id": "load_collection",
-                "arguments": {
-                    "id": "SENTINEL5P_L2_HCHO",
-                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
-                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                    "bands": ["formaldehyde_tropospheric_vertical_column", "qa_value"],
-                },
-                "result": True,
-            },
-        }
-        response = api110.check_result(process_graph)
-
-        output_file = tmp_path / "test_SENTINEL5P_L2_HCHO.tif"
-        with output_file.open(mode="wb") as f:
-            f.write(response.data)
-
-        assert_tif_file_is_healthy(output_file)
-
-        with rasterio.open(output_file) as ds:
-            print(ds.bounds)
-            assert ds.bounds.right == 11.0
-
-    def test_sentinel5p_l2_o3(self, api110, tmp_path) -> None:
-        process_graph = {
-            "loadcollection1": {
-                "process_id": "load_collection",
-                "arguments": {
-                    "id": "SENTINEL5P_L2_O3",
-                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
-                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                    "bands": ["ozone_total_vertical_column", "qa_value"],
-                },
-                "result": True,
-            },
-        }
-        response = api110.check_result(process_graph)
-
-        output_file = tmp_path / "test_SENTINEL5P_L2_O3.tif"
+        output_file = tmp_path / f"test_{collection_id}.tif"
         with output_file.open(mode="wb") as f:
             f.write(response.data)
 
