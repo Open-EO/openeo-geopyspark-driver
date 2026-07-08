@@ -408,7 +408,11 @@ def run_job(
             result.options["use_s3proxy"] = should_proxy_be_used()
             result.options["s3_bucket"] = os.environ.get("SWIFT_BUCKET")
             if result.options["use_s3proxy"]:
-                result.options["s3_client"] = S3ClientBuilder.from_bucket(result.options["s3_bucket"])
+                if not result.options["s3_bucket"]:
+                    logger.warning("use_s3proxy is active but no S3 bucket is configured; disabling use_s3proxy")
+                    result.options["use_s3proxy"] = False
+                else:
+                    result.options["s3_client"] = S3ClientBuilder.from_bucket(result.options["s3_bucket"])
             result.options["file_metadata"] = {**global_metadata_attributes, **result.options.get("file_metadata", {})}
             if result.options.get("sample_by_feature"):
                 geoms = tracer.get_last_geometry("filter_spatial")
