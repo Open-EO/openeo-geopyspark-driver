@@ -401,8 +401,14 @@ def run_job(
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11)
 
+        from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used
+
         for result in results:
             result.options["batch_mode"] = True
+            result.options["use_s3proxy"] = should_proxy_be_used()
+            result.options["s3_bucket"] = os.environ.get("SWIFT_BUCKET")
+            if result.options["use_s3proxy"]:
+                result.options["s3_client"] = S3ClientBuilder.from_bucket(result.options["s3_bucket"])
             result.options["file_metadata"] = {**global_metadata_attributes, **result.options.get("file_metadata", {})}
             if result.options.get("sample_by_feature"):
                 geoms = tracer.get_last_geometry("filter_spatial")
