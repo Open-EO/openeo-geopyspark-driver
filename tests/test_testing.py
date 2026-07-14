@@ -1,6 +1,7 @@
 import datetime
 
 import dirty_equals
+import pystac
 import pystac_client
 import pystac_client.exceptions
 import pytest
@@ -252,6 +253,36 @@ class TestDummyStacApiServer:
             with pytest.raises(pystac_client.exceptions.APIError):
                 _ = client.get_collection("collection-nope")
 
+    def test_get_item_raw(self):
+        with DummyStacApiServer().serve() as root_url:
+            response = requests.get(f"{root_url}/collections/collection-123/items/item-2")
+        assert response.status_code == 200
+        assert response.json() == dirty_equals.IsPartialDict(
+            {
+                "id": "item-2",
+                "stac_version": dirty_equals.IsStr(regex=r"1.\d+.0"),
+                "type": "Feature",
+                "links": [
+                    {
+                        "rel": "self",
+                        "href": f"{root_url}/collections/collection-123/items/item-2",
+                        "type": "application/json",
+                    },
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "collection", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
+                    {"rel": "parent", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
+                ],
+                "bbox": [3, 50, 5, 51],
+            }
+        )
+
+    def test_get_item_pystac(self):
+        with DummyStacApiServer().serve() as root_url:
+            item_url = f"{root_url}/collections/collection-123/items/item-2"
+            item = pystac.read_file(item_url)
+            assert isinstance(item, pystac.Item)
+            assert item.id == "item-2"
+
     @pytest.mark.parametrize("method", ["GET", "POST"])
     def test_item_search_basic(self, method):
         with DummyStacApiServer().serve() as root_url:
@@ -432,6 +463,11 @@ class TestDummyStacApiServer:
                 {"rel": "collection", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
                 {"rel": "parent", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
                 {"rel": "root", "href": root_url, "type": "application/json"},
+                {
+                    "rel": "self",
+                    "href": f"{root_url}/collections/collection-123/items/item-1",
+                    "type": "application/json",
+                },
             ]
         }
 

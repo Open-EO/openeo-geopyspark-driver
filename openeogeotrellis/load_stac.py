@@ -212,6 +212,9 @@ def _prepare_context(
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
     pixel_value_scaling_mode = _get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
 
+    if use_raw_asset_href := feature_flags.get("use_raw_asset_href", False):
+        logger.warning(f"Usage of feature flag {use_raw_asset_href=}, which is not recommended")
+
     # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
     property_filter_pg_map: PropertyFilterPGMap = {
         **(layer_properties or {}),
@@ -378,7 +381,11 @@ def _prepare_context(
                 pixel_value_scale, pixel_value_offset = _get_pixel_value_scale_and_offset(
                     asset=asset, item=itm, pixel_value_scaling_mode=pixel_value_scaling_mode
                 )
-                asset_href = get_best_url(asset, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
+                asset_href = get_best_url(
+                    asset=asset,
+                    preferred_url_prefix=feature_flags.get("preferred_url_prefix"),
+                    use_raw_asset_href=use_raw_asset_href,
+                )
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                     f" {pixel_value_scale=} {pixel_value_offset=}"
@@ -2393,10 +2400,20 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     return False
 
 
-def get_best_url(asset: pystac.Asset, with_vsis3: bool = True, preferred_url_prefix: Optional[str] = None) -> str:
+def get_best_url(
+    asset: pystac.Asset,
+    *,
+    with_vsis3: bool = True,
+    preferred_url_prefix: Optional[str] = None,
+    use_raw_asset_href: bool = False,
+) -> str:
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
+
+    if use_raw_asset_href:
+        return asset.href
+
     for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
         href = alternate_asset["href"]
         if preferred_url_prefix and href.lower().startswith(preferred_url_prefix.lower()):

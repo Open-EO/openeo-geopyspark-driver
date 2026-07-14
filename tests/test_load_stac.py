@@ -6,6 +6,7 @@ from contextlib import nullcontext
 from copy import deepcopy
 from typing import Iterator, List, Tuple
 from unittest import mock, skip
+import importlib.metadata
 
 import dirty_equals
 import geopandas
@@ -16,6 +17,7 @@ import pytest
 import responses
 import shapely.geometry
 from openeo.testing.stac import StacDummyBuilder
+from openeo.utils.version import ComparableVersion
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.errors import OpenEOApiException
@@ -4652,6 +4654,79 @@ class TestPrepareContext:
                         "title": "asset-1",
                         "pixelValueScale": expected_scale,
                         "pixelValueOffset": expected_offset,
+                        "bandNames": ["B02"],
+                    }
+                ],
+            }
+        ]
+
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "asset_href", "expected"],
+        [
+            (
+                # Default behavior with full http href:
+                {},
+                "http://example.com/asset.tiff",
+                "http://example.com/asset.tiff",
+            ),
+            pytest.param(
+                # Default behavior on scheme-less absolute pass: resolve as root relative href
+                {},
+                "/absolute/path/without/scheme.tiff",
+                "{dummy_stac_api}/absolute/path/without/scheme.tiff",
+                marks=pytest.mark.skipif(
+                    condition=ComparableVersion(importlib.metadata.version("pystac")) < "1.14.2",
+                    reason="Proper href normalization requires at least pystac 1.14.2 https://github.com/stac-utils/pystac/issues/1597",
+                ),
+            ),
+            (
+                # Override: force using raw href as-is
+                {"use_raw_asset_href": True},
+                "/absolute/path/without/scheme.tiff",
+                "/absolute/path/without/scheme.tiff",
+            ),
+        ],
+    )
+    def test_prepare_context_use_raw_asset_href(
+        self,
+        dummy_stac_api_server,
+        dummy_stac_api,
+        feature_flags: dict,
+        asset_href: str,
+        expected,
+    ):
+        collection_id = "collection-with-non-standard-asset-hrefs"
+        dummy_stac_api_server.define_collection(id=collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-1",
+            assets={
+                "asset-1": StacDummyBuilder.asset(
+                    href=asset_href,
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[2, 49, 3, 50],
+                    proj_shape=[32, 32],
+                    bands=[{"name": "B02"}],
+                )
+            },
+        )
+        context = _prepare_context(
+            url=f"{dummy_stac_api}/collections/{collection_id}",
+            load_params=LoadParameters(),
+            env=EvalEnv(),
+            feature_flags=feature_flags,
+        )
+
+        dumper = OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-1",
+                "links": [
+                    {
+                        "href": expected.format(dummy_stac_api=dummy_stac_api),
+                        "title": "asset-1",
                         "bandNames": ["B02"],
                     }
                 ],
