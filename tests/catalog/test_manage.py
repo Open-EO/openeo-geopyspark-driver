@@ -1,5 +1,9 @@
+import argparse
+import contextlib
 import json
+import re
 import sys
+from email import message
 from typing import Optional, Iterable
 
 import dirty_equals
@@ -24,6 +28,7 @@ from openeogeotrellis.catalog.manage import (
     sort_dict_like_other,
     CollectionMetadataBuilderRegistry,
     MetadataException,
+    LayerCatalogManagerCliApp,
 )
 
 
@@ -837,3 +842,128 @@ class TestCollectionMetadataBuilderRegistry:
             {"id": "C456", "labels": []},
             {"id": "C789", "labels": ["dev", "staging"]},
         ]
+
+
+class RaisesSystemExit:
+    """
+    Test helper to check for triggering a SystemExit (e.g. as done by `argparse`)
+    with some error message on stderr.
+    """
+
+    def __init__(self, *, expected_exception=SystemExit, message: Optional[str] = None):
+        self.expected_exception = expected_exception
+        self.message = message
+
+    @contextlib.contextmanager
+    def raises(self, capsys: Optional[pytest.CaptureFixture] = None):
+        with pytest.raises(expected_exception=self.expected_exception):
+            yield
+        if self.message:
+            assert capsys, "capsys fixture should be provided"
+            assert self.message in capsys.readouterr().err
+
+
+class TestLayerCatalogManagerCliApp:
+    @pytest.fixture()
+    def registry(self) -> CollectionMetadataBuilderRegistry:
+        registry = CollectionMetadataBuilderRegistry()
+        openeo_collection = registry.decorator
+
+        @openeo_collection("FOO")
+        def foo(collection_id):
+            return {
+                "id": collection_id,
+                "description": "Dummy 'FOO' collection",
+            }
+
+        @openeo_collection("BAR", label="dev")
+        def bar(collection_id):
+            return {
+                "id": collection_id,
+                "description": "Dummy 'BAR' collection",
+            }
+
+        return registry
+
+    @pytest.fixture()
+    def cli_app(self, registry) -> LayerCatalogManagerCliApp:
+        return LayerCatalogManagerCliApp(registry=registry)
+
+    @pytest.mark.parametrize(
+        ["args", "expected"],
+        [
+            (
+                ["generate"],
+                RaisesSystemExit(message="following arguments are required: catalog_path"),
+            ),
+            (
+                ["generate", "lcat.json"],
+                {"catalog_path": "lcat.json", "output_catalog_path": None, "cid_substring": None},
+            ),
+            (
+                ["generate", "lcat.json", "--output", "lcat-out.json"],
+                {"catalog_path": "lcat.json", "output_catalog_path": "lcat-out.json"},
+            ),
+            (
+                ["generate", "lcat.json", "-k", "ESA"],
+                {"catalog_path": "lcat.json", "cid_substring": "ESA"},
+            ),
+        ],
+    )
+    def test_parse_generate(self, cli_app: LayerCatalogManagerCliApp, args, expected, capsys) -> None:
+        parser = cli_app.build_argument_parser()
+
+        if isinstance(expected, RaisesSystemExit):
+            with expected.raises(capsys=capsys):
+                _ = parser.parse_args(args)
+        else:
+            args = parser.parse_args(args)
+            assert args.subcommand == "generate"
+            assert {k: getattr(args, k) for k in expected.keys()} == expected
+
+    @pytest.mark.parametrize(
+        ["args", "expected"],
+        [
+            (["list"], {"show_extended": False}),
+            (["list", "-l"], {"show_extended": True}),
+        ],
+    )
+    def test_parse_list(self, cli_app: LayerCatalogManagerCliApp, args, expected):
+        parser = cli_app.build_argument_parser()
+        args = parser.parse_args(args)
+        assert args.subcommand == "list"
+        assert {k: getattr(args, k) for k in expected.keys()} == expected
+
+    def test_handle_list(self, cli_app: LayerCatalogManagerCliApp, capsys) -> None:
+        cli_app.main(["list"])
+        stdout = capsys.readouterr().out
+        assert stdout.strip().split("\n") == ["BAR", "FOO"]
+
+    def test_handle_generate_no_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+        catalog_path = tmp_path / "catalog.json"
+        cli_app.main(["generate", str(catalog_path)])
+        catalog = json.loads(catalog_path.read_text())
+        assert catalog == [
+            {"id": "FOO", "description": "Dummy 'FOO' collection"},
+            {"id": "BAR", "description": "Dummy 'BAR' collection"},
+        ]
+
+        assert "Building metadata for collection_id='FOO'" in caplog.text
+        assert caplog.text == dirty_equals.IsStr(regex=r".*registry\.get_stats.*register\W+2.*", regex_flags=re.DOTALL)
+
+    def test_handle_generate_with_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+        catalog_path = tmp_path / "catalog.json"
+        pre_existing = [
+            {"id": "FOO", "description": "Original 'FOO'"},
+            {"id": "UNMANAGED", "description": "Some unmanaged collection"},
+        ]
+        catalog_path.write_text(json.dumps(pre_existing))
+        cli_app.main(["generate", str(catalog_path)])
+        catalog = json.loads(catalog_path.read_text())
+        assert catalog == [
+            {"id": "FOO", "description": "Dummy 'FOO' collection"},
+            {"id": "UNMANAGED", "description": "Some unmanaged collection"},
+            {"id": "BAR", "description": "Dummy 'BAR' collection"},
+        ]
+
+        assert "Unmanaged collections: ['UNMANAGED']" in caplog.text

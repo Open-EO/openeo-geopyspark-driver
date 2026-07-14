@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+import argparse
 import collections
 import copy
 import dataclasses
@@ -28,7 +29,7 @@ from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, D
 
 import requests
 
-from openeo.util import dict_no_none
+from openeo.util import dict_no_none, TimingLogger
 from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 
@@ -724,3 +725,122 @@ class CollectionMetadataBuilderRegistry:
 
     def get_stats(self) -> dict:
         return self._stats
+
+
+class LayerCatalogManagerCliApp:
+    """
+    Generic command line app for layer catalog management
+    """
+
+    def __init__(self, *, registry: CollectionMetadataBuilderRegistry):
+        self.collection_metadata_builder_registry = registry
+
+    def main(self, argv: Optional[Iterable[str]] = None) -> None:
+        argument_parser = self.build_argument_parser()
+        args = argument_parser.parse_args(argv)
+        self.setup_logging(args=args)
+        with TimingLogger(title=f"LayerCatalogManagerCliApp.main: {args.subcommand}", logger=_log):
+            args.handler(args=args)
+
+    def build_argument_parser(self) -> argparse.ArgumentParser:
+        cli = argparse.ArgumentParser()
+        # Generic cli args
+        cli.add_argument("-v", "--verbose", action="store_true")
+        # Subcommands
+        subparsers = cli.add_subparsers(dest="subcommand", required=True)
+
+        # Subcommand: generate
+        parser_generate = subparsers.add_parser("generate", help="Generate layer catalog")
+        parser_generate.set_defaults(handler=self.handle_generate)
+        parser_generate.add_argument(
+            "catalog_path",
+            help="Layer catalog JSON file to load (if available) and to overwrite (unless a different output path is specified)",
+        )
+        parser_generate.add_argument(
+            "--output",
+            dest="output_catalog_path",
+            default=None,
+            help="Output layer catalog JSON file (to specify when to write to a different file than input)",
+        )
+        parser_generate.add_argument(
+            "-k",
+            dest="cid_substring",
+            help="Only update collections with id matching this given substring.",
+        )
+
+        # Subcommand: list
+        parser_list = subparsers.add_parser("list", help="List managed openEO collection ids")
+        parser_list.set_defaults(handler=self.handle_list)
+        parser_list.add_argument(
+            "-l", dest="show_extended", action="store_true", help="Show additional build info per collection"
+        )
+
+        # TODO other possible subcommands:
+        #       health check (e.g. check for unmanaged collections, check for run-time enrichment, ...)
+
+        return cli
+
+    def setup_logging(self, args: argparse.Namespace) -> None:
+        # TODO: option to not do rich logging (or detect when inappropriate)?
+        try:
+            # Use fancy logging if `rich` is available in environment.
+            import rich.logging
+            import rich.console
+
+            log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+        except ImportError:
+            log_handlers = []
+        logging.basicConfig(
+            level=logging.DEBUG if args.verbose else logging.INFO,
+            handlers=log_handlers,
+        )
+
+    def handle_generate(self, args: argparse.Namespace) -> Path:
+        catalog_path = Path(args.catalog_path)
+        output_path = Path(args.output_catalog_path or args.catalog_path)
+        cid_substring = args.cid_substring
+
+        if cid_substring:
+            collection_id_filter = lambda cid: cid_substring in cid
+        else:
+            collection_id_filter = None
+
+        # Note: loading from the JSON file is strictly not necessary
+        # as everything will be overwritten with freshly generated metadata.
+        # However, it helps with preserving the original collection order
+        # and consequently minimizing the git diff to review.
+        if catalog_path.exists():
+            layer_catalog = LayerCatalog.load_json_file(catalog_path)
+        else:
+            layer_catalog = LayerCatalog()
+
+        built_metadatas = self.collection_metadata_builder_registry.call_builders(
+            collection_id_filter=collection_id_filter
+        )
+        for metadata in built_metadatas:
+            layer_catalog.set_collection_metadata(metadata=metadata)
+
+        layer_catalog.write_json_file(output_path)
+
+        # Some stats
+        _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
+        _log.info(f"{layer_catalog.get_stats()=}")
+        unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
+        _log.log(
+            level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
+            msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
+        )
+
+        return output_path
+
+    def handle_list(self, args: argparse.Namespace) -> None:
+        # TODO: add collection counter
+        # TODO: (option to) render in Markdown format
+        for item in sorted(
+            self.collection_metadata_builder_registry.get_builders(),
+            key=lambda item: item.collection_id,
+        ):
+            if args.show_extended:
+                print(item.collection_id, f"labels={sorted(item.labels)}", f"kwargs={item.kwargs}")
+            else:
+                print(item.collection_id)
