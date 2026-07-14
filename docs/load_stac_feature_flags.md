@@ -127,3 +127,14 @@ Possible values:
 
 ### `deduplicate_items`
 Whether to deduplicate items retrieved from the STAC API.
+
+
+### `use_raw_asset_href`
+
+Whether to use the raw asset `href` field as-is,
+without normalization or transformation provided by pystac.
+Enabling of and depending on this feature flag should be avoided:
+it is primarily intended for legacy use cases
+with improperly normalized STAC asset hrefs.
+Boolean value.
+Default: False (i.e. use the normalized href by default).
