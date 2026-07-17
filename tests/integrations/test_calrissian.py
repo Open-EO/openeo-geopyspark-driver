@@ -659,6 +659,10 @@ class TestCalrissianJobLauncher:
         import glob
         import rasterio
 
+        example_collection_json = str(
+            Path(__file__).parents[2] / "docker" / "local_batch_job" / "example_stac_catalog" / "collection.json"
+        )
+
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",
@@ -685,7 +689,20 @@ class TestCalrissianJobLauncher:
             },
         }
 
-        run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
+        fake_result = mock.Mock()
+        fake_result.generate_public_url.return_value = example_collection_json
+        fake_result.generate_presigned_url.return_value = example_collection_json
+
+        with mock.patch.object(
+            CalrissianJobLauncher, "run_cwl_workflow", return_value={example_collection_json: fake_result}
+        ) as run_cwl_workflow:
+            run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
+
+        # The CWL job should have received the "datacube_s2" context argument
+        # as a string (path/URL to the STAC catalog written for it), not the raw datacube object.
+        run_cwl_workflow.assert_called_once()
+        cwl_arguments = run_cwl_workflow.call_args.kwargs["cwl_arguments"]
+        assert isinstance(cwl_arguments["datacube_s2"], str)
 
         files = list(glob.glob(str(tmp_path / "*.tif")))
         print(files)
