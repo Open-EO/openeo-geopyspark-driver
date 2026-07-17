@@ -705,10 +705,9 @@ class TestCalrissianJobLauncher:
             }
         }
 
-        with (
-            mock.patch.object(CalrissianJobLauncher, "run_cwl_workflow", return_value={example_collection_json: fake_result}) as run_cwl_workflow,
-            mock.patch.object(GpsUdfRuntimes, "get_udf_runtimes", return_value=fake_udf_runtimes),
-        ):
+        with mock.patch.object(
+            CalrissianJobLauncher, "run_cwl_workflow", return_value={example_collection_json: fake_result}
+        ) as run_cwl_workflow, mock.patch.object(GpsUdfRuntimes, "get_udf_runtimes", return_value=fake_udf_runtimes):
             run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
 
         # The CWL job should have received the "datacube_s2" context argument
