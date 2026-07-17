@@ -655,6 +655,7 @@ class TestCalrissianJobLauncher:
             )
 
     def test_datacube_to_cwl_argument(self, api110, tmp_path):
+        from openeogeotrellis.backend import GpsUdfRuntimes
         from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
         import glob
         import rasterio
@@ -693,9 +694,21 @@ class TestCalrissianJobLauncher:
         fake_result.generate_public_url.return_value = example_collection_json
         fake_result.generate_presigned_url.return_value = example_collection_json
 
-        with mock.patch.object(
-            CalrissianJobLauncher, "run_cwl_workflow", return_value={example_collection_json: fake_result}
-        ) as run_cwl_workflow:
+        # Ensure "EOAP-CWL" is a recognized UDF runtime regardless of `is_kube_deploy`/`OPENEO_LOCAL_DEBUGGING`
+        # config in the test environment.
+        fake_udf_runtimes = {
+            "EOAP-CWL": {
+                "default": "1",
+                "title": "EOAP-CWL",
+                "type": "language",
+                "versions": {"1": {"libraries": {}}},
+            }
+        }
+
+        with (
+            mock.patch.object(CalrissianJobLauncher, "run_cwl_workflow", return_value={example_collection_json: fake_result}) as run_cwl_workflow,
+            mock.patch.object(GpsUdfRuntimes, "get_udf_runtimes", return_value=fake_udf_runtimes),
+        ):
             run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
 
         # The CWL job should have received the "datacube_s2" context argument
