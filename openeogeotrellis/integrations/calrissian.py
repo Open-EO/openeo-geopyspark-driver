@@ -985,7 +985,6 @@ def cwl_to_stac(
 
             res_url = str(collection_file)
             cwl_arguments[key] = res_url
-    return "/home/emile/openeo/openeo-geopyspark-driver/docker/local_batch_job/example_stac_catalog/collection.json"
     ensure_kubernetes_config()
 
     _log.info(f"Loading CWL from {cwl_source=}")
