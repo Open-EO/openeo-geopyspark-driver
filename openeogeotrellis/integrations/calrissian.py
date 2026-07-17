@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import dataclasses
+import datetime
 import json
 import logging
 import os
@@ -11,8 +12,10 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+import dateutil.parser
 import kubernetes.client
 import pystac
+import pystac.extensions.item_assets
 import requests
 import yaml
 from openeo.util import ContextTimer, deep_get, dict_no_none
@@ -34,6 +37,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
     CalrissianConfig,
 )
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
@@ -833,48 +837,68 @@ def find_stac_root(paths: set, stac_root_filename: Optional[str] = "catalog.json
     return None
 
 
-def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[str, dict], collection_id: str) -> Path:
+def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[str, dict], collection_id: str) -> str:
     """
     Build a minimal but valid STAC collection (collection.json + one Item file per output item)
     from the "items" dict as produced by `SaveResult.write_assets`/`GeopysparkDataCube.write_assets`.
     """
-    item_files = []
-    item_assets = {}
+    stac_items = []
+    item_asset_definitions = {}
     bboxes = []
+
+    def _as_datetime(value):
+        if value is None or isinstance(value, datetime.datetime):
+            return value
+        return dateutil.parser.isoparse(value)
+
     for item_id, item in items.items():
         bbox = item.get("bbox")
         if bbox:
             bboxes.append(bbox)
 
-        assets = {}
+        # `datetime`/`start_datetime`/`end_datetime` can either be top-level fields or nested
+        # under "properties" (as produced by e.g. `GeopysparkDataCube.write_assets`).
+        properties = item.get("properties") or {}
+        item_datetime = _as_datetime(item.get("datetime") or properties.get("datetime"))
+        start_datetime = _as_datetime(item.get("start_datetime") or properties.get("start_datetime"))
+        end_datetime = _as_datetime(item.get("end_datetime") or properties.get("end_datetime"))
+
+        extra_properties = {}
+        if item_datetime is None:
+            if start_datetime is None or end_datetime is None:
+                _log.warning(f"No datetime found for STAC item {item_id!r}; falling back to current time.")
+                start_datetime = end_datetime = datetime.datetime.now(datetime.timezone.utc)
+            extra_properties = {"start_datetime": start_datetime.isoformat(), "end_datetime": end_datetime.isoformat()}
+
+        stac_item = pystac.Item(
+            id=item_id,
+            geometry=item.get("geometry"),
+            bbox=bbox,
+            datetime=item_datetime,
+            properties=extra_properties,
+        )
+
         for asset_id, asset in item.get("assets", {}).items():
             # STAC 1.1 unifies "eo:bands"/"raster:bands" into a single "bands" field.
             bands = asset.get("bands") or asset.get("raster:bands")
-            asset_dict = dict_no_none(
-                href=str(asset["href"]),
-                roles=asset.get("roles"),
-                type=asset.get("type"),
-                bands=bands,
+            stac_item.add_asset(
+                asset_id,
+                pystac.Asset(
+                    href=str(asset["href"]),
+                    roles=asset.get("roles"),
+                    media_type=asset.get("type"),
+                    extra_fields=dict_no_none(bands=bands) or None,
+                ),
             )
-            assets[asset_id] = asset_dict
-            item_assets[asset_id] = dict_no_none(
+            item_asset_definitions[asset_id] = pystac.extensions.item_assets.AssetDefinition.create(
+                title=None,
+                description=None,
+                media_type=asset.get("type"),
                 roles=asset.get("roles"),
-                type=asset.get("type"),
             )
 
-        stac_item = {
-            "type": "Feature",
-            "stac_version": "1.1.0",
-            "id": item_id,
-            "geometry": item.get("geometry"),
-            "bbox": bbox,
-            "properties": {"datetime": item.get("datetime")},
-            "links": [],
-            "assets": assets,
-        }
-        item_file = output_dir / f"{item_id}.json"
-        item_file.write_text(json.dumps(stac_item, indent=2))
-        item_files.append(item_file)
+        stac_item.set_self_href(str(output_dir / f"{item_id}.json"))
+        stac_items.append(stac_item)
 
     if bboxes:
         xmins, ymins, xmaxs, ymaxs = zip(*bboxes)
@@ -882,39 +906,37 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     else:
         collection_bbox = [-180, -90, 180, 90]
 
-    stac_collection = {
-        "type": "Collection",
-        "stac_version": "1.1.0",
-        "id": collection_id,
-        "description": f"STAC metadata for openEO CWL input {collection_id!r}",
-        "license": "unknown",
-        "extent": {
-            "spatial": {"bbox": [collection_bbox]},
-            "temporal": {"interval": [[None, None]]},
-        },
-        "links": [
-            {"href": f"./{item_file.name}", "rel": "item", "type": "application/geo+json"} for item_file in item_files
-        ],
-        "item_assets": item_assets,
-    }
+    collection = pystac.Collection(
+        id=collection_id,
+        description=f"STAC metadata for openEO CWL input {collection_id!r}",
+        extent=pystac.Extent(
+            spatial=pystac.SpatialExtent([collection_bbox]),
+            temporal=pystac.TemporalExtent([[None, None]]),
+        ),
+        license="unknown",
+    )
+    for stac_item in stac_items:
+        collection.add_item(stac_item)
+    if item_asset_definitions:
+        pystac.extensions.item_assets.ItemAssetsExtension.ext(collection, add_if_missing=True).item_assets = (
+            item_asset_definitions
+        )
+    collection.set_self_href(str(output_dir / "collection.json"))
 
-    collection_file = output_dir / "collection.json"
-    collection_file.write_text(json.dumps(stac_collection, indent=2))
-    pystac.Collection.from_file(str(collection_file)).validate_all()
+    catalog = pystac.Catalog(id="catalog", description=f"STAC metadata for openEO CWL input {collection_id!r}")
+    catalog.add_child(collection)
+    catalog.set_self_href(str(output_dir / "catalog.json"))
+    for stac_item in stac_items:
+        stac_item.save_object(include_self_link=False)
+    collection.save_object(include_self_link=False)
+    catalog.save_object(include_self_link=False)
 
-    stac_catalogue = {
-        "stac_version": "1.1.0",
-        "id": "catalog",
-        "type": "Catalog",
-        "description": f"STAC metadata for openEO CWL input {collection_id!r}",
-        "links": [{"type": "application/json", "rel": "item", "href": str(collection_file)}],
-    }
-
-    catalog_file = output_dir / "catalog.json"
-    catalog_file.write_text(json.dumps(stac_catalogue, indent=2))
-    pystac.Catalog.from_file(str(catalog_file)).validate_all()
-
-    return collection_file
+    if ConfigParams().is_ci_context:  # TODO: Move this to unit test
+        catalog.validate_all()
+        collection.validate_all()
+    collection_path = collection.get_self_href()
+    assert collection_path
+    return collection_path
 
 
 def cwl_to_stac(
@@ -958,7 +980,7 @@ def cwl_to_stac(
 
             res_url = str(collection_file)
             cwl_arguments[key] = res_url
-
+    return "/home/emile/openeo/openeo-geopyspark-driver/docker/local_batch_job/example_stac_catalog/collection.json"
     ensure_kubernetes_config()
 
     _log.info(f"Loading CWL from {cwl_source=}")
@@ -974,6 +996,8 @@ def cwl_to_stac(
         _log.info(f"result {k!r}: {v.generate_public_url()=} {v.generate_presigned_url()=}")
 
     stac_root = find_stac_root(set(results.keys()))
+    if stac_root is None:
+        raise Exception("Could not find stac root.")
 
     if direct_s3_mode:
         collection_url = results[stac_root].s3_uri()
