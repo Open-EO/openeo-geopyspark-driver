@@ -1013,10 +1013,8 @@ def reproject_geometry(geometry, src_crs, dst_crs):
 if sys.version_info >= (3, 10) and (ConfigParams().is_ci_context or "pytest" in sys.modules):
     from typeguard import typechecked
 
-    print(f"Using typechecked: {typechecked}.")
+    assert typechecked
 else:
-    print(f"Not using typechecked.")
-
     def typechecked(func):
         """
         no-op
