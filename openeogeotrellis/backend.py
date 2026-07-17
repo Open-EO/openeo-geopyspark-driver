@@ -2924,7 +2924,11 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
 
     def get_udf_runtimes(self) -> dict:
         runtimes = self.udf_runtime_image_repository.get_udf_runtimes_response()
-        if ConfigParams().is_kube_deploy or smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+        if (
+            ConfigParams().is_kube_deploy
+            or ConfigParams().is_ci_context
+            or smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
+        ):
             runtimes["EOAP-CWL"] = {
                 "default": "1",
                 "title": "EOAP-CWL",
