@@ -19,7 +19,7 @@ import pystac.extensions.item_assets
 import requests
 import yaml
 from openeo.util import ContextTimer, deep_get, dict_no_none
-from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER
+from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, ENV_SAVE_RESULT
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
 from openeo_driver.dry_run import DryRunDataTracer
@@ -970,6 +970,14 @@ def cwl_to_stac(
                 f"Expected a save_result for CWL argument {key!r}, "
                 f"but got a raw {type(val).__name__} that could not be converted to one."
             )
+
+            # `val` was passed in through a `save_result` process node (e.g. to serialize it to disk for
+            # this CWL argument), which also registers it in `env[ENV_SAVE_RESULT]` as one of the job's
+            # final results. It's only meant as an intermediate input here though, so drop it from there
+            # to avoid it leaking into the job's actual output results.
+            if env and ENV_SAVE_RESULT in env:
+                # [:] makes a shallow copy
+                env[ENV_SAVE_RESULT][:] = [r for r in env[ENV_SAVE_RESULT] if getattr(r, "cube", None) is not val]
 
             correlation_id = get_job_id(default=None) or get_request_id(default=None)
             assert correlation_id

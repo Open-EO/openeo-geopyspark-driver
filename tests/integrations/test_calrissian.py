@@ -692,7 +692,8 @@ class TestCalrissianJobLauncher:
         output_file = files[0]
 
         with rasterio.open(output_file) as ds:
-            print(ds.descriptions)  # WRONG: ('Longitude', 'Latitude', 'Day')
+            # dummy_stac.cwl should return a catalog with B04, B03, B02 bands, ignoring the input argument.
+            print(ds.descriptions)
             assert ds.descriptions == ("B04", "B03", "B02")
 
 
