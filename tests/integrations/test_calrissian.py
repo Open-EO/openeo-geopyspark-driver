@@ -654,6 +654,47 @@ class TestCalrissianJobLauncher:
                 cwl_source=CwLSource.from_string("class: Dummy"),
             )
 
+    def test_datacube_to_cwl_argument(self, api110, tmp_path):
+        from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
+        import glob
+        import rasterio
+
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["Longitude", "Latitude", "Day"],
+                    "id": "TestCollection-LonLat16x16",
+                    "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                    "temporal_extent": ["2023-06-01", "2023-06-07"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadcollection1"}, "format": "GTiff", "options": {}},
+            },
+            "runudf1": {
+                "process_id": "run_udf",
+                "arguments": {
+                    "context": {"datacube_s2": {"from_node": "saveresult1"}},
+                    "data": None,
+                    "runtime": "EOAP-CWL",
+                    "udf": "https://raw.githubusercontent.com/Open-EO/openeo-geotrellis-kubernetes/master/openeo-geopyspark-k8s-custom-processes/src/openeo_geopyspark_k8s_custom_processes/cwl/dummy_stac.cwl",
+                },
+                "result": True,
+            },
+        }
+
+        run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
+
+        files = list(glob.glob(str(tmp_path / "*.tif")))
+        print(files)
+        output_file = files[0]
+
+        with rasterio.open(output_file) as ds:
+            print(ds.descriptions)  # WRONG: ('Longitude', 'Latitude', 'Day')
+            assert ds.descriptions == ("B04", "B03", "B02")
+
 
 class TestCalrissianS3Result:
     @pytest.fixture
