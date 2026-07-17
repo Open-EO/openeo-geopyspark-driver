@@ -26,7 +26,8 @@ pythonPipeline {
   wheel_repo = ''
   wheel_repo_dev = ''
   test_module_name = 'openeogeotrellis'
-  extras_require = 'dev,spark4'
+  /* Note: extra "spark40x" to align with "almalinux9-spark4-py311-openeo" which is hardcoded for spark 4.0.1 at the moment #1755 */
+  extras_require = 'dev,spark40x'
   upload_dev_wheels = false
   build_wheel = false
   pep440 = true
