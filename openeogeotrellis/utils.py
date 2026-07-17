@@ -15,6 +15,7 @@ import pwd
 import resource
 import shutil
 import stat
+import sys
 import tempfile
 import time
 from functools import partial
@@ -1006,3 +1007,16 @@ def reproject_geometry(geometry, src_crs, dst_crs):
 
     transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
     return transform(transformer.transform, geometry)
+
+
+# TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
+if sys.version_info >= (3, 10) and (ConfigParams().is_ci_context or "pytest" in sys.modules):
+    from typeguard import typechecked
+
+    assert typechecked
+else:
+    def typechecked(func):
+        """
+        no-op
+        """
+        return func

@@ -51,6 +51,7 @@ typing_require = [
     'typechecked; python_version>="3.10"',
     "types-shapely",
     'scipy-stubs; python_version>="3.10"',
+    "typeguard",
 ]
 
 setup(
