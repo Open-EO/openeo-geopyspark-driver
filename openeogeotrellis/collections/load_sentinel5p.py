@@ -37,7 +37,6 @@ Algorithm:
 
 import json
 import logging
-import sys
 import datetime as dt
 from datetime import datetime
 from functools import partial
@@ -64,11 +63,11 @@ from .sentinel5p_functions import (
     load_data_from_file,
     resample_data,
 )
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
 
-
+@typechecked
 def load_level2_data(params: dict):
     """Load Sentinel-5P level-2 data from a NetCDF file.
 
@@ -89,10 +88,6 @@ def load_level2_data(params: dict):
                    if the spatial extent is invalid.
 
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     # filename, spatial_extent, temporal_extent, bands, filter_value
     # check if the file exists
     file_path = Path(params.get("filename", ""))
@@ -173,6 +168,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
     return datetime(*(datetime.fromtimestamp(instant // 1000, dt.timezone.utc).timetuple()[:5]))
 
 
+@typechecked
 def read_product(
     product: Tuple[Union[Path, str], List[dict]],
     band_names: List[str],
@@ -199,11 +195,6 @@ def read_product(
         ``TiledRasterLayer``.  Returns an empty list when no valid data falls
         within the requested extent.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     creo_path, features = product
     creo_path = Path(creo_path)
 
@@ -319,6 +310,7 @@ def read_product(
     return tiles
 
 
+@typechecked
 def _build_stac_opensearch_client(
     stac_url: str,
     spatial_extent: Union[Dict, BoundingBox, None],
@@ -327,11 +319,6 @@ def _build_stac_opensearch_client(
     feature_flags: Optional[Dict] = None,
 ) -> JavaObject:
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     feature_flags = feature_flags or {}
 
     spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
@@ -382,6 +369,8 @@ def _build_stac_opensearch_client(
 
     return opensearch_client
 
+
+@typechecked
 def pyramid(
     metadata_properties,
     projected_polygons_native_crs,
@@ -400,10 +389,6 @@ def pyramid(
     Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
     layer catalog.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     latlng_crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
 
     if projected_polygons_native_crs.crs() != latlng_crs:

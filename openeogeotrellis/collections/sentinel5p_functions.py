@@ -7,14 +7,13 @@ extents, as well as quality filtering.
 Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-lon grid.
 """
 
-import sys
 from pathlib import Path
 from typing import Optional, Sequence, Tuple, Dict, List, Any
 
 import numpy as np
 from netCDF4 import Dataset, num2date
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.utils import typechecked
 
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
@@ -83,6 +82,7 @@ all_gases: Dict[str, Dict[str, Any]] = {
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
 
+@typechecked
 def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
     """Get gas variable locations, default bands, and filter values.
 
@@ -112,6 +112,7 @@ def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
     return variable_locs, default_bands, filter_value
 
 
+@typechecked
 def load_data_from_file(
     file_path: Path,
     spatial_extent: Optional[Sequence],
@@ -150,10 +151,6 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     # Open the NetCDF file
     with Dataset(file_path, "r") as f:
         # Check if there is valid data based on spatial temporal extents and filter value
@@ -271,6 +268,7 @@ def get_temporal_mask_and_time(time_of_rows, temporal_extent: Optional[Sequence]
     return temporal_mask
 
 
+@typechecked
 def get_spatial_extent_mask(
     lat: np.ndarray, lon: np.ndarray, spatial_extent: Optional[Sequence], pixel_pad=1
 ) -> np.ndarray:
@@ -291,11 +289,6 @@ def get_spatial_extent_mask(
         mask (Array of bool): Boolean mask for the spatial extent.
 
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     if spatial_extent is None:
         spatial_mask = np.ones(lat.shape, dtype=bool)  # all pixels true
         return spatial_mask
@@ -367,6 +360,7 @@ def _get_2d_data_from_mask(data, mask):
     return data_2d
 
 
+@typechecked
 def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     """Crate grid for resampling based on bounding box and resolution.
     Args:
@@ -378,10 +372,6 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
         grid_x (Array of float): 2-d array representing the longitude grid.
         grid_y (Array of float): 2-d array representing the latitude grid.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     xmin, ymin, xmax, ymax = bbox
     if xmin > xmax:  # anti-meridian crossing
         xmax += 360  # temporarily shift to continuous range
@@ -394,6 +384,7 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     return grid_x, grid_y
 
 
+@typechecked
 def interpolate(
     source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
 ):
@@ -408,11 +399,6 @@ def interpolate(
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     from typing import Literal, cast
     from scipy.interpolate import griddata
 
@@ -449,6 +435,7 @@ def adapt_coordinates(source_coordinates, target_coordinates):
     return adapted_source_coordinates, adapted_target_coordinates
 
 
+@typechecked
 def resample_data(
     data: dict, bands: list, spatial_extent: Sequence, resample_resolution: float, interpolation_method: str
 ):
@@ -464,10 +451,6 @@ def resample_data(
     Returns:
         new_data (dict): Dictionary containing resampled data arrays for different bands.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     interpolated_data = {}  # dictionary to hold resampled data
     # create new grid for resampled data
     resampled_lon, resampled_lat = create_resample_grid(spatial_extent, resample_resolution)
