@@ -842,6 +842,7 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     Build a minimal but valid STAC collection (collection.json + one Item file per output item)
     from the "items" dict as produced by `SaveResult.write_assets`/`GeopysparkDataCube.write_assets`.
     """
+    _log.info(f"_write_stac_catalog_for_write_assets_result({output_dir=}, ...)")
     stac_items = []
     item_asset_definitions = {}
     bboxes = []
@@ -926,6 +927,9 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     catalog = pystac.Catalog(id="catalog", description=f"STAC metadata for openEO CWL input {collection_id!r}")
     catalog.add_child(collection)
     catalog.set_self_href(str(output_dir / "catalog.json"))
+    # Use relative hierarchical links (root/parent/child/item) instead of absolute paths/URLs.
+    catalog.catalog_type = pystac.CatalogType.SELF_CONTAINED
+
     for stac_item in stac_items:
         stac_item.save_object(include_self_link=False)
     collection.save_object(include_self_link=False)
@@ -961,7 +965,7 @@ def cwl_to_stac(
     for key in cwl_arguments:
         val = cwl_arguments[key]
         if isinstance(val, GeopysparkDataCube):
-            save_result = to_save_result(val)
+            save_result = to_save_result(val)  # Is to_save_result needed?
             assert isinstance(save_result, ImageCollectionResult), (
                 f"Expected a save_result for CWL argument {key!r}, "
                 f"but got a raw {type(val).__name__} that could not be converted to one."
@@ -970,6 +974,7 @@ def cwl_to_stac(
             correlation_id = get_job_id(default=None) or get_request_id(default=None)
             assert correlation_id
 
+            # TODO: Use more unique key then 'key'
             output_dir = Path(get_backend_config().batch_job_work_dir_root) / correlation_id / "cwl_input" / str(key)
             output_dir.mkdir(parents=True, exist_ok=True)
 
