@@ -654,7 +654,7 @@ class TestCalrissianJobLauncher:
                 cwl_source=CwLSource.from_string("class: Dummy"),
             )
 
-    def test_datacube_to_cwl_argument(self, api110, tmp_path):
+    def test_datacube_to_cwl_argument(self, api110, tmp_path, k8s_pvc_api):
         from openeogeotrellis.backend import GpsUdfRuntimes
         from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
         import glob
