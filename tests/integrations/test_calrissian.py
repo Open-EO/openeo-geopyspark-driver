@@ -654,7 +654,7 @@ class TestCalrissianJobLauncher:
                 cwl_source=CwLSource.from_string("class: Dummy"),
             )
 
-    def test_datacube_to_cwl_argument(self, api110, tmp_path, k8s_pvc_api):
+    def test_datacube_to_cwl_argument(self, api110, tmp_path):
         from openeogeotrellis.backend import GpsUdfRuntimes
         from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
         import glob
@@ -705,19 +705,20 @@ class TestCalrissianJobLauncher:
             }
         }
 
-        with mock.patch.object(
-            CalrissianJobLauncher, "run_cwl_workflow", return_value={example_collection_json: fake_result}
-        ) as run_cwl_workflow, mock.patch.object(
+        fake_launcher = mock.Mock()
+        fake_launcher.run_cwl_workflow.return_value = {example_collection_json: fake_result}
+
+        with mock.patch.object(CalrissianJobLauncher, "from_context", return_value=fake_launcher), mock.patch.object(
             GpsUdfRuntimes, "get_udf_runtimes", return_value=fake_udf_runtimes
-        ), gps_config_overrides(
+        ), mock.patch("openeogeotrellis.integrations.calrissian.ensure_kubernetes_config"), gps_config_overrides(
             batch_job_work_dir_root=str(tmp_path)
         ):
             run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
 
         # The CWL job should have received the "datacube_s2" context argument
         # as a string (path/URL to the STAC catalog written for it), not the raw datacube object.
-        run_cwl_workflow.assert_called_once()
-        cwl_arguments = run_cwl_workflow.call_args.kwargs["cwl_arguments"]
+        fake_launcher.run_cwl_workflow.assert_called_once()
+        cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
         assert isinstance(cwl_arguments["datacube_s2"], str)
 
         files = list(glob.glob(str(tmp_path / "*.tif")))
