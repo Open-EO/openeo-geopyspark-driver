@@ -78,8 +78,57 @@ all_gases: Dict[str, Dict[str, Any]] = {
         "DEFAULT_BANDS": ["ozone_total_vertical_column"],
         "FILTER_VALUE": 0.5,  # default filter value for O3 as per documentation
     },
+    # AER_AI (UV Aerosol Index) gas variables: both the 340/380 nm and the
+    # 354/388 nm wavelength pairs are present in the same PRODUCT group.
+    "gas_aer_ai": {
+        "VARIABLE_LOC_IN_FILE": {
+            "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
+            "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
+        },
+        "DEFAULT_BANDS": ["aerosol_index_340_380"],
+        "FILTER_VALUE": 0.8,  # default filter value for AER_AI as per documentation
+    },
+    # CLOUD gas/product variables
+    "gas_cloud": {
+        "VARIABLE_LOC_IN_FILE": {
+            "cloud_fraction": "PRODUCT/cloud_fraction",
+            "cloud_top_pressure": "PRODUCT/cloud_top_pressure",
+            "cloud_base_pressure": "PRODUCT/cloud_base_pressure",
+            "cloud_top_height": "PRODUCT/cloud_top_height",
+            "cloud_base_height": "PRODUCT/cloud_base_height",
+            "cloud_optical_thickness": "PRODUCT/cloud_optical_thickness",
+        },
+        "DEFAULT_BANDS": ["cloud_fraction"],
+        "FILTER_VALUE": 0.5,  # default filter value for CLOUD as per documentation
+    },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
+
+
+@typechecked
+def parse_gas_from_filename(filename: str) -> str:
+    """Extract the gas/product short name from a Sentinel-5P product filename.
+
+    Sentinel-5P L2 filenames follow the fixed-width naming convention
+    ``S5P_<processing>_L2__<PPPPPP>_<start>_<end>_<orbit>_<collection>_<processor>_<created>.nc``
+    where ``<PPPPPP>`` is a fixed-width (6 character), underscore-padded product code
+    (e.g. ``CO____``, ``NO2___``, ``AER_AI``). Splitting on ``"_"`` alone is not reliable
+    for product codes that themselves contain an underscore (e.g. ``AER_AI``), so the
+    product code is extracted using the fixed ``L2__`` marker instead.
+
+    :param filename: Sentinel-5P product filename (or full path).
+    :return: lowercased gas/product short name, e.g. ``"co"``, ``"aer_ai"``.
+    """
+    name = Path(filename).name
+    marker = "L2__"
+    idx = name.find(marker)
+    if idx == -1:
+        raise ValueError(f"Could not find '{marker}' marker in Sentinel-5P filename: {name}")
+    product_code = name[idx + len(marker) : idx + len(marker) + 6]
+    gas_name = product_code.rstrip("_").lower()
+    if not gas_name:
+        raise ValueError(f"Could not parse gas/product name from Sentinel-5P filename: {name}")
+    return gas_name
 
 
 @typechecked

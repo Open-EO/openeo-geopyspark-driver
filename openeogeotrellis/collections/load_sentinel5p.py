@@ -61,6 +61,7 @@ from .sentinel5p_functions import (
     get_gas_variables,
     interpolate,
     load_data_from_file,
+    parse_gas_from_filename,
     resample_data,
 )
 from openeogeotrellis.utils import typechecked
@@ -95,7 +96,7 @@ def load_level2_data(params: dict):
     if not file_path.exists():
         raise Exception(f"read_product: path {file_path} does not exist.")
     # get the gas
-    file_gas = file_path.name.split("_")[4]
+    file_gas = parse_gas_from_filename(file_path.name)
     VARIABLE_LOC_IN_FILE, DEFAULT_BANDS, DEFAULT_FILTER_VALUE = get_gas_variables(file_gas)
 
     # check the spatial extent and temporal extent keys
@@ -201,7 +202,7 @@ def read_product(
     if not creo_path.exists():
         raise Exception(f"read_product: path {creo_path} does not exist.")
 
-    file_gas = creo_path.name.split("_")[4]
+    file_gas = parse_gas_from_filename(creo_path.name)
     variable_loc_in_file, default_bands, default_filter_value = get_gas_variables(file_gas)
 
     col_min = min(f["key"]["col"] for f in features)
