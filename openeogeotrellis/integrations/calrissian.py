@@ -938,9 +938,9 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     if ConfigParams().is_ci_context:  # TODO: Move this to unit test
         catalog.validate_all()
         collection.validate_all()
-    collection_path = collection.get_self_href()
-    assert collection_path
-    return collection_path
+    root_path = catalog.get_self_href()
+    assert root_path
+    return root_path
 
 
 def cwl_to_stac(

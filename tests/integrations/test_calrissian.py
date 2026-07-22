@@ -9,6 +9,7 @@ from unittest import mock
 
 import dirty_equals
 import kubernetes.client
+import pystac
 import pytest
 import yaml
 
@@ -26,6 +27,7 @@ from openeogeotrellis.integrations.calrissian import (
     parse_cwl_outputs_listing,
     find_stac_root,
     cwl_to_stac,
+    _write_stac_catalog_for_write_assets_result,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
@@ -653,6 +655,55 @@ class TestCalrissianJobLauncher:
                 env=env,
                 cwl_source=CwLSource.from_string("class: Dummy"),
             )
+
+    def test_write_stac_catalog_for_write_assets_result(self, tmp_path):
+        stac_root = _write_stac_catalog_for_write_assets_result(
+            output_dir=tmp_path,
+            items={
+                "916537ca-071f-4c2b-8f0f-791a607eb67f": {
+                    "id": "916537ca-071f-4c2b-8f0f-791a607eb67f",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [[5.125, 51.1875], [5.125, 51.25], [5.0625, 51.25], [5.0625, 51.1875], [5.125, 51.1875]]
+                        ],
+                    },
+                    "bbox": [5.0625, 51.1875, 5.125, 51.25],
+                    "assets": {
+                        "openEO": {
+                            "href": "/data/projects/OpenEO/r-26072216284543f2afad5bc9aa90936f/cwl_input/datacube_s2/openEO.tif",
+                            "type": "image/tiff; application=geotiff",
+                            "roles": ["data"],
+                            "nodata": "NaN",
+                            "proj:bbox": [5.0625, 51.1875, 5.125, 51.25],
+                            "proj:shape": [1, 1],
+                            "proj:epsg": 4326,
+                            "bands": [{"name": "Longitude"}, {"name": "Latitude"}, {"name": "Day"}],
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [
+                                    [
+                                        [5.125, 51.1875],
+                                        [5.125, 51.25],
+                                        [5.0625, 51.25],
+                                        [5.0625, 51.1875],
+                                        [5.125, 51.1875],
+                                    ]
+                                ],
+                            },
+                            "bbox": [5.0625, 51.1875, 5.125, 51.25],
+                        }
+                    },
+                }
+            },
+            collection_id="test_write_stac_catalog_for_write_assets_result",
+        )
+        pystac.Catalog.from_file(stac_root).validate_all()
+        files = [f for f in os.listdir(tmp_path) if os.path.isfile(os.path.join(tmp_path, f))]
+        for file in files:
+            content = Path(os.path.join(tmp_path, file)).read_text()
+            assert "/data/projects/OpenEO/" not in content, "Links should be relative"
+            assert '"/' not in content, "Links should not start with slash"
 
     def test_datacube_to_cwl_argument(self, api110, tmp_path):
         from openeogeotrellis.backend import GpsUdfRuntimes
