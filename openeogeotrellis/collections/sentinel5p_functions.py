@@ -101,6 +101,15 @@ all_gases: Dict[str, Dict[str, Any]] = {
         "DEFAULT_BANDS": ["cloud_fraction"],
         "FILTER_VALUE": 0.5,  # default filter value for CLOUD as per documentation
     },
+    # AER_LH (Aerosol Layer Height) gas/product variables
+    "gas_aer_lh": {
+        "VARIABLE_LOC_IN_FILE": {
+            "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
+            "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
+        },
+        "DEFAULT_BANDS": ["aerosol_mid_height"],
+        "FILTER_VALUE": 0.5,  # default filter value for AER_LH as per documentation
+    },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 

@@ -152,6 +152,15 @@ def _cloud_bands():
     }
 
 
+def _aer_lh_bands():
+    mid_height = np.random.uniform(1000, 8000, (20, 10)).astype(np.float32)
+    mid_pressure = np.random.uniform(30000, 90000, (20, 10)).astype(np.float32)
+    return {
+        "aerosol_mid_height": mid_height,
+        "aerosol_mid_pressure": mid_pressure,
+    }
+
+
 SYNTHETIC_PRODUCT_SPECS = {
     "co": ("CO_____", _co_bands, 0.75, 1),
     "no2": ("NO2____", _no2_bands, 0.8, 1),
@@ -161,6 +170,7 @@ SYNTHETIC_PRODUCT_SPECS = {
     "o3": ("O3_____", _o3_bands, 0.6, 1),
     "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 1),
     "cloud": ("CLOUD__", _cloud_bands, 0.5, 1),
+    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 1),
 }
 
 
@@ -288,7 +298,7 @@ def test_invalid_time_exception():
     assert ["Input temporal extent is not in the file" in str(excinfo.value)]
 
 
-@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3", "aer_ai", "cloud"])
+@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3", "aer_ai", "cloud", "aer_lh"])
 def test_read_product_default_bands_per_product(synthetic_products, product_name):
     """read_product uses each product's default band(s) when band_names is empty."""
     _product_code, _bands_fn, _qa_value, expected_band_count = SYNTHETIC_PRODUCT_SPECS[product_name]
@@ -515,6 +525,12 @@ class TestSentinel5:
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
                 ["cloud_fraction", "qa_value"],
             ),
+            (
+                "SENTINEL5P_L2_AER_LH",
+                {"west": 1, "south": 33, "east": 11, "north": 37},
+                ["2024-01-02T12:00:00Z", "2024-01-02T14:00:00Z"],
+                ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
+            ),
         ],
         ids=[
             "co",
@@ -531,6 +547,7 @@ class TestSentinel5:
             "cloud_top_height",
             "cloud_optical_thickness",
             "cloud_fraction",
+            "aer_lh",
         ],
     )
     def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
