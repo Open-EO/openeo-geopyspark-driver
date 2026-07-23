@@ -313,6 +313,48 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
     ), f"Expected {expected_band_count} default band(s) for {product_name}"
 
 
+@pytest.mark.parametrize(
+    "collection_id, expected_band",
+    [
+        ("SENTINEL5P_L2_CLOUD_FRACTION", "cloud_fraction"),
+        ("SENTINEL5P_L2_CLOUD_TOP_PRESSURE", "cloud_top_pressure"),
+        ("SENTINEL5P_L2_CLOUD_BASE_PRESSURE", "cloud_base_pressure"),
+        ("SENTINEL5P_L2_CLOUD_TOP_HEIGHT", "cloud_top_height"),
+        ("SENTINEL5P_L2_CLOUD_BASE_HEIGHT", "cloud_base_height"),
+        ("SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS", "cloud_optical_thickness"),
+    ],
+)
+def test_read_product_default_band_per_cloud_collection(synthetic_products, collection_id, expected_band):
+    """Without an explicit `bands` filter, each CLOUD collection ID should default to its own
+    band, not silently fall back to `cloud_fraction` (the shared gas-level default)."""
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+            "key_epsg": 4326,
+        }
+    ]
+    result_default = read_product(
+        (synthetic_products["cloud"], features),
+        band_names=[],
+        tile_size=4,
+        resolution=0.1,
+        collection_id=collection_id,
+    )
+    result_explicit = read_product(
+        (synthetic_products["cloud"], features),
+        band_names=[expected_band],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert len(result_default) > 0 and len(result_explicit) > 0
+    _key_default, tile_default = result_default[0]
+    _key_explicit, tile_explicit = result_explicit[0]
+    assert tile_default.cells.shape[0] == 1
+    np.testing.assert_array_equal(tile_default.cells, tile_explicit.cells)
+
+
 # ---------------------------------------------------------------------------
 # Tests that require a real eodata mount
 # ---------------------------------------------------------------------------
@@ -410,7 +452,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_SO2",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
                 ["sulfurdioxide_total_vertical_column", "qa_value"],
             ),
             (

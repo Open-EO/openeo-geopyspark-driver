@@ -104,6 +104,23 @@ all_gases: Dict[str, Dict[str, Any]] = {
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
+# Several openEO collection IDs share the same underlying gas/product file type
+# (all "CLOUD" sub-products, and the two "AER_AI" wavelength-pair variants), so
+# `parse_gas_from_filename` alone cannot distinguish which single band a given
+# collection should default to. This maps those openEO collection IDs to the
+# band they should load when no explicit `bands` filter is given, overriding
+# the (otherwise ambiguous) gas-level "DEFAULT_BANDS" above.
+COLLECTION_ID_DEFAULT_BAND: Dict[str, str] = {
+    "SENTINEL5P_L2_CLOUD_FRACTION": "cloud_fraction",
+    "SENTINEL5P_L2_CLOUD_TOP_PRESSURE": "cloud_top_pressure",
+    "SENTINEL5P_L2_CLOUD_BASE_PRESSURE": "cloud_base_pressure",
+    "SENTINEL5P_L2_CLOUD_TOP_HEIGHT": "cloud_top_height",
+    "SENTINEL5P_L2_CLOUD_BASE_HEIGHT": "cloud_base_height",
+    "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS": "cloud_optical_thickness",
+    "SENTINEL5P_L2_AER_AI_340_380": "aerosol_index_340_380",
+    "SENTINEL5P_L2_AER_AI_354_388": "aerosol_index_354_388",
+}
+
 
 @typechecked
 def parse_gas_from_filename(filename: str) -> str:
@@ -132,8 +149,14 @@ def parse_gas_from_filename(filename: str) -> str:
 
 
 @typechecked
-def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
+def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> Tuple[Dict[str, str], List[str], float]:
     """Get gas variable locations, default bands, and filter values.
+
+    :param gas_type: gas/product short name as returned by :func:`parse_gas_from_filename`.
+    :param collection_id: optional openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``).
+        Several collection IDs share the same underlying gas/product file type (e.g. all "CLOUD"
+        sub-products), so the gas-level default band is ambiguous. When *collection_id* is given and
+        known, it overrides the gas-level default with the single band specific to that collection.
 
     Returns:
         gas_variables (dict): Dictionary containing gas variable locations in file.
@@ -152,6 +175,15 @@ def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
     default_bands = gas_vars.get("DEFAULT_BANDS")
     if default_bands is None or not isinstance(default_bands, list):
         raise ValueError(f"DEFAULT_BANDS should be dictionary, but was '{default_bands}'")
+
+    collection_default_band = COLLECTION_ID_DEFAULT_BAND.get(collection_id) if collection_id else None
+    if collection_default_band is not None:
+        if collection_default_band not in variable_loc:
+            raise ValueError(
+                f"Default band '{collection_default_band}' for collection '{collection_id}' "
+                f"is not a known variable for gas type '{gas_type}'"
+            )
+        default_bands = [collection_default_band]
 
     filter_value = gas_vars.get("FILTER_VALUE")
     if filter_value is None or not isinstance(filter_value, float):
