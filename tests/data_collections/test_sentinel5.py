@@ -1,6 +1,8 @@
 import calendar
+import glob
 import logging
 import os.path
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +22,7 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_product
+from openeogeotrellis.collections.sentinel5p_functions import all_gases, parse_gas_from_filename
 
 np.random.seed(42)
 
@@ -396,6 +399,81 @@ def assert_tif_file_is_healthy(tif_path):
     if errors:
         print(f"COG validation errors for {tif_path}: {errors}")
     assert is_valid_cog, str(errors)
+
+
+# Directory (under /eodata) known to contain at least one real product file for each gas/product
+# short name, used to cross-check the `FILTER_VALUE` configured in `all_gases` against the
+# `qa_value` variable's `comment` attribute embedded in the actual netCDF product.
+GAS_TYPE_SAMPLE_DIR = {
+    "co": "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2024/09/02",
+    "no2": "/eodata/Sentinel-5P/TROPOMI/L2__NO2___/2024/09/02",
+    "ch4": "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2024/10/07",
+    "so2": "/eodata/Sentinel-5P/TROPOMI/L2__SO2___/2024/12/01",
+    "hcho": "/eodata/Sentinel-5P/TROPOMI/L2__HCHO__/2024/10/07",
+    "o3": "/eodata/Sentinel-5P/TROPOMI/L2__O3____/2024/10/07",
+    "aer_ai": "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2024/10/07",
+    "cloud": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_/2023/06/01",
+    "aer_lh": "/eodata/Sentinel-5P/TROPOMI/L2__AER_LH/2024/01/02",
+}
+
+
+def _get_qa_value_recommended_threshold(nc_path) -> float:
+    """Parse the recommended qa_value filtering threshold from the netCDF product's
+    `PRODUCT/qa_value` variable `comment` attribute, e.g.:
+    "... Recommend to ignore data with qa_value < 0.5" -> 0.5
+    """
+    import netCDF4
+
+    with netCDF4.Dataset(nc_path) as ds:
+        comment = ds.groups["PRODUCT"].variables["qa_value"].comment
+    match = re.search(r"qa_value\s*<\s*([\d.]+)", comment)
+    assert match, f"Could not parse qa_value threshold from comment: {comment!r}"
+    return float(match.group(1))
+
+
+@pytest.mark.parametrize(
+    "gas_short_name",
+    [
+        "co",
+        pytest.param(
+            "no2",
+            marks=pytest.mark.xfail(
+                reason="NO2 intentionally uses a stricter documented qa_value threshold (0.75) "
+                "than the generic in-file recommendation (0.5), to filter out cloud/aerosol effects "
+                "on the tropospheric column.",
+                strict=True,
+            ),
+        ),
+        "ch4",
+        "so2",
+        "hcho",
+        "o3",
+        pytest.param(
+            "aer_ai",
+            marks=pytest.mark.xfail(
+                reason="AER_AI intentionally uses a stricter documented qa_value threshold (0.8) "
+                "than the generic in-file recommendation (0.5), as recommended for aerosol index products.",
+                strict=True,
+            ),
+        ),
+        "cloud",
+        "aer_lh",
+    ],
+)
+def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
+    """The FILTER_VALUE configured for each gas/product in `all_gases` should match the qa_value
+    threshold documented in the `comment` attribute of a real product's netCDF metadata, unless
+    explicitly (and intentionally) overridden with a stricter, externally-documented threshold."""
+    sample_dir = GAS_TYPE_SAMPLE_DIR[gas_short_name]
+    nc_files = glob.glob(os.path.join(sample_dir, "*.nc"))
+    assert nc_files, f"No sample netCDF file found for gas '{gas_short_name}' in {sample_dir}"
+
+    parsed_gas_short_name = parse_gas_from_filename(nc_files[0])
+    assert parsed_gas_short_name == gas_short_name
+
+    metadata_threshold = _get_qa_value_recommended_threshold(nc_files[0])
+    configured_threshold = all_gases["gas_" + gas_short_name]["FILTER_VALUE"]
+    assert configured_threshold == metadata_threshold
 
 
 class TestSentinel5:
