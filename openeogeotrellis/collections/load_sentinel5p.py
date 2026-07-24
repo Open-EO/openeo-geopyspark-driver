@@ -61,6 +61,7 @@ from .sentinel5p_functions import (
     get_gas_variables,
     interpolate,
     load_data_from_file,
+    parse_gas_from_filename,
     resample_data,
 )
 from openeogeotrellis.utils import typechecked
@@ -95,7 +96,7 @@ def load_level2_data(params: dict):
     if not file_path.exists():
         raise Exception(f"read_product: path {file_path} does not exist.")
     # get the gas
-    file_gas = file_path.name.split("_")[4]
+    file_gas = parse_gas_from_filename(file_path.name)
     VARIABLE_LOC_IN_FILE, DEFAULT_BANDS, DEFAULT_FILTER_VALUE = get_gas_variables(file_gas)
 
     # check the spatial extent and temporal extent keys
@@ -174,6 +175,7 @@ def read_product(
     band_names: List[str],
     tile_size: int,
     resolution: float,
+    collection_id: Optional[str] = None,
 ) -> List[Tuple]:
     """Read Sentinel-5P data from a NetCDF file and return GeoTrellis tiles.
 
@@ -186,9 +188,15 @@ def read_product(
             ``key``, ``key_extent`` and ``key_epsg`` as produced by
             ``FileRDDFactory.loadSpatialFeatureJsonRDD``).
         band_names: Band names to load (e.g. ``["carbonmonoxide_total_column_corrected"]``).
-            When empty the gas-specific defaults are used.
+            When empty the default band(s) are used (see *collection_id*).
         tile_size: Number of pixels per tile edge.
         resolution: Pixel size in degrees (EPSG:4326).
+        collection_id: openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``).
+            Used to resolve the correct default band when *band_names* is empty: several
+            collection IDs share the same underlying gas/product file type (all "CLOUD"
+            sub-products, and the two "AER_AI" wavelength-pair variants), so the generic
+            gas-level default would otherwise silently return the wrong band. When not
+            given, or not one of those ambiguous collections, the gas-level default is used.
 
     Returns:
         List of ``(SpaceTimeKey, Tile)`` tuples ready for a GeoTrellis
@@ -201,8 +209,8 @@ def read_product(
     if not creo_path.exists():
         raise Exception(f"read_product: path {creo_path} does not exist.")
 
-    file_gas = creo_path.name.split("_")[4]
-    variable_loc_in_file, default_bands, default_filter_value = get_gas_variables(file_gas)
+    file_gas = parse_gas_from_filename(creo_path.name)
+    variable_loc_in_file, default_bands, default_filter_value = get_gas_variables(file_gas, collection_id)
 
     col_min = min(f["key"]["col"] for f in features)
     col_max = max(f["key"]["col"] for f in features)
@@ -382,12 +390,16 @@ def pyramid(
     feature_flags: Dict,
     jvm,
     spatial_extent: Union[Dict, BoundingBox, None] = None,
+    collection_id: Optional[str] = None,
 ) -> Dict[int, geopyspark.TiledRasterLayer]:
     """Build a GeoTrellis pyramid from Sentinel-5P level-2 NetCDF files.
 
     Mirrors :func:`openeogeotrellis.collections.sentinel3.pyramid` so that
     Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
     layer catalog.
+
+    :param collection_id: the openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``),
+        used to resolve the correct default band in :func:`read_product` when *band_names* is empty.
     """
     latlng_crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
 
@@ -408,7 +420,7 @@ def pyramid(
     if stac_url is None:
         raise ValueError("stac_url is required for Sentinel-5P pyramid; set opensearch_endpoint in the layer catalog")
 
-    collection_id = "Sentinel5P"
+    file_rdd_factory_collection_id = "Sentinel5P"
     correlation_id = ""
 
     opensearch_client = _build_stac_opensearch_client(
@@ -421,7 +433,7 @@ def pyramid(
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
         opensearch_client,
-        collection_id,
+        file_rdd_factory_collection_id,
         metadata_properties,
         correlation_id,
         native_cell_size,
@@ -460,7 +472,9 @@ def pyramid(
     resolution = native_cell_size.width()
 
     tile_rdd = per_product.partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index).flatMap(
-        partial(read_product, band_names=band_names, tile_size=tile_size, resolution=resolution)
+        partial(
+            read_product, band_names=band_names, tile_size=tile_size, resolution=resolution, collection_id=collection_id
+        )
     )
 
     logger.info(f"Constructing Sentinel-5P TiledRasterLayer with metadata {layer_metadata_py!r}")

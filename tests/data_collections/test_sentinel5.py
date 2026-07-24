@@ -126,6 +126,41 @@ def _o3_bands():
     return {"ozone_total_vertical_column": nd.astype(np.float32)}
 
 
+def _aer_ai_bands():
+    nd = np.random.uniform(-1.0, 2.0, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    return {
+        "aerosol_index_340_380": nd.astype(np.float32),
+        "aerosol_index_354_388": (nd * 0.95).astype(np.float32),
+    }
+
+
+def _cloud_bands():
+    fraction = np.random.uniform(0.0, 1.0, (20, 10)).astype(np.float32)
+    top_pressure = np.random.uniform(20000, 60000, (20, 10)).astype(np.float32)
+    base_pressure = top_pressure + np.random.uniform(1000, 5000, (20, 10)).astype(np.float32)
+    top_height = np.random.uniform(3000, 10000, (20, 10)).astype(np.float32)
+    base_height = top_height - np.random.uniform(500, 2000, (20, 10)).astype(np.float32)
+    optical_thickness = np.random.uniform(1.0, 50.0, (20, 10)).astype(np.float32)
+    return {
+        "cloud_fraction": fraction,
+        "cloud_top_pressure": top_pressure,
+        "cloud_base_pressure": base_pressure,
+        "cloud_top_height": top_height,
+        "cloud_base_height": base_height,
+        "cloud_optical_thickness": optical_thickness,
+    }
+
+
+def _aer_lh_bands():
+    mid_height = np.random.uniform(1000, 8000, (20, 10)).astype(np.float32)
+    mid_pressure = np.random.uniform(30000, 90000, (20, 10)).astype(np.float32)
+    return {
+        "aerosol_mid_height": mid_height,
+        "aerosol_mid_pressure": mid_pressure,
+    }
+
+
 SYNTHETIC_PRODUCT_SPECS = {
     "co": ("CO_____", _co_bands, 0.75, 1),
     "no2": ("NO2____", _no2_bands, 0.8, 1),
@@ -133,6 +168,9 @@ SYNTHETIC_PRODUCT_SPECS = {
     "so2": ("SO2____", _so2_bands, 0.6, 1),
     "hcho": ("HCHO___", _hcho_bands, 0.6, 1),
     "o3": ("O3_____", _o3_bands, 0.6, 1),
+    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 1),
+    "cloud": ("CLOUD__", _cloud_bands, 0.5, 1),
+    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 1),
 }
 
 
@@ -260,7 +298,7 @@ def test_invalid_time_exception():
     assert ["Input temporal extent is not in the file" in str(excinfo.value)]
 
 
-@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3"])
+@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3", "aer_ai", "cloud", "aer_lh"])
 def test_read_product_default_bands_per_product(synthetic_products, product_name):
     """read_product uses each product's default band(s) when band_names is empty."""
     _product_code, _bands_fn, _qa_value, expected_band_count = SYNTHETIC_PRODUCT_SPECS[product_name]
@@ -283,6 +321,48 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
     assert (
         tile.cells.shape[0] == expected_band_count
     ), f"Expected {expected_band_count} default band(s) for {product_name}"
+
+
+@pytest.mark.parametrize(
+    "collection_id, expected_band",
+    [
+        ("SENTINEL5P_L2_CLOUD_FRACTION", "cloud_fraction"),
+        ("SENTINEL5P_L2_CLOUD_TOP_PRESSURE", "cloud_top_pressure"),
+        ("SENTINEL5P_L2_CLOUD_BASE_PRESSURE", "cloud_base_pressure"),
+        ("SENTINEL5P_L2_CLOUD_TOP_HEIGHT", "cloud_top_height"),
+        ("SENTINEL5P_L2_CLOUD_BASE_HEIGHT", "cloud_base_height"),
+        ("SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS", "cloud_optical_thickness"),
+    ],
+)
+def test_read_product_default_band_per_cloud_collection(synthetic_products, collection_id, expected_band):
+    """Without an explicit `bands` filter, each CLOUD collection ID should default to its own
+    band, not silently fall back to `cloud_fraction` (the shared gas-level default)."""
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+            "key_epsg": 4326,
+        }
+    ]
+    result_default = read_product(
+        (synthetic_products["cloud"], features),
+        band_names=[],
+        tile_size=4,
+        resolution=0.1,
+        collection_id=collection_id,
+    )
+    result_explicit = read_product(
+        (synthetic_products["cloud"], features),
+        band_names=[expected_band],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert len(result_default) > 0 and len(result_explicit) > 0
+    _key_default, tile_default = result_default[0]
+    _key_explicit, tile_explicit = result_explicit[0]
+    assert tile_default.cells.shape[0] == 1
+    np.testing.assert_array_equal(tile_default.cells, tile_explicit.cells)
 
 
 # ---------------------------------------------------------------------------
@@ -382,7 +462,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_SO2",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
                 ["sulfurdioxide_total_vertical_column", "qa_value"],
             ),
             (
@@ -397,8 +477,78 @@ class TestSentinel5:
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
                 ["ozone_total_vertical_column", "qa_value"],
             ),
+            (
+                "SENTINEL5P_L2_AER_AI_340_380",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["aerosol_index_340_380", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_AER_AI_354_388",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["aerosol_index_354_388", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_base_pressure", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_top_pressure", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_base_height", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_top_height", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_optical_thickness", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_FRACTION",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_fraction", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_AER_LH",
+                {"west": 1, "south": 33, "east": 11, "north": 37},
+                ["2024-01-02T12:00:00Z", "2024-01-02T14:00:00Z"],
+                ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
+            ),
         ],
-        ids=["co", "no2", "ch4", "so2", "hcho", "o3"],
+        ids=[
+            "co",
+            "no2",
+            "ch4",
+            "so2",
+            "hcho",
+            "o3",
+            "aer_ai_340_380",
+            "aer_ai_354_388",
+            "cloud_base_pressure",
+            "cloud_top_pressure",
+            "cloud_base_height",
+            "cloud_top_height",
+            "cloud_optical_thickness",
+            "cloud_fraction",
+            "aer_lh",
+        ],
     )
     def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
         process_graph = {
