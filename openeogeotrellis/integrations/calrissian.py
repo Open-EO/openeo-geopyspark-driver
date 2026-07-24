@@ -882,10 +882,12 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
         for asset_id, asset in item.get("assets", {}).items():
             # STAC 1.1 unifies "eo:bands"/"raster:bands" into a single "bands" field.
             bands = asset.get("bands") or asset.get("raster:bands")
+            # All items are stored next to assets in current implementation.
+            asset_href = f"./{Path(str(asset['href'])).name}"
             stac_item.add_asset(
                 asset_id,
                 pystac.Asset(
-                    href=str(asset["href"]),
+                    href=asset_href,
                     roles=asset.get("roles"),
                     media_type=asset.get("type"),
                     extra_fields=dict_no_none(bands=bands) or None,
@@ -938,9 +940,9 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     if ConfigParams().is_ci_context:  # TODO: Move this to unit test
         catalog.validate_all()
         collection.validate_all()
-    collection_path = collection.get_self_href()
-    assert collection_path
-    return collection_path
+    root_path = catalog.get_self_href()
+    assert root_path
+    return root_path
 
 
 def cwl_to_stac(
