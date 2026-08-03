@@ -722,6 +722,24 @@ class TestCollectionMetadataBuilderRegistry:
             {"id": "COLLECTION456"},
         ]
 
+    def test_register_decorator_multiple(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collections = registry.decorator_multiple
+
+        @collections(
+            {
+                "COLLECTION_FOO": {"biopar": "FOO"},
+                "COLLECTION_BAR": {"biopar": "BAR"},
+            }
+        )
+        def build_biopar(collection_id, biopar) -> dict:
+            return {"id": collection_id, "biopar": biopar}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION_FOO", "biopar": "FOO"},
+            {"id": "COLLECTION_BAR", "biopar": "BAR"},
+        ]
+
     def test_register_kwargs(self):
         registry = CollectionMetadataBuilderRegistry()
         collection = registry.decorator

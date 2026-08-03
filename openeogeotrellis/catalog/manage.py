@@ -654,12 +654,48 @@ class CollectionMetadataBuilderRegistry:
     ):
         """
         Decorator to compactly register a builder function
-        optionally with kwargs to use at build time
+        optionally with kwargs to use at build time.
+
+        Suggested usage:
+
+            openeo_collection = registry.decorator
+
+            @openeo_collection("SENTINEL_FOO")
+            def build_sentinel_foo() -> dict:
+                ...
+
         """
 
         def wrapper(build: Callable):
             self.register(collection_id=collection_id, builder=build, label=label, labels=labels, kwargs=kwargs)
             self._stats["decorated"] += 1
+            return build
+
+        return wrapper
+
+    def decorator_multiple(self, cases: Dict[str, dict]):
+        """
+        Decorator to compactly register a builder function
+        for multiple cases
+
+        Suggested usage:
+
+            openeo_collections = registry.decorator_multiple
+
+            @openeo_collections(
+                {
+                    "SENTINEL_FOO": {"biopar": "FOO"},
+                    "SENTINEL_BAR": {"biopar": "BAR"},
+                }
+            )
+            def build_biopar(collection_id: str, biopar: str) -> dict:
+                ....
+        """
+        # TODO: label support: overall labels or per case?
+
+        def wrapper(build: Callable):
+            for collection_id, kwargs in cases.items():
+                self.register(collection_id=collection_id, builder=build, kwargs=kwargs)
             return build
 
         return wrapper
