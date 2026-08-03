@@ -221,7 +221,7 @@ def test_read_product_returns_tiles(synthetic_co_file):
         resolution=0.1,
     )
     assert len(result) > 0, "Expected at least one tile"
-    key, tile = result[0]
+    _, tile = result[0]
     assert tile.cells.shape[0] == 2, "Expected 2 bands"
     assert tile.cells.shape[1] == 4, "Expected tile_size rows"
     assert tile.cells.shape[2] == 4, "Expected tile_size cols"

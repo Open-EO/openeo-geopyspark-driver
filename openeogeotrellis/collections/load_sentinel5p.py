@@ -35,27 +35,28 @@ Algorithm:
 
 """
 
+from __future__ import annotations
+
+import datetime as dt
 import json
 import logging
-import datetime as dt
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Optional, Sequence
 
 import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
 import shapely.geometry
-from py4j.java_gateway import JavaObject
-
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.geometry import BoundingBox
+from py4j.java_gateway import JavaObject
+
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
-from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
-from .sentinel5p_functions import (
+from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
     get_gas_variables,
@@ -64,6 +65,7 @@ from .sentinel5p_functions import (
     parse_gas_from_filename,
     resample_data,
 )
+from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
 from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
@@ -91,7 +93,7 @@ def load_level2_data(params: dict):
     """
     # filename, spatial_extent, temporal_extent, bands, filter_value
     # check if the file exists
-    file_path = Path(params.get("filename", ""))
+    file_path = Path(params["filename"])
 
     if not file_path.exists():
         raise Exception(f"read_product: path {file_path} does not exist.")
@@ -119,7 +121,7 @@ def load_level2_data(params: dict):
     filter_value = params.get("filter_value", DEFAULT_FILTER_VALUE)
     # this should be on the client side
     if not ((filter_value >= 0.0) and (filter_value <= 1.0)):
-        raise IOError(
+        raise ValueError(
             f"Warning: filter_value {filter_value} is not standard as per Sentinel-5P documentation."
             " It should be between 0.0-1.0."
         )
@@ -171,12 +173,12 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 @typechecked
 def read_product(
-    product: Tuple[Union[Path, str], List[dict]],
-    band_names: List[str],
+    product: tuple[Path | str, list[dict]],
+    band_names: list[str],
     tile_size: int,
     resolution: float,
     collection_id: Optional[str] = None,
-) -> List[Tuple]:
+) -> list[tuple]:
     """Read Sentinel-5P data from a NetCDF file and return GeoTrellis tiles.
 
     Follows the same interface as :func:`openeogeotrellis.collections.sentinel3.read_product`
@@ -219,7 +221,7 @@ def read_product(
     cols = col_max - col_min + 1
     rows = row_max - row_min + 1
 
-    instants = set(f["key"]["instant"] for f in features)
+    instants = {f["key"]["instant"] for f in features}
     assert len(instants) == 1, f"Expected a single instant, got: {instants}"
     instant = instants.pop()
 
@@ -321,10 +323,10 @@ def read_product(
 @typechecked
 def _build_stac_opensearch_client(
     stac_url: str,
-    spatial_extent: Union[Dict, BoundingBox, None],
-    temporal_extent: Tuple[Optional[str], Optional[str]],
+    spatial_extent: dict | BoundingBox | None,
+    temporal_extent: tuple[Optional[str], Optional[str]],
     jvm: Any,
-    feature_flags: Optional[Dict] = None,
+    feature_flags: Optional[dict] = None,
 ) -> JavaObject:
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
     feature_flags = feature_flags or {}
@@ -360,7 +362,7 @@ def _build_stac_opensearch_client(
         builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
         product_id = None
-        for _asset_id, asset in band_assets.items():
+        for asset in band_assets.values():
             href = asset.href
             if href.startswith("s3://"):
                 href = "/" + href[len("s3://") :]
@@ -384,14 +386,14 @@ def pyramid(
     projected_polygons_native_crs,
     from_date: Optional[str],
     to_date: Optional[str],
-    band_names: List[str],
+    band_names: list[str],
     data_cube_parameters,
     native_cell_size,
-    feature_flags: Dict,
+    feature_flags: dict,
     jvm,
-    spatial_extent: Union[Dict, BoundingBox, None] = None,
+    spatial_extent: dict | BoundingBox | None = None,
     collection_id: Optional[str] = None,
-) -> Dict[int, geopyspark.TiledRasterLayer]:
+) -> dict[int, geopyspark.TiledRasterLayer]:
     """Build a GeoTrellis pyramid from Sentinel-5P level-2 NetCDF files.
 
     Mirrors :func:`openeogeotrellis.collections.sentinel3.pyramid` so that
@@ -415,10 +417,8 @@ def pyramid(
                 global_extent_latlng.ymax(),
                 "EPSG:4326",
             )
-    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    load_stac_feature_flags = feature_flags["load_stac_feature_flags"]
     stac_url = load_stac_feature_flags["url"]
-    if stac_url is None:
-        raise ValueError("stac_url is required for Sentinel-5P pyramid; set opensearch_endpoint in the layer catalog")
 
     file_rdd_factory_collection_id = "Sentinel5P"
     correlation_id = ""
@@ -428,7 +428,7 @@ def pyramid(
         spatial_extent=spatial_extent,
         temporal_extent=(from_date, to_date),
         jvm=jvm,
-        feature_flags=feature_flags.get("load_stac_feature_flags", {}),
+        feature_flags=load_stac_feature_flags,
     )
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
