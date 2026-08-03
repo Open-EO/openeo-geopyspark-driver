@@ -35,26 +35,30 @@ Algorithm:
 
 """
 
+from __future__ import annotations
+
+import datetime as dt
 import json
 import logging
-import datetime as dt
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
 import shapely.geometry
-from py4j.java_gateway import JavaObject
-
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.geometry import BoundingBox
+from py4j.java_gateway import JavaObject
+
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.utils import typechecked
+
 from .sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
@@ -64,7 +68,6 @@ from .sentinel5p_functions import (
     parse_gas_from_filename,
     resample_data,
 )
-from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +94,7 @@ def load_level2_data(params: dict):
     """
     # filename, spatial_extent, temporal_extent, bands, filter_value
     # check if the file exists
-    file_path = Path(params.get("filename", ""))
+    file_path = Path(params["filename"])
 
     if not file_path.exists():
         raise Exception(f"read_product: path {file_path} does not exist.")
@@ -119,7 +122,7 @@ def load_level2_data(params: dict):
     filter_value = params.get("filter_value", DEFAULT_FILTER_VALUE)
     # this should be on the client side
     if not ((filter_value >= 0.0) and (filter_value <= 1.0)):
-        raise IOError(
+        raise ValueError(
             f"Warning: filter_value {filter_value} is not standard as per Sentinel-5P documentation."
             " It should be between 0.0-1.0."
         )
@@ -360,7 +363,7 @@ def _build_stac_opensearch_client(
         builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
         product_id = None
-        for _asset_id, asset in band_assets.items():
+        for asset in band_assets.values():
             href = asset.href
             if href.startswith("s3://"):
                 href = "/" + href[len("s3://") :]
@@ -415,10 +418,8 @@ def pyramid(
                 global_extent_latlng.ymax(),
                 "EPSG:4326",
             )
-    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    load_stac_feature_flags = feature_flags["load_stac_feature_flags"]
     stac_url = load_stac_feature_flags["url"]
-    if stac_url is None:
-        raise ValueError("stac_url is required for Sentinel-5P pyramid; set opensearch_endpoint in the layer catalog")
 
     file_rdd_factory_collection_id = "Sentinel5P"
     correlation_id = ""
@@ -428,7 +429,7 @@ def pyramid(
         spatial_extent=spatial_extent,
         temporal_extent=(from_date, to_date),
         jvm=jvm,
-        feature_flags=feature_flags.get("load_stac_feature_flags", {}),
+        feature_flags=load_stac_feature_flags,
     )
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(

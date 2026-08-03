@@ -7,8 +7,10 @@ extents, as well as quality filtering.
 Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-lon grid.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Sequence, Tuple, Dict, List, Any
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from netCDF4 import Dataset, num2date
@@ -173,16 +175,14 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> Tup
         filter_value (float): Default filter value for the gas.
     """
     gas_type = "gas_" + gas_type.lower()
-    gas_vars = all_gases.get(gas_type)
-    if gas_vars is None:
-        raise ValueError(f"Unknown gas type: {gas_type}")
+    gas_vars = all_gases[gas_type]
 
-    variable_loc = gas_vars.get("VARIABLE_LOC_IN_FILE")
-    if variable_loc is None or not isinstance(variable_loc, dict):
-        raise ValueError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
+    variable_loc = gas_vars["VARIABLE_LOC_IN_FILE"]
+    if not isinstance(variable_loc, dict):
+        raise TypeError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
 
-    default_bands = gas_vars.get("DEFAULT_BANDS")
-    if default_bands is None or not isinstance(default_bands, list):
+    default_bands = gas_vars["DEFAULT_BANDS"]
+    if not isinstance(default_bands, list):
         raise ValueError(f"DEFAULT_BANDS should be dictionary, but was '{default_bands}'")
 
     collection_default_band = COLLECTION_ID_DEFAULT_BAND.get(collection_id) if collection_id else None
@@ -194,9 +194,9 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> Tup
             )
         default_bands = [collection_default_band]
 
-    filter_value = gas_vars.get("FILTER_VALUE")
-    if filter_value is None or not isinstance(filter_value, float):
-        raise ValueError(f"FILTER_VALUE should be dictionary, but was '{filter_value}'")
+    filter_value = gas_vars["FILTER_VALUE"]
+    if not isinstance(filter_value, float):
+        raise TypeError(f"FILTER_VALUE should be dictionary, but was '{filter_value}'")
 
     variable_locs = {**variable_loc, **COMMON_VARIABLES_IN_FILE}
     return variable_locs, default_bands, filter_value
@@ -490,6 +490,7 @@ def interpolate(
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
     from typing import Literal, cast
+
     from scipy.interpolate import griddata
 
     method = method.lower()
