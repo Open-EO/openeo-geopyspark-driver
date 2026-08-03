@@ -10,7 +10,7 @@ Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-l
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence
 
 import numpy as np
 from netCDF4 import Dataset, num2date
@@ -29,7 +29,7 @@ COMMON_VARIABLES_IN_FILE = {
     "qa_value": "PRODUCT/qa_value",
 }
 
-all_gases: Dict[str, Dict[str, Any]] = {
+all_gases: dict[str, dict[str, Any]] = {
     # CO gas variables
     "gas_co": {
         "VARIABLE_LOC_IN_FILE": {
@@ -121,7 +121,7 @@ all_gases: Dict[str, Dict[str, Any]] = {
 # collection should default to. This maps those openEO collection IDs to the
 # band they should load when no explicit `bands` filter is given, overriding
 # the (otherwise ambiguous) gas-level "DEFAULT_BANDS" above.
-COLLECTION_ID_DEFAULT_BAND: Dict[str, str] = {
+COLLECTION_ID_DEFAULT_BAND: dict[str, str] = {
     "SENTINEL5P_L2_CLOUD_FRACTION": "cloud_fraction",
     "SENTINEL5P_L2_CLOUD_TOP_PRESSURE": "cloud_top_pressure",
     "SENTINEL5P_L2_CLOUD_BASE_PRESSURE": "cloud_base_pressure",
@@ -160,7 +160,7 @@ def parse_gas_from_filename(filename: str) -> str:
 
 
 @typechecked
-def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> Tuple[Dict[str, str], List[str], float]:
+def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tuple[dict[str, str], list[str], float]:
     """Get gas variable locations, default bands, and filter values.
 
     :param gas_type: gas/product short name as returned by :func:`parse_gas_from_filename`.
@@ -208,7 +208,7 @@ def load_data_from_file(
     spatial_extent: Optional[Sequence],
     temporal_extent: Optional[Sequence],
     bands,
-    variable_loc_in_file: Dict[str, str],
+    variable_loc_in_file: dict[str, str],
     filter_value=0.5,
 ):
     """Load bands data from the NetCDF file.

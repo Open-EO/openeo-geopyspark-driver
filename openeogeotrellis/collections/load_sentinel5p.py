@@ -43,7 +43,7 @@ import logging
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Sequence
 
 import geopyspark
 import numpy as np
@@ -56,10 +56,7 @@ from py4j.java_gateway import JavaObject
 
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
-from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
-from openeogeotrellis.utils import typechecked
-
-from .sentinel5p_functions import (
+from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
     get_gas_variables,
@@ -68,6 +65,8 @@ from .sentinel5p_functions import (
     parse_gas_from_filename,
     resample_data,
 )
+from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
 
@@ -174,12 +173,12 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 @typechecked
 def read_product(
-    product: Tuple[Union[Path, str], List[dict]],
-    band_names: List[str],
+    product: tuple[Path | str, list[dict]],
+    band_names: list[str],
     tile_size: int,
     resolution: float,
     collection_id: Optional[str] = None,
-) -> List[Tuple]:
+) -> list[tuple]:
     """Read Sentinel-5P data from a NetCDF file and return GeoTrellis tiles.
 
     Follows the same interface as :func:`openeogeotrellis.collections.sentinel3.read_product`
@@ -222,7 +221,7 @@ def read_product(
     cols = col_max - col_min + 1
     rows = row_max - row_min + 1
 
-    instants = set(f["key"]["instant"] for f in features)
+    instants = {f["key"]["instant"] for f in features}
     assert len(instants) == 1, f"Expected a single instant, got: {instants}"
     instant = instants.pop()
 
@@ -324,10 +323,10 @@ def read_product(
 @typechecked
 def _build_stac_opensearch_client(
     stac_url: str,
-    spatial_extent: Union[Dict, BoundingBox, None],
-    temporal_extent: Tuple[Optional[str], Optional[str]],
+    spatial_extent: dict | BoundingBox | None,
+    temporal_extent: tuple[Optional[str], Optional[str]],
     jvm: Any,
-    feature_flags: Optional[Dict] = None,
+    feature_flags: Optional[dict] = None,
 ) -> JavaObject:
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
     feature_flags = feature_flags or {}
@@ -387,14 +386,14 @@ def pyramid(
     projected_polygons_native_crs,
     from_date: Optional[str],
     to_date: Optional[str],
-    band_names: List[str],
+    band_names: list[str],
     data_cube_parameters,
     native_cell_size,
-    feature_flags: Dict,
+    feature_flags: dict,
     jvm,
-    spatial_extent: Union[Dict, BoundingBox, None] = None,
+    spatial_extent: dict | BoundingBox | None = None,
     collection_id: Optional[str] = None,
-) -> Dict[int, geopyspark.TiledRasterLayer]:
+) -> dict[int, geopyspark.TiledRasterLayer]:
     """Build a GeoTrellis pyramid from Sentinel-5P level-2 NetCDF files.
 
     Mirrors :func:`openeogeotrellis.collections.sentinel3.pyramid` so that
