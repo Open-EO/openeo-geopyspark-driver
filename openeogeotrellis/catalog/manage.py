@@ -32,6 +32,7 @@ import requests
 from openeo.util import dict_no_none, TimingLogger
 from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
+from openeo_driver.util.http import requests_with_retry
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId
@@ -250,7 +251,7 @@ class BandMetadata:
 @functools.lru_cache
 def get_upstream_stac_metadata(stac_url: str) -> dict:
     _log.info(f"Fetching upstream STAC metadata from {stac_url=}")
-    response = requests.get(stac_url)
+    response = requests_with_retry().get(stac_url)
     response.raise_for_status()
     metadata = response.json()
     assert metadata["type"] == "Collection"
