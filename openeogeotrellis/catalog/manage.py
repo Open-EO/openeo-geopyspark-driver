@@ -27,7 +27,6 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
 
-import requests
 
 from openeo.util import dict_no_none, TimingLogger
 from openeo.utils.version import ComparableVersion
