@@ -615,10 +615,16 @@ class _BuildItem:
 
 class CollectionMetadataBuilderRegistry:
     """
-    Registry for collection metadata builder functions.
-    """
+    Registry for "builder functions" that produce openEO collection metadata.
 
-    # TODO: support labels (e.g. to flag collections for "prod", "dev", ...)
+    Building metadata for a single collection can take a bit of time
+    because of HTTP requests to external resources,
+    which easily adds up for large catalogs of collections.
+    This registry utility separates the definition of these builders from executing them,
+    which allows for more flexibily:
+    dry-run listings, building the metadata for just a subset of collections by label,
+    parallelization, splitting the layercatalog in mulitple parts, customized builds per deploy target, ...
+    """
 
     def __init__(self):
         self._builders: List[_BuildItem] = []
@@ -629,9 +635,9 @@ class CollectionMetadataBuilderRegistry:
         collection_id: CollectionId,
         builder: Callable,
         *,
+        kwargs: Optional[dict] = None,
         label: Optional[str] = None,
         labels: Iterable[str] = (),
-        kwargs: Optional[dict] = None,
     ):
         """
         Register a metadata builder for given collection id,
@@ -644,6 +650,32 @@ class CollectionMetadataBuilderRegistry:
             raise MetadataException(f"Forbidden {forbidden_kwargs} in {kwargs=}")
         self._builders.append(_BuildItem(collection_id=collection_id, build=builder, kwargs=kwargs, labels=labels))
         self._stats["register"] += 1
+
+    def register_multiple(self, builder: Callable, *, cases: List[tuple]):
+        """
+        Register multiple collection cases on the same builder.
+
+        Usage example:
+
+            registry.register_multiple(
+                builder,
+                cases=[
+                    # At least a collection id should be specified:
+                    ("COLLECTION123", ),
+                    # Custom kwargs can be specified as second element
+                    ("COLLECTION_FOO", {"biopar": "FOO"}),
+                    # Labels are optional third element
+                    ("COLLECTION_BAR", {"biopar": "BAR"}, ["dev"]),
+                ]
+            )
+        """
+        for case in cases:
+            if not 1 <= len(case) <= 3:
+                raise MetadataException(f"Case should have 1,2 or 3 elements, got {case=}")
+            collection_id = case[0]
+            kwargs = case[1] if len(case) >= 2 else {}
+            labels = case[2] if len(case) >= 3 else []
+            self.register(collection_id=collection_id, builder=builder, kwargs=kwargs, labels=labels)
 
     def decorator(
         self,
@@ -674,7 +706,7 @@ class CollectionMetadataBuilderRegistry:
 
         return wrapper
 
-    def decorator_multiple(self, cases: Dict[str, dict]):
+    def decorator_multiple(self, cases: Union[Dict[str, dict], List[tuple]]):
         """
         Decorator to compactly register a builder function
         for multiple cases
@@ -692,11 +724,12 @@ class CollectionMetadataBuilderRegistry:
             def build_biopar(collection_id: str, biopar: str) -> dict:
                 ....
         """
-        # TODO: label support: overall labels or per case?
-
         def wrapper(build: Callable):
-            for collection_id, kwargs in cases.items():
-                self.register(collection_id=collection_id, builder=build, kwargs=kwargs)
+            nonlocal cases
+            if isinstance(cases, dict):
+                _log.warning("Deprecated dict usage in decorator_multiple")
+                cases = list(cases.items())
+            self.register_multiple(builder=build, cases=cases)
             return build
 
         return wrapper

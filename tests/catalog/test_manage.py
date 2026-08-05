@@ -722,7 +722,7 @@ class TestCollectionMetadataBuilderRegistry:
             {"id": "COLLECTION456"},
         ]
 
-    def test_register_decorator_multiple(self):
+    def test_register_decorator_multiple_dict(self):
         registry = CollectionMetadataBuilderRegistry()
         collections = registry.decorator_multiple
 
@@ -737,6 +737,27 @@ class TestCollectionMetadataBuilderRegistry:
 
         assert list(registry.call_builders()) == [
             {"id": "COLLECTION_FOO", "biopar": "FOO"},
+            {"id": "COLLECTION_BAR", "biopar": "BAR"},
+        ]
+
+    def test_register_decorator_multiple_list(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collections = registry.decorator_multiple
+
+        @collections(
+            [
+                ("COLLECTION_FOO", {"biopar": "FOO"}),
+                ("COLLECTION_BAR", {"biopar": "BAR"}, ["dev"]),
+            ]
+        )
+        def build_biopar(collection_id, biopar) -> dict:
+            return {"id": collection_id, "biopar": biopar}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION_FOO", "biopar": "FOO"},
+            {"id": "COLLECTION_BAR", "biopar": "BAR"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" in labels)) == [
             {"id": "COLLECTION_BAR", "biopar": "BAR"},
         ]
 
@@ -800,6 +821,34 @@ class TestCollectionMetadataBuilderRegistry:
             {"id": "C789"},
         ]
         assert list(registry.call_builders(label_filter=lambda labels: "nope" in labels)) == []
+
+    def test_register_multiple(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build(collection_id: str, biopar: str = "NDVI") -> dict:
+            return {"id": collection_id, "biopar": biopar}
+
+        registry.register_multiple(
+            build,
+            cases=[
+                ("C123",),
+                ("C456", {"biopar": "EVI"}),
+                ("C789", {"biopar": "fAPAR"}, ["dev"]),
+            ],
+        )
+
+        assert list(registry.call_builders()) == [
+            {"id": "C123", "biopar": "NDVI"},
+            {"id": "C456", "biopar": "EVI"},
+            {"id": "C789", "biopar": "fAPAR"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" not in labels)) == [
+            {"id": "C123", "biopar": "NDVI"},
+            {"id": "C456", "biopar": "EVI"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" in labels)) == [
+            {"id": "C789", "biopar": "fAPAR"},
+        ]
 
     def test_duplicate_handling_and_labels(self):
         registry = CollectionMetadataBuilderRegistry()
