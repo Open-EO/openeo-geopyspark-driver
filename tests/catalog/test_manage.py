@@ -29,6 +29,7 @@ from openeogeotrellis.catalog.manage import (
     CollectionMetadataBuilderRegistry,
     MetadataException,
     LayerCatalogManagerCliApp,
+    _BuildItem,
 )
 
 
@@ -930,6 +931,29 @@ class RaisesSystemExit:
             assert self.message in capsys.readouterr().err
 
 
+class TestBuildItem:
+    def test_basic(self):
+        def build():
+            return {"id": "FOO"}
+
+        build_item = _BuildItem(collection_id="FOO", build=build, kwargs={}, labels=frozenset([]))
+        assert build_item.call() == {"id": "FOO"}
+
+    def test_auto_args(self):
+        def build(collection_id: str, biopar: str = "NDVI"):
+            return {"id": collection_id, "biopar": biopar}
+
+        build_item = _BuildItem(collection_id="FOO", build=build, kwargs={"biopar": "EVI"}, labels=frozenset([]))
+        assert build_item.call() == {"id": "FOO", "biopar": "EVI"}
+
+    def test_auto_kwargs(self):
+        def build(collection_id: str, **kwargs):
+            return {"id": collection_id, **kwargs}
+
+        build_item = _BuildItem(collection_id="FOO", build=build, kwargs={"biopar": "EVI"}, labels=frozenset([]))
+        assert build_item.call() == {"id": "FOO", "biopar": "EVI", "labels": frozenset([])}
+
+
 class TestLayerCatalogManagerCliApp:
     @pytest.fixture()
     def registry(self) -> CollectionMetadataBuilderRegistry:
@@ -1034,3 +1058,61 @@ class TestLayerCatalogManagerCliApp:
         ]
 
         assert "Unmanaged collections: ['UNMANAGED']" in caplog.text
+
+    def test_handle_generate_partitioning(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+        default_catalog_path = tmp_path / "catalog.json"
+        dev_catalog_path = tmp_path / "dev" / "catalogue.json"
+        foo_catalog_path = tmp_path / "foo" / "catafoo.json"
+        cli_app.main(
+            [
+                "generate",
+                str(default_catalog_path),
+                "--label-partition",
+                f"dev:{dev_catalog_path}",
+                "--label-partition",
+                f"foo:{foo_catalog_path}",
+            ]
+        )
+        default_catalog = json.loads(default_catalog_path.read_text())
+        dev_catalog = json.loads(dev_catalog_path.read_text())
+        foo_catalog = json.loads(foo_catalog_path.read_text())
+        assert (default_catalog, dev_catalog, foo_catalog) == (
+            [{"id": "FOO", "description": "Dummy 'FOO' collection"}],
+            [{"id": "BAR", "description": "Dummy 'BAR' collection"}],
+            [],
+        )
+
+    def test_handle_generate_partitioning_with_existing(
+        self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog
+    ) -> None:
+        default_catalog_path = tmp_path / "catalog.json"
+        default_catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        default_catalog_path.write_text(json.dumps([{"id": "UNMANAGED"}]))
+        dev_catalog_path = tmp_path / "dev" / "catalogue.json"
+        dev_catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        dev_catalog_path.write_text(json.dumps([{"id": "MANAGED_NOT"}]))
+        foo_catalog_path = tmp_path / "foo" / "catafoo.json"
+        cli_app.main(
+            [
+                "generate",
+                str(default_catalog_path),
+                "--label-partition",
+                f"dev:{dev_catalog_path}",
+                "--label-partition",
+                f"foo:{foo_catalog_path}",
+            ]
+        )
+        default_catalog = json.loads(default_catalog_path.read_text())
+        dev_catalog = json.loads(dev_catalog_path.read_text())
+        foo_catalog = json.loads(foo_catalog_path.read_text())
+        assert (default_catalog, dev_catalog, foo_catalog) == (
+            [
+                {"id": "UNMANAGED"},
+                {"id": "FOO", "description": "Dummy 'FOO' collection"},
+            ],
+            [
+                {"id": "MANAGED_NOT"},
+                {"id": "BAR", "description": "Dummy 'BAR' collection"},
+            ],
+            [],
+        )
