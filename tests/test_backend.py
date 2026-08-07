@@ -1069,6 +1069,43 @@ def test_k8s_sparkapplication_layer_catalog_init_container_custom_pull_policy(ba
         assert actual["imagePullPolicy"] == "Always"
 
 
+def test_k8s_sparkapplication_layer_catalog_volume_disabled(backend_config_path):
+    """
+    When layer_catalog_init_image is DISABLED, no layercatalogs volume should
+    be present in spec.volumes.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="DISABLED",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="IfNotPresent",
+    )
+
+    volume_names = [v["name"] for v in app_dict["spec"].get("volumes", [])]
+    assert "layercatalogs" not in volume_names
+
+
+def test_k8s_sparkapplication_layer_catalog_volume_enabled(backend_config_path):
+    """
+    When layer_catalog_init_image is set, a layercatalogs emptyDir volume should
+    be present in spec.volumes.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="my-registry/layer-catalog-init:latest",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="IfNotPresent",
+    )
+
+    volumes = app_dict["spec"].get("volumes", [])
+    volume_names = [v["name"] for v in volumes]
+    assert "layercatalogs" in volume_names
+    layercatalogs_volume = next(v for v in volumes if v["name"] == "layercatalogs")
+    assert layercatalogs_volume == {"name": "layercatalogs", "emptyDir": {}}
+
+
 class TestGpsBatchJobs:
     _dummy_user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 
