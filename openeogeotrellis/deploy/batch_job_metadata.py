@@ -67,24 +67,10 @@ def _assemble_result_metadata(
         instruments = []
 
     if not isinstance(result, NullResult):
-        if apply_gdal:
-            if is_item:
-                items_metadata = dict()
-                for (item_key, item) in asset_metadata.items():
-                    temp_asset_metadata = metadata.copy()
-                    try:
-                        _extract_asset_metadata(
-                            job_result_metadata=temp_asset_metadata,
-                            asset_metadata=item["assets"],
-                            job_dir=job_dir,
-                            epsg=epsg,
-                        )
-                        items_metadata[item_key] = temp_asset_metadata
-                    except Exception as e:
-                        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-                        logger.exception("Error while creating asset metadata: " + error_summary.summary)
-                metadata["items"]= items_metadata
-            else:
+        if is_item:
+            metadata["items"] = asset_metadata
+        else:
+            if apply_gdal:
                 try:
                     _extract_asset_metadata(
                         job_result_metadata=metadata,
@@ -95,9 +81,6 @@ def _assemble_result_metadata(
                 except Exception as e:
                     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
                     logger.exception("Error while creating asset metadata: " + error_summary.summary)
-        else:
-            if is_item:
-                metadata["items"] = asset_metadata
             else:
                 metadata["assets"] = asset_metadata
 
