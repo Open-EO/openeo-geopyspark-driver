@@ -299,8 +299,9 @@ def run_job(
     job_options = job_specification.get("job_options", {})
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
-    is_stac11 = parsed_job_options.stac_version == "1.1"
-    omit_derived_from_links = parsed_job_options.omit_derived_from_links or is_stac11
+    stac11_mode = parsed_job_options.stac_version == "1.1"
+    omit_derived_from_links = parsed_job_options.omit_derived_from_links or stac11_mode
+    logger.info(f"{stac11_mode=}")
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -395,11 +396,11 @@ def run_job(
             apply_gdal=False,
             asset_metadata={},
             ml_model_metadata=ml_model_metadata,
-            is_item=is_stac11,
+            is_item=stac11_mode,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11)
+        write_metadata({**result_metadata, **tracker_metadata}, metadata_file=metadata_file, stac11_mode=stac11_mode)
 
         from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used
 
@@ -518,7 +519,7 @@ def run_job(
         # Flatten all STAC items across all results for use in metadata assembly.
         all_result_items = [item for result_items in results_items for item in result_items.values()]
 
-        if is_stac11:
+        if stac11_mode:
             # TODO: more structural way to keep track of "derived_from" item_collection paths (instead of globbing a path)?
             for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
                 extra_links.append(
@@ -609,7 +610,7 @@ def run_job(
                 for result_item_metadata in list(results_items)
                 for item_key, item in result_item_metadata.items()
             }
-            if is_stac11
+            if stac11_mode
             else {
                 # TODO: flattened instead of per-result, clean this up?
                 asset_key: asset_metadata
@@ -625,7 +626,7 @@ def run_job(
             apply_gdal=False,
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
-            is_item=is_stac11,
+            is_item=stac11_mode,
             result_items=all_result_items,
         )
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
@@ -638,10 +639,10 @@ def run_job(
 
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}}
-            if is_stac11
+            if stac11_mode
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11)
+        write_metadata(meta, metadata_file=metadata_file, stac11_mode=stac11_mode)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         assets_for_result_metadata = (
@@ -650,7 +651,7 @@ def run_job(
                 for result_item_metadata in list(results_items)
                 for item_key, item in result_item_metadata.items()
             }
-            if is_stac11
+            if stac11_mode
             else {
                 # TODO: flattened instead of per-result, clean this up?
                 asset_key: asset_metadata
@@ -666,14 +667,14 @@ def run_job(
             apply_gdal=job_options.get("detailed_asset_metadata", True),
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
-            is_item=is_stac11,
+            is_item=stac11_mode,
             result_items=all_result_items,
         )
 
         assert len(results) == len(assets_metadata)
         assert len(results) == len(results_items)
         for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
-            if is_stac11:
+            if stac11_mode:
                 _export_to_workspaces_item(
                     result,
                     result_metadata,
@@ -682,7 +683,7 @@ def run_job(
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
                     omit_derived_from_links=omit_derived_from_links,
-                    attach_derived_from_document=is_stac11,
+                    attach_derived_from_document=stac11_mode,
                 )
             else:
                 _export_to_workspaces(
@@ -699,15 +700,15 @@ def run_job(
             tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}}
-            if is_stac11
+            if stac11_mode
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11)
+        write_metadata(meta, metadata_file=metadata_file, stac11_mode=stac11_mode)
 
 
-def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
+def write_metadata(metadata: dict, metadata_file: Path, *, stac11_mode: bool):
     def log_asset_hrefs(context: str):
-        if is_stac11:
+        if stac11_mode:
             items = {item["id"]: item for item in metadata.get("items", [])}
             asset_hrefs = {
                 item_key + ", " + asset_key: asset.get("href")
@@ -725,7 +726,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
 
-    if is_stac11:
+    if stac11_mode:
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
 
         for auxiliary_link in _copy_auxiliary_links(
