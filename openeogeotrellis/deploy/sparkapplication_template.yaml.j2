@@ -109,6 +109,13 @@ spec:
     onSubmissionFailureRetryInterval: 20
 {%- endblock %}
   volumes:
+{%- block volume_layercatalog %}
+  {%- if layer_catalog_init_image != "DISABLED" %}
+    - name: layercatalogs
+      emptyDir: {}
+  {%- endif %}
+{%- endblock %}
+
 {%- block volumes %}
     - name: "eodata"
       hostPath:
@@ -161,7 +168,7 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
-{%- block initContainerLayerCatalog %}
+{%- block init_container_layer_catalog %}
   {%- if layer_catalog_init_image != "DISABLED" %}
       - name: init-layercatalog
         image: {{ layer_catalog_init_image }}
@@ -172,7 +179,7 @@ spec:
         volumeMounts:
           - name: "layercatalogs"
             mountPath: {{ layer_catalog_init_dir }}
-        {%- block initContainerLayerCatalogResources %}
+        {%- block init_container_layer_catalog_resources %}
         resources:
           requests:
             cpu: "50m"
@@ -308,6 +315,12 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
 {%- endif %}
+{%- block volume_mount_layercatalog %}
+{%- if layer_catalog_init_image != "DISABLED" %}
+      - name: "layercatalogs"
+        mountPath: {{ layer_catalog_init_dir }}
+{%- endif %}
+{%- endblock %}
 {%- endblock %}
   executor:
     annotations:
@@ -337,7 +350,7 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
-{{ self.initContainerLayerCatalog() }}
+{{ self.init_container_layer_catalog() }}
     lifecycle:
       preStop:
         exec:
@@ -447,6 +460,7 @@ spec:
         mountPath: {{batch_job_config_dir}}
         readOnly: true
 {%- endif %}
+{{ self.volume_mount_layercatalog() }}
 {%- endblock %}
   deps:
 {%- block deps %}
