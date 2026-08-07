@@ -3,13 +3,14 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
 
-from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
-from openeo_driver.views import OpenEoApiApp
-from openeogeotrellis.deploy.local import setup_environment
 from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
+from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
+from openeo_driver.views import OpenEoApiApp
+
+from openeogeotrellis.deploy.local import setup_environment
 
 
 def run_graph_locally(process_graph: Any, output_dir: Path, job_options: Optional[dict] = None) -> None:

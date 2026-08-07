@@ -36,7 +36,7 @@ from openeo_driver.util.logging import (
     get_logging_config,
     setup_logging,
 )
-from openeo_driver.util.stac_utils import get_files_from_stac_catalog, find_stac_root
+from openeo_driver.util.stac_utils import find_stac_root, get_files_from_stac_catalog
 from openeo_driver.utils import EvalEnv
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeo_driver.workspacerepository import Workspace, WorkspaceRepository, backend_config_workspace_repository
@@ -79,6 +79,7 @@ from openeogeotrellis.util.datastructures import AnnotatedDict
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
     BadlyHashable,
+    S3ClientBuilder,
     add_permissions,
     add_permissions_with_failsafe,
     describe_path,
@@ -89,7 +90,6 @@ from openeogeotrellis.utils import (
     to_s3_url,
     unzip,
     wait_till_path_available,
-    S3ClientBuilder,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -603,16 +603,20 @@ def run_job(
                 }
             ]
 
-        assets_for_result_metadata = {
-            item_key: item
-            for result_item_metadata in list(results_items)
-            for item_key, item in result_item_metadata.items()
-        } if is_stac11 else {
-            # TODO: flattened instead of per-result, clean this up?
-            asset_key: asset_metadata
-            for result_assets_metadata in assets_metadata
-            for asset_key, asset_metadata in result_assets_metadata.items()
-        }
+        assets_for_result_metadata = (
+            {
+                item_key: item
+                for result_item_metadata in list(results_items)
+                for item_key, item in result_item_metadata.items()
+            }
+            if is_stac11
+            else {
+                # TODO: flattened instead of per-result, clean this up?
+                asset_key: asset_metadata
+                for result_assets_metadata in assets_metadata
+                for asset_key, asset_metadata in result_assets_metadata.items()
+            }
+        )
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=result,
@@ -640,16 +644,20 @@ def run_job(
         write_metadata(meta, metadata_file, is_stac11)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
-        assets_for_result_metadata = {
-            item_key: item
-            for result_item_metadata in list(results_items)
-            for item_key, item in result_item_metadata.items()
-        } if is_stac11 else {
-            # TODO: flattened instead of per-result, clean this up?
-            asset_key: asset_metadata
-            for result_assets_metadata in assets_metadata
-            for asset_key, asset_metadata in result_assets_metadata.items()
-        }
+        assets_for_result_metadata = (
+            {
+                item_key: item
+                for result_item_metadata in list(results_items)
+                for item_key, item in result_item_metadata.items()
+            }
+            if is_stac11
+            else {
+                # TODO: flattened instead of per-result, clean this up?
+                asset_key: asset_metadata
+                for result_assets_metadata in assets_metadata
+                for asset_key, asset_metadata in result_assets_metadata.items()
+            }
+        )
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=result,
@@ -701,7 +709,11 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
     def log_asset_hrefs(context: str):
         if is_stac11:
             items = {item["id"]: item for item in metadata.get("items", [])}
-            asset_hrefs =  {item_key + ", " + asset_key: asset.get("href") for item_key, item in items.items() for asset_key, asset in item.get("assets").items() }
+            asset_hrefs = {
+                item_key + ", " + asset_key: asset.get("href")
+                for item_key, item in items.items()
+                for asset_key, asset in item.get("assets").items()
+            }
             logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
         else:
             asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
@@ -839,7 +851,7 @@ def _export_to_workspaces_item(
                 item_key = item.id
                 for asset_key, asset in item.get_assets().items():
                     (workspace_uri,) = asset.extra_fields["alternate"].values()
-                    workspace_uris.setdefault((item_key,asset_key), []).append(
+                    workspace_uris.setdefault((item_key, asset_key), []).append(
                         (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
                     )
         else:
@@ -857,11 +869,11 @@ def _export_to_workspaces_item(
             for item_key, item in result_items_metadata.items():
                 for asset_key, asset in item["assets"].items():
                     workspace_uri = export_to_workspace(source_uri=asset["href"])
-                    workspace_uris.setdefault((item_key,asset_key), []).append(
+                    workspace_uris.setdefault((item_key, asset_key), []).append(
                         (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
                     )
 
-    for (item_key,asset_key), workspace_uris in workspace_uris.items():
+    for (item_key, asset_key), workspace_uris in workspace_uris.items():
         if remove_exported_assets:
             # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
             result_metadata["items"][item_key]["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
@@ -1012,7 +1024,9 @@ def _write_exported_stac_collection(
         properties = {"datetime": asset.get("datetime")}
 
         if properties["datetime"] is None:
-            start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime") or "1970-01-01T00:00:00Z"
+            start_datetime = (
+                asset.get("start_datetime") or result_metadata.get("start_datetime") or "1970-01-01T00:00:00Z"
+            )
             properties["datetime"] = start_datetime
 
         stac_item = {
@@ -1095,7 +1109,7 @@ def _write_exported_stac_collection_from_item(
 
     item_assets = dict()
 
-    def intersect_band_array(list1,list2):
+    def intersect_band_array(list1, list2):
         band_result = []
         for item1 in list1:
             if isinstance(item1, dict) and "name" in item1:
@@ -1113,20 +1127,20 @@ def _write_exported_stac_collection_from_item(
                     nested_result = intersect_dicts(dict1[key], dict2[key])
                     if nested_result:  # Only add if the nested result is not empty
                         result[key] = nested_result
-                elif isinstance(dict1[key],list) and isinstance(dict2[key],list) and key == "bands":
-                    result[key] = intersect_band_array(dict1[key],dict2[key])
+                elif isinstance(dict1[key], list) and isinstance(dict2[key], list) and key == "bands":
+                    result[key] = intersect_band_array(dict1[key], dict2[key])
                 elif dict1[key] == dict2[key]:
                     # Retain the key-value pair if values are equal
                     result[key] = dict1[key]
         return result
 
-    def write_stac_item_file(item_key:str, item: dict) -> Path:
+    def write_stac_item_file(item_key: str, item: dict) -> Path:
         assets = dict()
-        for (asset_key,asset) in item.get("assets").items():
+        for asset_key, asset in item.get("assets").items():
             asset_bands = None
             if "bands" in asset:
                 bands = asset["bands"]
-                raster_bands = to_jsonable(asset.get("raster:bands",[]))
+                raster_bands = to_jsonable(asset.get("raster:bands", []))
                 asset_bands = list()
                 for band in bands:
                     name = band["name"]
@@ -1135,32 +1149,36 @@ def _write_exported_stac_collection_from_item(
                         if raster_band["name"] == name:
                             asset_band.update(raster_band)
                     asset_bands.append(asset_band)
-            assets[asset_key] = dict_no_none({
-                "href": f"{Path(urlparse(asset['href']).path).relative_to(job_dir)}",  # relative to top-level item file
-                "type": asset.get("type"),
-                "roles": asset.get("roles"),
-                "bands": asset_bands,
-            })
-            item_asset = dict_no_none({
+            assets[asset_key] = dict_no_none(
+                {
+                    "href": f"{Path(urlparse(asset['href']).path).relative_to(job_dir)}",  # relative to top-level item file
                     "type": asset.get("type"),
                     "roles": asset.get("roles"),
                     "bands": asset_bands,
-                })
+                }
+            )
+            item_asset = dict_no_none(
+                {
+                    "type": asset.get("type"),
+                    "roles": asset.get("roles"),
+                    "bands": asset_bands,
+                }
+            )
             if asset_key not in item_assets:
                 item_assets[asset_key] = item_asset
             else:
-                item_assets[asset_key] = intersect_dicts(item_assets[asset_key],item_asset)
+                item_assets[asset_key] = intersect_dicts(item_assets[asset_key], item_asset)
 
         properties = item.get("properties", {"datetime": result_metadata.get("start_datetime")})
-        properties["proj:bbox"] = result_metadata.get("bbox",item.get("bbox"))
-        properties["proj:geometry"] = result_metadata.get("geometry",item.get("geometry"))
+        properties["proj:bbox"] = result_metadata.get("bbox", item.get("bbox"))
+        properties["proj:geometry"] = result_metadata.get("geometry", item.get("geometry"))
         result_item = result_metadata.get("items").get(item_key)
         if result_item:
             properties["proj:bbox"] = result_item.get("proj:bbox")
             properties["proj:shape"] = result_item.get("proj:shape")
-        epsg_code = result_metadata.get("epsg",item.get("epsg"))
+        epsg_code = result_metadata.get("epsg", item.get("epsg"))
         if epsg_code:
-            properties["proj:code"] = "EPSG:"+str(epsg_code)
+            properties["proj:code"] = "EPSG:" + str(epsg_code)
         stac_item = {
             "type": "Feature",
             "stac_version": "1.1.0",

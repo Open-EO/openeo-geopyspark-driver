@@ -3,9 +3,9 @@ from pathlib import Path
 
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.workspace import DiskWorkspace
+
 from openeogeotrellis.config import GpsBackendConfig
 from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
-
 
 # TODO: avoid VITO default client here. Only provide simple basic auth by default?
 oidc_default_client_egi = {

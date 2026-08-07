@@ -4,10 +4,11 @@ import logging
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import pyproj
+import shapely.geometry
 from openeo.util import Rfc3339, dict_no_none
 from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.datacube import DriverVectorCube
@@ -21,17 +22,16 @@ from openeo_driver.save_result import (
 from openeo_driver.util.geometry import reproject_bounding_box, spatial_extent_union
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
-import shapely.geometry
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis._version import __version__
-from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
 from openeogeotrellis.util.geometry import bbox_to_geojson
-from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url, map_optional
+from openeogeotrellis.utils import _make_set_for_key, get_jvm, map_optional, to_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def _assemble_result_metadata(
     apply_gdal,
     asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
     ml_model_metadata: Dict = None,
-    is_item = False,
+    is_item=False,
     result_items: Optional[List[dict]] = None,
 ) -> dict:
     metadata = extract_result_metadata(tracer, stac_items=result_items)
@@ -70,7 +70,7 @@ def _assemble_result_metadata(
         if apply_gdal:
             if is_item:
                 items_metadata = dict()
-                for (item_key, item) in asset_metadata.items():
+                for item_key, item in asset_metadata.items():
                     temp_asset_metadata = metadata.copy()
                     try:
                         _extract_asset_metadata(
@@ -83,7 +83,7 @@ def _assemble_result_metadata(
                     except Exception as e:
                         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
                         logger.exception("Error while creating asset metadata: " + error_summary.summary)
-                metadata["items"]= items_metadata
+                metadata["items"] = items_metadata
             else:
                 try:
                     _extract_asset_metadata(

@@ -14,7 +14,6 @@ from openeo_driver.server import build_backend_deploy_metadata
 
 import openeogeotrellis
 
-
 _log = logging.getLogger(__name__)
 
 
@@ -46,7 +45,7 @@ def get_socket() -> (str, int):
     local_ip = socket.gethostbyname(socket.gethostname())
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
-        tcp.bind(('', 0))
+        tcp.bind(("", 0))
         _, port = tcp.getsockname()
 
     return local_ip, port

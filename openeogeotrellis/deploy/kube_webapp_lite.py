@@ -15,7 +15,6 @@ import logging
 import os
 
 import flask
-
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
@@ -23,9 +22,10 @@ from openeo_driver.util.logging import (
     setup_logging,
 )
 from openeo_driver.views import build_app
+
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.deploy import get_socket, patch_sar_backscatter_spec
+from openeogeotrellis.deploy import patch_sar_backscatter_spec
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ def create_lite_backend_implementation():
     """
     from openeo_driver import backend as openeo_driver_backend
     from openeo_driver.util.http import requests_with_retry
+
     from openeogeotrellis.backend import (
         GeoPySparkBackendImplementation,
         GpsBatchJobs,
@@ -73,9 +74,7 @@ def create_lite_backend_implementation():
             catalog = get_layer_catalog(vault=vault)
             udf_runtimes = GpsUdfRuntimes()
 
-            elastic_job_registry = get_elastic_job_registry(
-                requests_session=requests_session, do_health_check=False
-            )
+            elastic_job_registry = get_elastic_job_registry(requests_session=requests_session, do_health_check=False)
             batch_jobs = GpsBatchJobs(
                 catalog=catalog,
                 udf_runtimes=udf_runtimes,
