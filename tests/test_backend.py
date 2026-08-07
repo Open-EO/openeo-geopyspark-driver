@@ -1072,7 +1072,7 @@ def test_k8s_sparkapplication_layer_catalog_init_container_custom_pull_policy(ba
 def test_k8s_sparkapplication_layer_catalog_volume_disabled(backend_config_path):
     """
     When layer_catalog_init_image is DISABLED, no layercatalogs volume should
-    be present in spec.volumes.
+    be present in spec.volumes, and no layercatalogs volumeMount in driver or executor.
     """
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",
@@ -1085,11 +1085,16 @@ def test_k8s_sparkapplication_layer_catalog_volume_disabled(backend_config_path)
     volume_names = [v["name"] for v in app_dict["spec"].get("volumes", [])]
     assert "layercatalogs" not in volume_names
 
+    for spark_component in ["driver", "executor"]:
+        mount_names = [m["name"] for m in app_dict["spec"][spark_component].get("volumeMounts", [])]
+        assert "layercatalogs" not in mount_names
+
 
 def test_k8s_sparkapplication_layer_catalog_volume_enabled(backend_config_path):
     """
     When layer_catalog_init_image is set, a layercatalogs emptyDir volume should
-    be present in spec.volumes.
+    be present in spec.volumes, and a corresponding volumeMount in both driver
+    and executor so the Spark operator propagates the volume into the pod spec.
     """
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",
@@ -1104,6 +1109,15 @@ def test_k8s_sparkapplication_layer_catalog_volume_enabled(backend_config_path):
     assert "layercatalogs" in volume_names
     layercatalogs_volume = next(v for v in volumes if v["name"] == "layercatalogs")
     assert layercatalogs_volume == {"name": "layercatalogs", "emptyDir": {}}
+
+    for spark_component in ["driver", "executor"]:
+        mounts = app_dict["spec"][spark_component].get("volumeMounts", [])
+        lc_mount = next((m for m in mounts if m["name"] == "layercatalogs"), None)
+        assert lc_mount is not None, (
+            f"layercatalogs volumeMount missing from {spark_component} - "
+            "Spark operator requires this to propagate the volume into the pod spec"
+        )
+        assert lc_mount["mountPath"] == "/opt/layercatalogs"
 
 
 class TestGpsBatchJobs:
