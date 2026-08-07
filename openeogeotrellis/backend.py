@@ -89,6 +89,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
+from openeogeotrellis.integrations.credit_check import ExecutionDetails
 from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -1958,6 +1959,16 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
+        isKube = ConfigParams().is_kube_deploy
+
+        if isKube:
+            options = K8SOptions.from_dict(job_options)
+        else:
+            options = JobOptions.from_dict(job_options)
+
+        # Job-options are validated at this point
+        execution_details: ExecutionDetails = get_backend_config().credit_check.get_batch_execution_details(job_info)
+
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
@@ -2027,14 +2038,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
             raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
-
-
-        isKube = ConfigParams().is_kube_deploy
-
-        if isKube:
-            options = K8SOptions.from_dict(job_options)
-        else:
-            options = JobOptions.from_dict(job_options)
 
         executor_memory_overhead = options.executor_memory_overhead
 
@@ -2223,6 +2226,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 open_telemetry_enabled="true" if options.open_telemetry_metrics_exporter else "false",
                 open_telemetry_metrics_exporter=options.open_telemetry_metrics_exporter or "prometheus",
                 force_s3proxy=k8sOptions.force_s3proxy,
+                credit_plan=execution_details.plan,
             )
 
             with self._double_job_registry as dbl_registry:
