@@ -109,6 +109,13 @@ spec:
     onSubmissionFailureRetryInterval: 20
 {%- endblock %}
   volumes:
+{%- block volume_layercatalog %}
+  {%- if layer_catalog_init_image != "DISABLED" %}
+    - name: layercatalogs
+      emptyDir: {}
+  {%- endif %}
+{%- endblock %}
+
 {%- block volumes %}
     - name: "eodata"
       hostPath:
