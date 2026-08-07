@@ -161,6 +161,28 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
+{%- block initContainerLayerCatalog %}
+  {%- if layer_catalog_init_image != "DISABLED" %}
+      - name: init-layercatalog
+        image: {{ layer_catalog_init_image }}
+        imagePullPolicy: {{ layer_catalog_init_pull_policy }}
+        env:
+          - name: TARGET_DIR
+            value: {{ layer_catalog_init_dir }}
+        volumeMounts:
+          - name: "layercatalogs"
+            mountPath: {{ layer_catalog_init_dir }}
+        {%- block initContainerLayerCatalogResources %}
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "64Mi"
+        {%- endblock %}
+  {%- endif %}
+{%- endblock %}
 {%- block driver_lifecycle %}
     lifecycle:
       preStop:
@@ -302,8 +324,10 @@ spec:
     memoryOverhead: "{{ executor_memory_overhead }}"
     javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
 {%- endblock %}
-{%- if mount_tmp %}
+{%- if mount_tmp or layer_catalog_init_image != "DISABLED" %}
     initContainers:
+{%- endif %}
+{%- if mount_tmp %}
 {%- block executor_initContainers %}
       - name: init-tmp-dir
         image: busybox:1.28
@@ -313,6 +337,7 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
+{{ self.initContainerLayerCatalog() }}
     lifecycle:
       preStop:
         exec:

@@ -2223,6 +2223,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 open_telemetry_enabled="true" if options.open_telemetry_metrics_exporter else "false",
                 open_telemetry_metrics_exporter=options.open_telemetry_metrics_exporter or "prometheus",
                 force_s3proxy=k8sOptions.force_s3proxy,
+                layer_catalog_init_image=os.environ.get("LAYER_CATALOG_INIT_IMAGE", "DISABLED"),
+                layer_catalog_init_dir=os.environ.get("LAYER_CATALOG_INIT_DIR", "/opt/layercatalogs"),
+                layer_catalog_init_pull_policy=os.environ.get("LAYER_CATALOG_INIT_IMAGE_PULL_POLICY", "IfNotPresent"),
             )
 
             with self._double_job_registry as dbl_registry:
