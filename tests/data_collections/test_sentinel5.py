@@ -1,3 +1,5 @@
+from typing import Any
+
 import calendar
 import glob
 import logging
@@ -11,6 +13,8 @@ import numpy as np
 import pytest
 import rasterio
 import xarray
+
+from openeogeotrellis.utils import typechecked
 
 if __name__ == "__main__":
     import openeogeotrellis.deploy.local
@@ -28,6 +32,7 @@ np.random.seed(42)
 
 _log = logging.getLogger(__name__)
 
+@typechecked
 def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
     """Create a minimal synthetic Sentinel-5P NetCDF file for unit tests.
 
@@ -85,7 +90,7 @@ def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
 
 # Per-product spec used to synthesize NetCDF fixtures and to drive the parametrized
 # "default bands" test below: name -> (filename product code, band builder, qa_value, expected default band count).
-def _co_bands():
+def _co_bands() -> dict[str, Any]:
     nd = np.random.uniform(0.025, 0.040, (20, 10))
     assert isinstance(nd, np.ndarray)
     co_col = nd.astype(np.float32)
@@ -95,13 +100,15 @@ def _co_bands():
     }
 
 
-def _no2_bands():
+@typechecked
+def _no2_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(1e-5, 5e-5, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"nitrogendioxide_tropospheric_column": nd.astype(np.float32)}
 
 
-def _ch4_bands():
+@typechecked
+def _ch4_bands() -> dict[str, Any]:
     nd = np.random.uniform(1800, 1900, (20, 10))
     assert isinstance(nd, np.ndarray)
     ch4_ratio = nd.astype(np.float32)
@@ -111,25 +118,29 @@ def _ch4_bands():
     }
 
 
-def _so2_bands():
+@typechecked
+def _so2_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(-1e-4, 5e-4, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"sulfurdioxide_total_vertical_column": nd.astype(np.float32)}
 
 
-def _hcho_bands():
+@typechecked
+def _hcho_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(1e-5, 1e-4, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"formaldehyde_tropospheric_vertical_column": nd.astype(np.float32)}
 
 
-def _o3_bands():
+@typechecked
+def _o3_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(0.05, 0.09, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"ozone_total_vertical_column": nd.astype(np.float32)}
 
 
-def _aer_ai_bands():
+@typechecked
+def _aer_ai_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(-1.0, 2.0, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {
@@ -138,7 +149,8 @@ def _aer_ai_bands():
     }
 
 
-def _cloud_bands():
+@typechecked
+def _cloud_bands() -> dict[str, np.ndarray]:
     fraction = np.random.uniform(0.0, 1.0, (20, 10)).astype(np.float32)
     top_pressure = np.random.uniform(20000, 60000, (20, 10)).astype(np.float32)
     base_pressure = top_pressure + np.random.uniform(1000, 5000, (20, 10)).astype(np.float32)
@@ -155,6 +167,7 @@ def _cloud_bands():
     }
 
 
+@typechecked
 def _aer_lh_bands():
     mid_height = np.random.uniform(1000, 8000, (20, 10)).astype(np.float32)
     mid_pressure = np.random.uniform(30000, 90000, (20, 10)).astype(np.float32)

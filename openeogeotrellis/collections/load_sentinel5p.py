@@ -71,7 +71,7 @@ from openeogeotrellis.utils import typechecked
 logger = logging.getLogger(__name__)
 
 @typechecked
-def load_level2_data(params: dict):
+def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     """Load Sentinel-5P level-2 data from a NetCDF file.
 
     Args:
@@ -163,6 +163,7 @@ def load_level2_data(params: dict):
     return final_data
 
 
+@typechecked
 def _instant_ms_to_minute(instant: int) -> datetime:
     """Convert a Unix millisecond timestamp to a datetime rounded down to the minute.
 
@@ -178,7 +179,7 @@ def read_product(
     tile_size: int,
     resolution: float,
     collection_id: Optional[str] = None,
-) -> list[tuple]:
+) -> list[tuple[geopyspark.SpaceTimeKey, geopyspark.Tile]]:
     """Read Sentinel-5P data from a NetCDF file and return GeoTrellis tiles.
 
     Follows the same interface as :func:`openeogeotrellis.collections.sentinel3.read_product`
@@ -248,7 +249,7 @@ def read_product(
                 "Input spatial extent is not in the file",
             ]
         ):
-            logger.debug(f"No S5P data for {creo_path.name} in extent {spatial_extent}: {exc}")
+            logger.info(f"No S5P data for {creo_path.name} in extent {spatial_extent}: {exc}")
             return []
         raise
 
@@ -382,12 +383,12 @@ def _build_stac_opensearch_client(
 
 @typechecked
 def pyramid(
-    metadata_properties,
-    projected_polygons_native_crs,
+    metadata_properties: dict[str, Any],
+    projected_polygons_native_crs: JavaObject,
     from_date: Optional[str],
     to_date: Optional[str],
     band_names: list[str],
-    data_cube_parameters,
+    data_cube_parameters: JavaObject,
     native_cell_size,
     feature_flags: dict,
     jvm,
@@ -456,6 +457,7 @@ def pyramid(
 
     layer_metadata_py = convert_scala_metadata(metadata_sc, epoch_ms_to_datetime=_instant_ms_to_minute, logger=logger)
 
+    @typechecked
     def process_feature(feature: dict):
         creo_path = feature["feature"]["id"]
         return creo_path, {

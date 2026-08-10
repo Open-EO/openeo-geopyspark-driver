@@ -207,10 +207,10 @@ def load_data_from_file(
     file_path: Path,
     spatial_extent: Optional[Sequence],
     temporal_extent: Optional[Sequence],
-    bands,
+    bands: list[str],
     variable_loc_in_file: dict[str, str],
     filter_value=0.5,
-):
+) -> dict[str, Any]:
     """Load bands data from the NetCDF file.
 
     1. Validity checks:
@@ -337,6 +337,7 @@ def load_data_from_file(
 #         return True
 
 
+@typechecked
 def get_temporal_mask_and_time(time_of_rows, temporal_extent: Optional[Sequence]):
     """Get temporal mask based on the temporal extent and get the time of data.
 
@@ -422,6 +423,7 @@ def get_spatial_extent_mask(
 #     return data
 
 
+@typechecked
 def fill_and_mask_data(band_data, spatio_temporal_mask):
     """Fill nan values based on data mask and spatio-temporal mask.
 
@@ -442,6 +444,7 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
     return data
 
 
+@typechecked
 def _get_2d_data_from_mask(data, mask):
     """Extract 2-d arrays based on boolean mask."""
     if (mask.ndim != 2) or (data.ndim != 2):
@@ -477,7 +480,7 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
 @typechecked
 def interpolate(
     source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
-):
+) -> np.ndarray:
     """Interpolate source data to target grid based on source and target coordinates.
 
     Args:
@@ -506,7 +509,8 @@ def interpolate(
     return interpolated_data
 
 
-def adapt_coordinates(source_coordinates, target_coordinates):
+@typechecked
+def adapt_coordinates(source_coordinates, target_coordinates) -> tuple:
     """Check and adapt coordinates for anti-meridian crossing.
 
     Args:
@@ -529,7 +533,7 @@ def adapt_coordinates(source_coordinates, target_coordinates):
 @typechecked
 def resample_data(
     data: dict, bands: list, spatial_extent: Sequence, resample_resolution: float, interpolation_method: str
-):
+) -> dict[str, np.ndarray]:
     """Resample data based on spatial extent and resample parameters.
 
     Args:
@@ -572,7 +576,10 @@ def resample_data(
     return interpolated_data
 
 
-def apply_quality_filter(data, bands, quality_band="qa_value_mask"):
+@typechecked
+def apply_quality_filter(
+    data: dict[str, np.ndarray], bands: list, quality_band: str = "qa_value_mask"
+) -> dict[str, np.ndarray]:
     """Apply quality filter to the data based on quality band.
 
     Args:
