@@ -469,7 +469,16 @@ spec:
       - 'local:///opt/openeo-logging-static.jar'
       - 'local:///opt/geotrellis-dependencies-static.jar'
     files:
+      {%- block deps_layercatalog %}
+        {%- if layer_catalog_init_image != "DISABLED" %}
+      {# layercatalog.json is provided at runtime by the init container, so it must not be listed here.
+         At least one entry is required to keep the files: structure valid, so os-release is used as a
+         guaranteed-present placeholder (it is available on any Linux container image). #}
+      - 'local:///etc/os-release'
+        {%- else %}
       - 'local:///opt/layercatalog.json'
+        {%- endif %}
+      {%- endblock %}
       {%- for line in py_files %}
       - {{ line -}}
       {% endfor %}
