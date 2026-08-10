@@ -1,4 +1,4 @@
-from typing import Any
+from __future__ import annotations
 
 import calendar
 import glob
@@ -8,6 +8,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
