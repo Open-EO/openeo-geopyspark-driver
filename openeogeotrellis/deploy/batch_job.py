@@ -301,7 +301,7 @@ def run_job(
 
     stac11_mode = parsed_job_options.stac_version == "1.1"
     omit_derived_from_links = parsed_job_options.omit_derived_from_links or stac11_mode
-    logger.info(f"{stac11_mode=}")
+    logger.info(f"{stac11_mode=} {job_options.get('stac-version')=}")
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
