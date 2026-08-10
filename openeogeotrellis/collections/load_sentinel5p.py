@@ -268,7 +268,7 @@ def read_product(
     if xmin > xmax:  # anti-meridian crossing
         source_coords, target_coords = adapt_coordinates(source_coords, target_coords)
 
-    # Resample quality mask with "nearest" (preserves boolean semantics)
+    # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.
     qa_flat = raw_data["qa_value_mask"].ravel().astype(np.float64)
     qa_grid = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x).astype(bool)
 
