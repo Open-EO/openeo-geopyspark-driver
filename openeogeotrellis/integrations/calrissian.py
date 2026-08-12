@@ -178,6 +178,18 @@ class CalrissianS3Result:
         return target
 
 
+def _is_string_array_type(type_spec) -> bool:
+    """Check whether a CWL type declaration describes an array of strings."""
+    if isinstance(type_spec, str):
+        return type_spec == "string[]"
+    if isinstance(type_spec, dict):
+        return type_spec.get("type") == "array" and type_spec.get("items") == "string"
+    if isinstance(type_spec, list):
+        # E.g. optional types like ["null", "string[]"]
+        return any(_is_string_array_type(t) for t in type_spec if t != "null")
+    return False
+
+
 class CwLSource:
     """
     Simple container of CWL source code.
@@ -194,6 +206,42 @@ class CwLSource:
 
     def get_content(self) -> str:
         return self._cwl
+
+    def _get_entrypoint_document(self) -> Optional[dict]:
+        """
+        Get the (parsed) CWL document that acts as the entrypoint of this CWL source:
+        the single document itself, or, in case of a `$graph` with multiple processes,
+        the one with id "main" (falling back on the last one, by convention).
+        """
+        yaml_parsed = list(yaml.safe_load_all(self._cwl))[0]
+        if "$graph" in yaml_parsed:
+            docs = yaml_parsed["$graph"]
+            return next((d for d in docs if d.get("id") == "main"), docs[-1] if docs else None)
+        return yaml_parsed
+
+    def get_input_type(self, input_name: str):
+        """
+        Get the CWL type declaration of a given top-level input of this CWL source's entrypoint document
+        (e.g. `"string"`, `"string[]"`, `{"type": "array", "items": "string"}`, ...), if it can be determined.
+        """
+        entrypoint = self._get_entrypoint_document()
+        if not entrypoint:
+            return None
+        inputs = entrypoint.get("inputs")
+        if isinstance(inputs, dict):
+            input_spec = inputs.get(input_name)
+        elif isinstance(inputs, list):
+            input_spec = next((i for i in inputs if isinstance(i, dict) and i.get("id") == input_name), None)
+        else:
+            return None
+        if isinstance(input_spec, dict):
+            return input_spec.get("type")
+        # Shorthand notation: the input spec itself is just the type.
+        return input_spec
+
+    def is_string_array_input(self, input_name: str) -> bool:
+        """Does the given top-level input of this CWL source's entrypoint document have a string array type?"""
+        return _is_string_array_type(self.get_input_type(input_name))
 
     def estimate_max_memory_usage(self):
         yaml_parsed = list(yaml.safe_load_all(self._cwl))[0]
@@ -945,6 +993,13 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     return root_path
 
 
+def _get_stac_item_urls(stac_root: str) -> List[str]:
+    """Fetch the (self) URLs/paths of all STAC items found under the given STAC root (catalog/collection)."""
+    catalog = pystac.Catalog.from_file(stac_root)
+    item_urls = [item.get_self_href() for item in catalog.get_all_items()]
+    return item_urls
+
+
 def cwl_to_stac(
     cwl_arguments: Union[List[str], dict],
     env: EvalEnv,
@@ -994,7 +1049,13 @@ def cwl_to_stac(
             )
 
             res_url = str(collection_file)
-            cwl_arguments[key] = res_url
+            if cwl_source.is_string_array_input(key):
+                # Parameter expects an array of strings: pass the individual STAC item URLs
+                # instead of the STAC root/catalog URL.
+                cwl_arguments[key] = _get_stac_item_urls(res_url)
+            else:
+                cwl_arguments[key] = res_url
+            _log.info("CWL arguments: " + json.dumps(cwl_arguments))
     ensure_kubernetes_config()
 
     _log.info(f"Loading CWL from {cwl_source=}")
