@@ -235,7 +235,7 @@ class CwLSource:
         else:
             return None
         if isinstance(input_spec, dict):
-            return input_spec.get("type")
+            return input_spec["type"]
         # Shorthand notation: the input spec itself is just the type.
         return input_spec
 
@@ -1055,7 +1055,7 @@ def cwl_to_stac(
                 cwl_arguments[key] = _get_stac_item_urls(res_url)
             else:
                 cwl_arguments[key] = res_url
-            _log.info("CWL arguments: " + json.dumps(cwl_arguments))
+    _log.info("CWL arguments: " + json.dumps(cwl_arguments))
     ensure_kubernetes_config()
 
     _log.info(f"Loading CWL from {cwl_source=}")

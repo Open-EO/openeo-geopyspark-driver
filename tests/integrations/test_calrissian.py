@@ -873,6 +873,27 @@ class TestCwlSource:
         assert "Hello World" in cwl.get_content()
 
     @pytest.mark.parametrize(
+        ["cwl_yaml", "input_name", "expected"],
+        [
+            ("inputs:\n  message:\n    type: string\n", "message", False),
+            ("inputs:\n  message: string\n", "message", False),
+            ("inputs:\n  items:\n    type: string[]\n", "items", True),
+            ("inputs:\n  items: string[]\n", "items", True),
+            (
+                "inputs:\n  items:\n    type:\n      type: array\n      items: string\n",
+                "items",
+                True,
+            ),
+            ('inputs:\n  items:\n    type: ["null", "string[]"]\n', "items", True),
+            ('inputs:\n  items:\n    type: ["null", "string"]\n', "items", False),
+            ("inputs:\n  message:\n    type: string\n", "does-not-exist", False),
+        ],
+    )
+    def test_is_string_array_input(self, cwl_yaml, input_name, expected):
+        cwl = CwLSource.from_string("class: CommandLineTool\n" + cwl_yaml)
+        assert cwl.is_string_array_input(input_name) is expected
+
+    @pytest.mark.parametrize(
         ["cwl_path", "expected_memory"],
         [
             ("cwl/request_too_much_1.cwl", 999000),
