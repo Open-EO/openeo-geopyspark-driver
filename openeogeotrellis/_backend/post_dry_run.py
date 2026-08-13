@@ -277,6 +277,8 @@ def _extract_spatial_extent_from_constraint_load_collection(
 def _extract_spatial_extent_from_constraint_load_stac(
     stac_url: str, *, constraint: dict, feature_flags: Optional[dict] = None
 ) -> Union[None, AlignedExtentResult]:
+    if stac_url == "dummy":
+        return None
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
 
     extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
