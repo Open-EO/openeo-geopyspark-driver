@@ -56,6 +56,7 @@ from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTr
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
                                   ProcessParameterInvalidException, ProcessUnsupportedException, )
+from openeo_driver.integrations.s3.presigned_url import create_presigned_url
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
@@ -101,6 +102,7 @@ from openeogeotrellis.integrations.kubernetes import (
     ensure_kubernetes_config,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
+from openeogeotrellis.integrations.s3proxy.s3_shared_context import get_proxy_s3_client_for_job
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -1522,6 +1524,7 @@ def get_elastic_job_registry(
 
 
 class GpsBatchJobs(backend.BatchJobs):
+    _UDF_DEPENDENCY_PRESIGNED_URL_EXPIRATION = 24 * 3600
 
     def __init__(
         self,
@@ -2149,6 +2152,11 @@ class GpsBatchJobs(backend.BatchJobs):
             max_result_size = '5g'
             if _parse_memory(max_result_size) < _parse_memory(options.driver_memory):
                 max_result_size = options.driver_memory
+            py_files = self._resolve_udf_dependency_files_for_k8s(
+                udf_dependency_files=options.udf_dependency_files,
+                job_id=job_id,
+                user_id=user_id,
+            )
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
@@ -2196,7 +2204,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
                 archives=",".join(options.udf_dependency_archives),
-                py_files = options.udf_dependency_files,
+                py_files=py_files,
                 logging_threshold=options.log_level,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
@@ -2322,6 +2330,77 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(
                         f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
                     )
+
+    @staticmethod
+    def _split_s3_udf_dependency_alias(s3_uri: str) -> Tuple[str, str]:
+        if s3_uri.count("#") > 1:
+            raise OpenEOApiException(
+                status_code=400,
+                message=f"Invalid S3 UDF dependency file {s3_uri!r}: expected at most one '#'.",
+            )
+        if "#" in s3_uri:
+            s3_uri_without_alias, alias = s3_uri.split("#", 1)
+            if not alias:
+                raise OpenEOApiException(
+                    status_code=400,
+                    message=f"Invalid S3 UDF dependency file {s3_uri!r}: expected non-empty alias after '#'.",
+                )
+            return s3_uri_without_alias, alias
+        raise OpenEOApiException(
+            status_code=400,
+            message=f"Invalid S3 UDF dependency file {s3_uri!r}: expected alias using '#<alias>'.",
+        )
+
+    def _resolve_udf_dependency_files_for_k8s(
+        self, udf_dependency_files: List[str], *, job_id: str, user_id: str
+    ) -> List[str]:
+        resolved = []
+        for dependency_file in udf_dependency_files:
+            if not dependency_file.startswith("s3://"):
+                resolved.append(dependency_file)
+                continue
+
+            s3_uri_without_alias, alias = self._split_s3_udf_dependency_alias(dependency_file)
+            bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(s3_uri_without_alias)
+            s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id, internal=True)
+            presigned_url = create_presigned_url(
+                s3_client,
+                bucket_name=bucket,
+                object_name=key,
+                expiration=self._UDF_DEPENDENCY_PRESIGNED_URL_EXPIRATION,
+                parameters={"X-Proxy-Head-As-Get": "true"},
+            )
+            if presigned_url is None:
+                raise OpenEOApiException(
+                    status_code=400,
+                    message=f"Could not create a presigned url for {s3_uri_without_alias} job_id={job_id} user={user_id}",
+                )
+
+            parsed_presigned_url = urlparse(presigned_url)
+            if not (parsed_presigned_url.scheme and parsed_presigned_url.netloc and parsed_presigned_url.path):
+                raise OpenEOApiException(
+                    status_code=400,
+                    message=f"Generated invalid presigned url {presigned_url!r} for {s3_uri_without_alias} job_id={job_id} user={user_id}",
+                )
+            if parsed_presigned_url.fragment:
+                raise OpenEOApiException(
+                    status_code=400,
+                    message=f"Generated presigned url unexpectedly contains fragment: {presigned_url!r} for {s3_uri_without_alias} job_id={job_id} user={user_id}",
+                )
+
+            resolved_dependency_file = f"{presigned_url}#{alias}"
+            parsed_resolved_dependency_file = urlparse(resolved_dependency_file)
+            if parsed_resolved_dependency_file.fragment != alias:
+                raise OpenEOApiException(
+                    status_code=400,
+                    message=f"Generated invalid presigned dependency file {resolved_dependency_file!r} for {s3_uri_without_alias} job_id={job_id} user={user_id}",
+                )
+            logger.info(
+                f"Resolved S3 UDF dependency file {s3_uri_without_alias!r} "
+                f"to presigned URL with alias: {resolved_dependency_file!r}"
+            )
+            resolved.append(resolved_dependency_file)
+        return resolved
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT

@@ -21,6 +21,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceId, DryRunDataTracer
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -1369,6 +1370,69 @@ class TestGpsBatchJobs:
             assert expected_warning in caplog.messages
         else:
             assert caplog.messages == []
+
+    @mock.patch("openeogeotrellis.backend.create_presigned_url")
+    @mock.patch("openeogeotrellis.backend.get_proxy_s3_client_for_job")
+    def test_resolve_udf_dependency_files_for_k8s_resolves_s3_alias(
+        self, mock_get_proxy_s3_client_for_job, mock_create_presigned_url
+    ):
+        mock_create_presigned_url.return_value = "https://s3-proxy.example/cropsar_bucket/object?sig=abc&expires=1787224627"
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+
+        resolved = gps_batch_jobs._resolve_udf_dependency_files_for_k8s(
+            udf_dependency_files=["s3://cropsar_bucket/object#cropsar", "https://example.com/deps/helper.py"],
+            job_id="j-123",
+            user_id="test_user",
+        )
+
+        assert resolved == [
+            "https://s3-proxy.example/cropsar_bucket/object?sig=abc&expires=1787224627#cropsar",
+            "https://example.com/deps/helper.py",
+        ]
+        mock_get_proxy_s3_client_for_job.assert_called_once_with(
+            "cropsar_bucket", "j-123", "test_user", internal=True
+        )
+        mock_create_presigned_url.assert_called_once_with(
+            mock_get_proxy_s3_client_for_job.return_value,
+            bucket_name="cropsar_bucket",
+            object_name="object",
+            expiration=24 * 3600,
+            parameters={"X-Proxy-Head-As-Get": "true"},
+        )
+
+    def test_resolve_udf_dependency_files_for_k8s_rejects_multiple_hashes(self):
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        with pytest.raises(OpenEOApiException) as exc_info:
+            gps_batch_jobs._resolve_udf_dependency_files_for_k8s(
+                udf_dependency_files=["s3://cropsar_bucket/object#cropsar#extra"],
+                job_id="j-123",
+                user_id="test_user",
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_resolve_udf_dependency_files_for_k8s_requires_alias(self):
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        with pytest.raises(OpenEOApiException, match="expected alias using '#<alias>'"):
+            gps_batch_jobs._resolve_udf_dependency_files_for_k8s(
+                udf_dependency_files=["s3://cropsar_bucket/object"],
+                job_id="j-123",
+                user_id="test_user",
+            )
+
+    @mock.patch("openeogeotrellis.backend.create_presigned_url")
+    @mock.patch("openeogeotrellis.backend.get_proxy_s3_client_for_job")
+    def test_resolve_udf_dependency_files_for_k8s_rejects_invalid_presigned_url(
+        self, mock_get_proxy_s3_client_for_job, mock_create_presigned_url
+    ):
+        mock_create_presigned_url.return_value = "/cropsar_bucket/object?sig=abc&expires=1787224627"
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+
+        with pytest.raises(OpenEOApiException, match="Generated invalid presigned url"):
+            gps_batch_jobs._resolve_udf_dependency_files_for_k8s(
+                udf_dependency_files=["s3://cropsar_bucket/object#cropsar"],
+                job_id="j-123",
+                user_id="test_user",
+            )
 
 
 class TestGpsUdfRuntimes:
