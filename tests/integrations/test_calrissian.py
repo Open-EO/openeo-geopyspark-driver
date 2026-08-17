@@ -46,6 +46,8 @@ def generate_unique_id_mock() -> Iterator[str]:
         yield fake_uuid
 
 
+SIMPLE_CWL_STR = "cwlVersion: v1.0\nclass: CommandLineTool\n"
+
 class TestCalrissianJobLauncher:
     NAMESPACE = "test-calrissian"
     BUCKET = "test-calrissian-bucket"
@@ -735,7 +737,7 @@ class TestCalrissianJobLauncher:
                     "context": {"datacube_s2": {"from_node": "saveresult1"}},
                     "data": None,
                     "runtime": "EOAP-CWL",
-                    "udf": "https://raw.githubusercontent.com/Open-EO/openeo-geotrellis-kubernetes/master/openeo-geopyspark-k8s-custom-processes/src/openeo_geopyspark_k8s_custom_processes/cwl/dummy_stac.cwl",
+                    "udf": SIMPLE_CWL_STR,
                 },
                 "result": True,
             },
@@ -840,9 +842,9 @@ class TestCalrissianS3Result:
 
 class TestCwlSource:
     def test_from_string(self):
-        content = "cwlVersion: v1.0\nclass: CommandLineTool\n"
+        content = SIMPLE_CWL_STR
         cwl = CwLSource.from_string(content=content)
-        assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+        assert cwl.get_content() == SIMPLE_CWL_STR
 
     def test_from_string_auto_dedent(self):
         content = """
@@ -858,15 +860,15 @@ class TestCwlSource:
 
     def test_from_path(self, tmp_path):
         path = tmp_path / "dummy.cwl"
-        path.write_text("cwlVersion: v1.0\nclass: CommandLineTool\n")
+        path.write_text(SIMPLE_CWL_STR)
         cwl = CwLSource.from_path(path=path)
-        assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+        assert cwl.get_content() == SIMPLE_CWL_STR
 
     def test_from_url(self, requests_mock):
         url = "https://example.com/dummy.cwl"
-        requests_mock.get(url, text="cwlVersion: v1.0\nclass: CommandLineTool\n")
+        requests_mock.get(url, text=SIMPLE_CWL_STR)
         cwl = CwLSource.from_url(url=url)
-        assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+        assert cwl.get_content() == SIMPLE_CWL_STR
 
     def test_from_resource(self):
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
