@@ -29,7 +29,7 @@ pythonPipeline {
   /* Note: extra "spark40x" to align with "almalinux9-spark4-py311-openeo" which is hardcoded for spark 4.0.1 at the moment #1755 */
   extras_require = 'dev,spark40x'
   upload_dev_wheels = false
-  build_wheel = false
+  build_wheel = true
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
   custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest'
