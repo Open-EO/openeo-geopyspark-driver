@@ -1,5 +1,9 @@
+import argparse
+import contextlib
 import json
+import re
 import sys
+from email import message
 from typing import Optional, Iterable
 
 import dirty_equals
@@ -24,6 +28,8 @@ from openeogeotrellis.catalog.manage import (
     sort_dict_like_other,
     CollectionMetadataBuilderRegistry,
     MetadataException,
+    LayerCatalogManagerCliApp,
+    _BuildItem,
 )
 
 
@@ -717,6 +723,45 @@ class TestCollectionMetadataBuilderRegistry:
             {"id": "COLLECTION456"},
         ]
 
+    def test_register_decorator_multiple_dict(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collections = registry.decorator_multiple
+
+        @collections(
+            {
+                "COLLECTION_FOO": {"biopar": "FOO"},
+                "COLLECTION_BAR": {"biopar": "BAR"},
+            }
+        )
+        def build_biopar(collection_id, biopar) -> dict:
+            return {"id": collection_id, "biopar": biopar}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION_FOO", "biopar": "FOO"},
+            {"id": "COLLECTION_BAR", "biopar": "BAR"},
+        ]
+
+    def test_register_decorator_multiple_list(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collections = registry.decorator_multiple
+
+        @collections(
+            [
+                ("COLLECTION_FOO", {"biopar": "FOO"}),
+                ("COLLECTION_BAR", {"biopar": "BAR"}, ["dev"]),
+            ]
+        )
+        def build_biopar(collection_id, biopar) -> dict:
+            return {"id": collection_id, "biopar": biopar}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION_FOO", "biopar": "FOO"},
+            {"id": "COLLECTION_BAR", "biopar": "BAR"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" in labels)) == [
+            {"id": "COLLECTION_BAR", "biopar": "BAR"},
+        ]
+
     def test_register_kwargs(self):
         registry = CollectionMetadataBuilderRegistry()
         collection = registry.decorator
@@ -778,6 +823,34 @@ class TestCollectionMetadataBuilderRegistry:
         ]
         assert list(registry.call_builders(label_filter=lambda labels: "nope" in labels)) == []
 
+    def test_register_multiple(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build(collection_id: str, biopar: str = "NDVI") -> dict:
+            return {"id": collection_id, "biopar": biopar}
+
+        registry.register_multiple(
+            build,
+            cases=[
+                ("C123",),
+                ("C456", {"biopar": "EVI"}),
+                ("C789", {"biopar": "fAPAR"}, ["dev"]),
+            ],
+        )
+
+        assert list(registry.call_builders()) == [
+            {"id": "C123", "biopar": "NDVI"},
+            {"id": "C456", "biopar": "EVI"},
+            {"id": "C789", "biopar": "fAPAR"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" not in labels)) == [
+            {"id": "C123", "biopar": "NDVI"},
+            {"id": "C456", "biopar": "EVI"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" in labels)) == [
+            {"id": "C789", "biopar": "fAPAR"},
+        ]
+
     def test_duplicate_handling_and_labels(self):
         registry = CollectionMetadataBuilderRegistry()
 
@@ -837,3 +910,209 @@ class TestCollectionMetadataBuilderRegistry:
             {"id": "C456", "labels": []},
             {"id": "C789", "labels": ["dev", "staging"]},
         ]
+
+
+class RaisesSystemExit:
+    """
+    Test helper to check for triggering a SystemExit (e.g. as done by `argparse`)
+    with some error message on stderr.
+    """
+
+    def __init__(self, *, expected_exception=SystemExit, message: Optional[str] = None):
+        self.expected_exception = expected_exception
+        self.message = message
+
+    @contextlib.contextmanager
+    def raises(self, capsys: Optional[pytest.CaptureFixture] = None):
+        with pytest.raises(expected_exception=self.expected_exception):
+            yield
+        if self.message:
+            assert capsys, "capsys fixture should be provided"
+            assert self.message in capsys.readouterr().err
+
+
+class TestBuildItem:
+    def test_basic(self):
+        def build():
+            return {"id": "FOO"}
+
+        build_item = _BuildItem(collection_id="FOO", build=build, kwargs={}, labels=frozenset([]))
+        assert build_item.call() == {"id": "FOO"}
+
+    def test_auto_args(self):
+        def build(collection_id: str, biopar: str = "NDVI"):
+            return {"id": collection_id, "biopar": biopar}
+
+        build_item = _BuildItem(collection_id="FOO", build=build, kwargs={"biopar": "EVI"}, labels=frozenset([]))
+        assert build_item.call() == {"id": "FOO", "biopar": "EVI"}
+
+    def test_auto_kwargs(self):
+        def build(collection_id: str, **kwargs):
+            return {"id": collection_id, **kwargs}
+
+        build_item = _BuildItem(collection_id="FOO", build=build, kwargs={"biopar": "EVI"}, labels=frozenset([]))
+        assert build_item.call() == {"id": "FOO", "biopar": "EVI", "labels": frozenset([])}
+
+
+class TestLayerCatalogManagerCliApp:
+    @pytest.fixture()
+    def registry(self) -> CollectionMetadataBuilderRegistry:
+        registry = CollectionMetadataBuilderRegistry()
+        openeo_collection = registry.decorator
+
+        @openeo_collection("FOO")
+        def foo(collection_id):
+            return {
+                "id": collection_id,
+                "description": "Dummy 'FOO' collection",
+            }
+
+        @openeo_collection("BAR", label="dev")
+        def bar(collection_id):
+            return {
+                "id": collection_id,
+                "description": "Dummy 'BAR' collection",
+            }
+
+        return registry
+
+    @pytest.fixture()
+    def cli_app(self, registry) -> LayerCatalogManagerCliApp:
+        return LayerCatalogManagerCliApp(registry=registry)
+
+    @pytest.mark.parametrize(
+        ["args", "expected"],
+        [
+            (
+                ["generate"],
+                RaisesSystemExit(message="following arguments are required: catalog_path"),
+            ),
+            (
+                ["generate", "lcat.json"],
+                {"catalog_path": "lcat.json", "output_catalog_path": None, "cid_substring": None},
+            ),
+            (
+                ["generate", "lcat.json", "--output", "lcat-out.json"],
+                {"catalog_path": "lcat.json", "output_catalog_path": "lcat-out.json"},
+            ),
+            (
+                ["generate", "lcat.json", "-k", "ESA"],
+                {"catalog_path": "lcat.json", "cid_substring": "ESA"},
+            ),
+        ],
+    )
+    def test_parse_generate(self, cli_app: LayerCatalogManagerCliApp, args, expected, capsys) -> None:
+        parser = cli_app.build_argument_parser()
+
+        if isinstance(expected, RaisesSystemExit):
+            with expected.raises(capsys=capsys):
+                _ = parser.parse_args(args)
+        else:
+            args = parser.parse_args(args)
+            assert args.subcommand == "generate"
+            assert {k: getattr(args, k) for k in expected.keys()} == expected
+
+    @pytest.mark.parametrize(
+        ["args", "expected"],
+        [
+            (["list"], {"show_extended": False}),
+            (["list", "-l"], {"show_extended": True}),
+        ],
+    )
+    def test_parse_list(self, cli_app: LayerCatalogManagerCliApp, args, expected):
+        parser = cli_app.build_argument_parser()
+        args = parser.parse_args(args)
+        assert args.subcommand == "list"
+        assert {k: getattr(args, k) for k in expected.keys()} == expected
+
+    def test_handle_list(self, cli_app: LayerCatalogManagerCliApp, capsys) -> None:
+        cli_app.main(["list"])
+        stdout = capsys.readouterr().out
+        assert stdout.strip().split("\n") == ["BAR", "FOO"]
+
+    def test_handle_generate_no_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+        catalog_path = tmp_path / "catalog.json"
+        cli_app.main(["generate", str(catalog_path)])
+        catalog = json.loads(catalog_path.read_text())
+        assert catalog == [
+            {"id": "FOO", "description": "Dummy 'FOO' collection"},
+            {"id": "BAR", "description": "Dummy 'BAR' collection"},
+        ]
+
+        assert "Building metadata for collection_id='FOO'" in caplog.text
+        assert caplog.text == dirty_equals.IsStr(regex=r".*registry\.get_stats.*register\W+2.*", regex_flags=re.DOTALL)
+
+    def test_handle_generate_with_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+        catalog_path = tmp_path / "catalog.json"
+        pre_existing = [
+            {"id": "FOO", "description": "Original 'FOO'"},
+            {"id": "UNMANAGED", "description": "Some unmanaged collection"},
+        ]
+        catalog_path.write_text(json.dumps(pre_existing))
+        cli_app.main(["generate", str(catalog_path)])
+        catalog = json.loads(catalog_path.read_text())
+        assert catalog == [
+            {"id": "FOO", "description": "Dummy 'FOO' collection"},
+            {"id": "UNMANAGED", "description": "Some unmanaged collection"},
+            {"id": "BAR", "description": "Dummy 'BAR' collection"},
+        ]
+
+        assert "Unmanaged collections: ['UNMANAGED']" in caplog.text
+
+    def test_handle_generate_partitioning(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+        default_catalog_path = tmp_path / "catalog.json"
+        dev_catalog_path = tmp_path / "dev" / "catalogue.json"
+        foo_catalog_path = tmp_path / "foo" / "catafoo.json"
+        cli_app.main(
+            [
+                "generate",
+                str(default_catalog_path),
+                "--label-partition",
+                f"dev:{dev_catalog_path}",
+                "--label-partition",
+                f"foo:{foo_catalog_path}",
+            ]
+        )
+        default_catalog = json.loads(default_catalog_path.read_text())
+        dev_catalog = json.loads(dev_catalog_path.read_text())
+        foo_catalog = json.loads(foo_catalog_path.read_text())
+        assert (default_catalog, dev_catalog, foo_catalog) == (
+            [{"id": "FOO", "description": "Dummy 'FOO' collection"}],
+            [{"id": "BAR", "description": "Dummy 'BAR' collection"}],
+            [],
+        )
+
+    def test_handle_generate_partitioning_with_existing(
+        self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog
+    ) -> None:
+        default_catalog_path = tmp_path / "catalog.json"
+        default_catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        default_catalog_path.write_text(json.dumps([{"id": "UNMANAGED"}]))
+        dev_catalog_path = tmp_path / "dev" / "catalogue.json"
+        dev_catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        dev_catalog_path.write_text(json.dumps([{"id": "MANAGED_NOT"}]))
+        foo_catalog_path = tmp_path / "foo" / "catafoo.json"
+        cli_app.main(
+            [
+                "generate",
+                str(default_catalog_path),
+                "--label-partition",
+                f"dev:{dev_catalog_path}",
+                "--label-partition",
+                f"foo:{foo_catalog_path}",
+            ]
+        )
+        default_catalog = json.loads(default_catalog_path.read_text())
+        dev_catalog = json.loads(dev_catalog_path.read_text())
+        foo_catalog = json.loads(foo_catalog_path.read_text())
+        assert (default_catalog, dev_catalog, foo_catalog) == (
+            [
+                {"id": "UNMANAGED"},
+                {"id": "FOO", "description": "Dummy 'FOO' collection"},
+            ],
+            [
+                {"id": "MANAGED_NOT"},
+                {"id": "BAR", "description": "Dummy 'BAR' collection"},
+            ],
+            [],
+        )

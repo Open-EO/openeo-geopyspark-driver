@@ -7,14 +7,15 @@ extents, as well as quality filtering.
 Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-lon grid.
 """
 
-import sys
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Sequence, Tuple, Dict, List, Any
+from typing import Any, Optional, Sequence
 
 import numpy as np
 from netCDF4 import Dataset, num2date
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.utils import typechecked
 
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
@@ -28,7 +29,7 @@ COMMON_VARIABLES_IN_FILE = {
     "qa_value": "PRODUCT/qa_value",
 }
 
-all_gases: Dict[str, Dict[str, Any]] = {
+all_gases: dict[str, dict[str, Any]] = {
     # CO gas variables
     "gas_co": {
         "VARIABLE_LOC_IN_FILE": {
@@ -79,12 +80,94 @@ all_gases: Dict[str, Dict[str, Any]] = {
         "DEFAULT_BANDS": ["ozone_total_vertical_column"],
         "FILTER_VALUE": 0.5,  # default filter value for O3 as per documentation
     },
+    # AER_AI (UV Aerosol Index) gas variables: both the 340/380 nm and the
+    # 354/388 nm wavelength pairs are present in the same PRODUCT group.
+    "gas_aer_ai": {
+        "VARIABLE_LOC_IN_FILE": {
+            "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
+            "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
+        },
+        "DEFAULT_BANDS": ["aerosol_index_340_380"],
+        "FILTER_VALUE": 0.8,  # default filter value for AER_AI as per documentation
+    },
+    # CLOUD gas/product variables
+    "gas_cloud": {
+        "VARIABLE_LOC_IN_FILE": {
+            "cloud_fraction": "PRODUCT/cloud_fraction",
+            "cloud_top_pressure": "PRODUCT/cloud_top_pressure",
+            "cloud_base_pressure": "PRODUCT/cloud_base_pressure",
+            "cloud_top_height": "PRODUCT/cloud_top_height",
+            "cloud_base_height": "PRODUCT/cloud_base_height",
+            "cloud_optical_thickness": "PRODUCT/cloud_optical_thickness",
+        },
+        "DEFAULT_BANDS": ["cloud_fraction"],
+        "FILTER_VALUE": 0.5,  # default filter value for CLOUD as per documentation
+    },
+    # AER_LH (Aerosol Layer Height) gas/product variables
+    "gas_aer_lh": {
+        "VARIABLE_LOC_IN_FILE": {
+            "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
+            "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
+        },
+        "DEFAULT_BANDS": ["aerosol_mid_height"],
+        "FILTER_VALUE": 0.5,  # default filter value for AER_LH as per documentation
+    },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
+# Several openEO collection IDs share the same underlying gas/product file type
+# (all "CLOUD" sub-products, and the two "AER_AI" wavelength-pair variants), so
+# `parse_gas_from_filename` alone cannot distinguish which single band a given
+# collection should default to. This maps those openEO collection IDs to the
+# band they should load when no explicit `bands` filter is given, overriding
+# the (otherwise ambiguous) gas-level "DEFAULT_BANDS" above.
+COLLECTION_ID_DEFAULT_BAND: dict[str, str] = {
+    "SENTINEL5P_L2_CLOUD_FRACTION": "cloud_fraction",
+    "SENTINEL5P_L2_CLOUD_TOP_PRESSURE": "cloud_top_pressure",
+    "SENTINEL5P_L2_CLOUD_BASE_PRESSURE": "cloud_base_pressure",
+    "SENTINEL5P_L2_CLOUD_TOP_HEIGHT": "cloud_top_height",
+    "SENTINEL5P_L2_CLOUD_BASE_HEIGHT": "cloud_base_height",
+    "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS": "cloud_optical_thickness",
+    "SENTINEL5P_L2_AER_AI_340_380": "aerosol_index_340_380",
+    "SENTINEL5P_L2_AER_AI_354_388": "aerosol_index_354_388",
+}
 
-def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
+
+@typechecked
+def parse_gas_from_filename(filename: str) -> str:
+    """Extract the gas/product short name from a Sentinel-5P product filename.
+
+    Sentinel-5P L2 filenames follow the fixed-width naming convention
+    ``S5P_<processing>_L2__<PPPPPP>_<start>_<end>_<orbit>_<collection>_<processor>_<created>.nc``
+    where ``<PPPPPP>`` is a fixed-width (6 character), underscore-padded product code
+    (e.g. ``CO____``, ``NO2___``, ``AER_AI``). Splitting on ``"_"`` alone is not reliable
+    for product codes that themselves contain an underscore (e.g. ``AER_AI``), so the
+    product code is extracted using the fixed ``L2__`` marker instead.
+
+    :param filename: Sentinel-5P product filename (or full path).
+    :return: lowercased gas/product short name, e.g. ``"co"``, ``"aer_ai"``.
+    """
+    name = Path(filename).name
+    marker = "L2__"
+    idx = name.find(marker)
+    if idx == -1:
+        raise ValueError(f"Could not find '{marker}' marker in Sentinel-5P filename: {name}")
+    product_code = name[idx + len(marker) : idx + len(marker) + 6]
+    gas_name = product_code.rstrip("_").lower()
+    if not gas_name:
+        raise ValueError(f"Could not parse gas/product name from Sentinel-5P filename: {name}")
+    return gas_name
+
+
+@typechecked
+def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tuple[dict[str, str], list[str], float]:
     """Get gas variable locations, default bands, and filter values.
+
+    :param gas_type: gas/product short name as returned by :func:`parse_gas_from_filename`.
+    :param collection_id: optional openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``).
+        Several collection IDs share the same underlying gas/product file type (e.g. all "CLOUD"
+        sub-products), so the gas-level default band is ambiguous. When *collection_id* is given and
+        known, it overrides the gas-level default with the single band specific to that collection.
 
     Returns:
         gas_variables (dict): Dictionary containing gas variable locations in file.
@@ -92,34 +175,42 @@ def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
         filter_value (float): Default filter value for the gas.
     """
     gas_type = "gas_" + gas_type.lower()
-    gas_vars = all_gases.get(gas_type)
-    if gas_vars is None:
-        raise ValueError(f"Unknown gas type: {gas_type}")
+    gas_vars = all_gases[gas_type]
 
-    variable_loc = gas_vars.get("VARIABLE_LOC_IN_FILE")
-    if variable_loc is None or not isinstance(variable_loc, dict):
-        raise ValueError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
+    variable_loc = gas_vars["VARIABLE_LOC_IN_FILE"]
+    if not isinstance(variable_loc, dict):
+        raise TypeError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
 
-    default_bands = gas_vars.get("DEFAULT_BANDS")
-    if default_bands is None or not isinstance(default_bands, list):
+    default_bands = gas_vars["DEFAULT_BANDS"]
+    if not isinstance(default_bands, list):
         raise ValueError(f"DEFAULT_BANDS should be dictionary, but was '{default_bands}'")
 
-    filter_value = gas_vars.get("FILTER_VALUE")
-    if filter_value is None or not isinstance(filter_value, float):
-        raise ValueError(f"FILTER_VALUE should be dictionary, but was '{filter_value}'")
+    collection_default_band = COLLECTION_ID_DEFAULT_BAND.get(collection_id) if collection_id else None
+    if collection_default_band is not None:
+        if collection_default_band not in variable_loc:
+            raise ValueError(
+                f"Default band '{collection_default_band}' for collection '{collection_id}' "
+                f"is not a known variable for gas type '{gas_type}'"
+            )
+        default_bands = [collection_default_band]
+
+    filter_value = gas_vars["FILTER_VALUE"]
+    if not isinstance(filter_value, float):
+        raise TypeError(f"FILTER_VALUE should be dictionary, but was '{filter_value}'")
 
     variable_locs = {**variable_loc, **COMMON_VARIABLES_IN_FILE}
     return variable_locs, default_bands, filter_value
 
 
+@typechecked
 def load_data_from_file(
     file_path: Path,
     spatial_extent: Optional[Sequence],
     temporal_extent: Optional[Sequence],
-    bands,
-    variable_loc_in_file: Dict[str, str],
+    bands: list[str],
+    variable_loc_in_file: dict[str, str],
     filter_value=0.5,
-):
+) -> dict[str, Any]:
     """Load bands data from the NetCDF file.
 
     1. Validity checks:
@@ -150,10 +241,6 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     # Open the NetCDF file
     with Dataset(file_path, "r") as f:
         # Check if there is valid data based on spatial temporal extents and filter value
@@ -250,6 +337,7 @@ def load_data_from_file(
 #         return True
 
 
+@typechecked
 def get_temporal_mask_and_time(time_of_rows, temporal_extent: Optional[Sequence]):
     """Get temporal mask based on the temporal extent and get the time of data.
 
@@ -271,6 +359,7 @@ def get_temporal_mask_and_time(time_of_rows, temporal_extent: Optional[Sequence]
     return temporal_mask
 
 
+@typechecked
 def get_spatial_extent_mask(
     lat: np.ndarray, lon: np.ndarray, spatial_extent: Optional[Sequence], pixel_pad=1
 ) -> np.ndarray:
@@ -291,11 +380,6 @@ def get_spatial_extent_mask(
         mask (Array of bool): Boolean mask for the spatial extent.
 
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     if spatial_extent is None:
         spatial_mask = np.ones(lat.shape, dtype=bool)  # all pixels true
         return spatial_mask
@@ -339,6 +423,7 @@ def get_spatial_extent_mask(
 #     return data
 
 
+@typechecked
 def fill_and_mask_data(band_data, spatio_temporal_mask):
     """Fill nan values based on data mask and spatio-temporal mask.
 
@@ -359,6 +444,7 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
     return data
 
 
+@typechecked
 def _get_2d_data_from_mask(data, mask):
     """Extract 2-d arrays based on boolean mask."""
     if (mask.ndim != 2) or (data.ndim != 2):
@@ -367,6 +453,7 @@ def _get_2d_data_from_mask(data, mask):
     return data_2d
 
 
+@typechecked
 def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     """Crate grid for resampling based on bounding box and resolution.
     Args:
@@ -378,10 +465,6 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
         grid_x (Array of float): 2-d array representing the longitude grid.
         grid_y (Array of float): 2-d array representing the latitude grid.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     xmin, ymin, xmax, ymax = bbox
     if xmin > xmax:  # anti-meridian crossing
         xmax += 360  # temporarily shift to continuous range
@@ -394,9 +477,10 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     return grid_x, grid_y
 
 
+@typechecked
 def interpolate(
     source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
-):
+) -> np.ndarray:
     """Interpolate source data to target grid based on source and target coordinates.
 
     Args:
@@ -408,12 +492,8 @@ def interpolate(
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     from typing import Literal, cast
+
     from scipy.interpolate import griddata
 
     method = method.lower()
@@ -429,7 +509,8 @@ def interpolate(
     return interpolated_data
 
 
-def adapt_coordinates(source_coordinates, target_coordinates):
+@typechecked
+def adapt_coordinates(source_coordinates, target_coordinates) -> tuple:
     """Check and adapt coordinates for anti-meridian crossing.
 
     Args:
@@ -449,9 +530,10 @@ def adapt_coordinates(source_coordinates, target_coordinates):
     return adapted_source_coordinates, adapted_target_coordinates
 
 
+@typechecked
 def resample_data(
     data: dict, bands: list, spatial_extent: Sequence, resample_resolution: float, interpolation_method: str
-):
+) -> dict[str, np.ndarray]:
     """Resample data based on spatial extent and resample parameters.
 
     Args:
@@ -464,10 +546,6 @@ def resample_data(
     Returns:
         new_data (dict): Dictionary containing resampled data arrays for different bands.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     interpolated_data = {}  # dictionary to hold resampled data
     # create new grid for resampled data
     resampled_lon, resampled_lat = create_resample_grid(spatial_extent, resample_resolution)
@@ -498,7 +576,10 @@ def resample_data(
     return interpolated_data
 
 
-def apply_quality_filter(data, bands, quality_band="qa_value_mask"):
+@typechecked
+def apply_quality_filter(
+    data: dict[str, np.ndarray], bands: list, quality_band: str = "qa_value_mask"
+) -> dict[str, np.ndarray]:
     """Apply quality filter to the data based on quality band.
 
     Args:

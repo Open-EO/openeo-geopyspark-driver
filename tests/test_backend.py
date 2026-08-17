@@ -994,6 +994,132 @@ def test_k8s_sparkapplication_dict_gdal_envars_with_proxy(backend_config_path):
             assert problem_env_vars not in [e["name"] for e in spark_component_env]
 
 
+def test_k8s_sparkapplication_layer_catalog_init_container_disabled(backend_config_path):
+    """
+    When layer_catalog_init_image is DISABLED (the default), no initContainer
+    should be added for the layer catalog in either driver or executor.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="DISABLED",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="IfNotPresent",
+    )
+
+    for spark_component in ["driver", "executor"]:
+        init_containers = app_dict["spec"][spark_component].get("initContainers") or []
+        init_container_names = [c["name"] for c in init_containers]
+        assert "init-layercatalog" not in init_container_names
+
+
+def test_k8s_sparkapplication_layer_catalog_init_container_enabled(backend_config_path):
+    """
+    When layer_catalog_init_image is set to a real image, an initContainer named
+    init-layercatalog should be present in both driver and executor with the correct
+    image, pull policy, TARGET_DIR env var, volume mount, and resource limits.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="my-registry/layer-catalog-init:v1.2.3",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="IfNotPresent",
+    )
+
+    expected_init_container = {
+        "name": "init-layercatalog",
+        "image": "my-registry/layer-catalog-init:v1.2.3",
+        "imagePullPolicy": "IfNotPresent",
+        "env": [{"name": "TARGET_DIR", "value": "/opt/layercatalogs"}],
+        "volumeMounts": [{"name": "layercatalogs", "mountPath": "/opt/layercatalogs"}],
+        "resources": {
+            "requests": {"cpu": "50m", "memory": "64Mi"},
+            "limits": {"cpu": "200m", "memory": "64Mi"},
+        },
+    }
+
+    for spark_component in ["driver", "executor"]:
+        init_containers = app_dict["spec"][spark_component].get("initContainers", [])
+        init_container_names = [c["name"] for c in init_containers]
+        assert (
+            "init-layercatalog" in init_container_names
+        ), f"init-layercatalog not found in {spark_component} initContainers"
+        actual = next(c for c in init_containers if c["name"] == "init-layercatalog")
+        assert actual == expected_init_container
+
+
+def test_k8s_sparkapplication_layer_catalog_init_container_custom_pull_policy(backend_config_path):
+    """
+    The imagePullPolicy of the init container should reflect the value passed in,
+    e.g. Always instead of the IfNotPresent default.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="my-registry/layer-catalog-init:latest",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="Always",
+    )
+
+    for spark_component in ["driver", "executor"]:
+        init_containers = app_dict["spec"][spark_component].get("initContainers", [])
+        actual = next((c for c in init_containers if c["name"] == "init-layercatalog"), None)
+        assert actual is not None
+        assert actual["imagePullPolicy"] == "Always"
+
+
+def test_k8s_sparkapplication_layer_catalog_volume_disabled(backend_config_path):
+    """
+    When layer_catalog_init_image is DISABLED, no layercatalogs volume should
+    be present in spec.volumes, and no layercatalogs volumeMount in driver or executor.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="DISABLED",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="IfNotPresent",
+    )
+
+    volume_names = [v["name"] for v in app_dict["spec"].get("volumes", [])]
+    assert "layercatalogs" not in volume_names
+
+    for spark_component in ["driver", "executor"]:
+        mount_names = [m["name"] for m in app_dict["spec"][spark_component].get("volumeMounts", [])]
+        assert "layercatalogs" not in mount_names
+
+
+def test_k8s_sparkapplication_layer_catalog_volume_enabled(backend_config_path):
+    """
+    When layer_catalog_init_image is set, a layercatalogs emptyDir volume should
+    be present in spec.volumes, and a corresponding volumeMount in both driver
+    and executor so the Spark operator propagates the volume into the pod spec.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        layer_catalog_init_image="my-registry/layer-catalog-init:latest",
+        layer_catalog_init_dir="/opt/layercatalogs",
+        layer_catalog_init_pull_policy="IfNotPresent",
+    )
+
+    volumes = app_dict["spec"].get("volumes", [])
+    volume_names = [v["name"] for v in volumes]
+    assert "layercatalogs" in volume_names
+    layercatalogs_volume = next(v for v in volumes if v["name"] == "layercatalogs")
+    assert layercatalogs_volume == {"name": "layercatalogs", "emptyDir": {}}
+
+    for spark_component in ["driver", "executor"]:
+        mounts = app_dict["spec"][spark_component].get("volumeMounts", [])
+        lc_mount = next((m for m in mounts if m["name"] == "layercatalogs"), None)
+        assert lc_mount is not None, (
+            f"layercatalogs volumeMount missing from {spark_component} - "
+            "Spark operator requires this to propagate the volume into the pod spec"
+        )
+        assert lc_mount["mountPath"] == "/opt/layercatalogs"
+
+
 class TestGpsBatchJobs:
     _dummy_user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 

@@ -767,6 +767,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 {**feature_flags, "load_stac_feature_flags": load_stac_feature_flags},
                 jvm,
                 spatial_extent=load_params.spatial_extent,
+                collection_id=collection_id,
             )
         elif layer_source_type == "stac":
             cube = load_stac(

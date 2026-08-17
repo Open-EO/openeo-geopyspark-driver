@@ -2412,6 +2412,331 @@
     }
   },
   {
+    "id": "SENTINEL5P_L2_AER_AI_340_380",
+    "title": "Sentinel-5P TROPOMI UV Aerosol Index (340/380 nm) L2",
+    "description": "Sentinel-5P TROPOMI Level-2 Ultraviolet Aerosol Index (UVAI, also known as Absorbing Aerosol Index) product, computed from the 340 nm and 380 nm bands.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["aerosol_index_340_380", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-ai-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "aerosol_index_340_380", "description": "UV Aerosol Index (340/380 nm)"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_AER_AI_354_388",
+    "title": "Sentinel-5P TROPOMI UV Aerosol Index (354/388 nm) L2",
+    "description": "Sentinel-5P TROPOMI Level-2 Ultraviolet Aerosol Index (UVAI, also known as Absorbing Aerosol Index) product, computed from the 354 nm and 388 nm bands.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["aerosol_index_354_388", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-ai-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "aerosol_index_354_388", "description": "UV Aerosol Index (354/388 nm)"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_AER_LH",
+    "title": "Sentinel-5P TROPOMI Aerosol Layer Height L2",
+    "description": "Sentinel-5P TROPOMI Level-2 aerosol layer height product: the height at the center of an elevated aerosol layer (e.g. dust, smoke, volcanic ash) relative to the geoid, retrieved from oxygen A-band measurements.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-lh-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__AER_LH"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "aerosol_mid_height", "description": "Height at center of aerosol layer relative to the geoid", "unit": "m"},
+        {"name": "aerosol_mid_pressure", "description": "Air pressure at center of aerosol layer", "unit": "Pa"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
+    "title": "Sentinel-5P TROPOMI Cloud Base Pressure L2",
+    "description": "Sentinel-5P TROPOMI Level-2 cloud base pressure product.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["cloud_base_pressure", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "cloud_base_pressure", "description": "Cloud base pressure", "unit": "Pa"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
+    "title": "Sentinel-5P TROPOMI Cloud Top Pressure L2",
+    "description": "Sentinel-5P TROPOMI Level-2 cloud top pressure product.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["cloud_top_pressure", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "cloud_top_pressure", "description": "Cloud top pressure", "unit": "Pa"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
+    "title": "Sentinel-5P TROPOMI Cloud Base Height L2",
+    "description": "Sentinel-5P TROPOMI Level-2 cloud base height product.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["cloud_base_height", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "cloud_base_height", "description": "Cloud base height", "unit": "m"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
+    "title": "Sentinel-5P TROPOMI Cloud Top Height L2",
+    "description": "Sentinel-5P TROPOMI Level-2 cloud top height product.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["cloud_top_height", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "cloud_top_height", "description": "Cloud top height", "unit": "m"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
+    "title": "Sentinel-5P TROPOMI Cloud Optical Thickness L2",
+    "description": "Sentinel-5P TROPOMI Level-2 cloud optical thickness product.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["cloud_optical_thickness", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "cloud_optical_thickness", "description": "Cloud optical thickness"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD_FRACTION",
+    "title": "Sentinel-5P TROPOMI Cloud Fraction L2",
+    "description": "Sentinel-5P TROPOMI Level-2 cloud fraction product.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["cloud_fraction", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        },
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "cloud_fraction", "description": "Cloud fraction"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
     "id": "SENTINEL3_SLSTR_L2_LST",
     "title": "Daily global Sentinel-3 Land surface temperature at 1km resolution",
     "description": "*Experimental* Daily global Sentinel-3 land surface temperature at 1km resolution. Land surface temperature is defined as the effective radiometric temperature of the Earth's surface \"skin\" in the instrument field of view. Here, \"skin\" is referring to the top surface in bare soil conditions and to the effective emitting temperature of vegetation \"canopies\" as determined from a view of the top of a canopy.\n This product is derived from the SLSTR (Sea and Land Surface Temperature Radiometer) instrument on board the Sentinel-3 satellite.\n\n Multiple observations may be available per day, we recommend temporal aggregation to create daily composites. ",

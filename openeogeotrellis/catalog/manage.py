@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+import argparse
 import collections
 import copy
 import dataclasses
@@ -26,14 +27,14 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
 
-import requests
 
-from openeo.util import dict_no_none
+from openeo.util import dict_no_none, TimingLogger
 from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
+from openeo_driver.util.http import requests_with_retry
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
 from openeogeotrellis.util.compat import function_supports_kwargs
 
 _log = logging.getLogger(__name__)
@@ -68,33 +69,51 @@ GUESS_BANDS_FROM_UPSTREAM = "guess_bands_from_upstream"
 
 
 class LayerCatalog:
-    def __init__(self, collections: Iterable[dict] = ()):
-        self._collections = list(collections)
+    """
+    List of collection metadata entries.
+    """
+
+    def __init__(self, collections: Iterable[CollectionMetadataDict] = ()):
+        self._collections: List[CollectionMetadataDict] = list(collections)
         self._original_collection_ids = frozenset(c["id"] for c in self._collections)
         self._managed_collection_ids = set()
 
     @classmethod
-    def load_json_file(cls, path: Union[str, Path]) -> "LayerCatalog":
-        _log.info(f"Loading layer catalog from {path=}")
-        with open(path, mode="r", encoding="utf-8") as f:
-            collections = json.load(f)
-        _log.info(f"Found {len(collections)=}")
+    def from_json_file(cls, path: Union[str, Path, None], allow_empty: bool = True) -> "LayerCatalog":
+        if isinstance(path, (str, Path)):
+            path = Path(path)
+            if path.exists():
+                _log.info(f"Loading layer catalog from {path=}")
+                with open(path, mode="r", encoding="utf-8") as f:
+                    collections = json.load(f)
+                _log.info(f"Loaded {len(collections)=}")
+            elif allow_empty:
+                collections = []
+            else:
+                raise FileNotFoundError(path)
+        elif path is None and allow_empty:
+            collections = []
+        else:
+            raise ValueError(path)
+
         return cls(collections=collections)
 
     def write_json_file(
         self,
         path: Union[str, Path],
+        *,
         indent: Union[int, None] = 2,
         separators: Union[Tuple[str, str], None] = None,
         sort_keys: bool = False,
     ) -> None:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, mode="w", encoding="utf-8") as f:
             json.dump(
                 self._collections, f, indent=indent, separators=separators, ensure_ascii=False, sort_keys=sort_keys
             )
             f.write("\n")
-
 
     def index_of(self, id: str) -> Union[int, None]:
         for i, collection in enumerate(self._collections):
@@ -249,7 +268,7 @@ class BandMetadata:
 @functools.lru_cache
 def get_upstream_stac_metadata(stac_url: str) -> dict:
     _log.info(f"Fetching upstream STAC metadata from {stac_url=}")
-    response = requests.get(stac_url)
+    response = requests_with_retry().get(stac_url)
     response.raise_for_status()
     metadata = response.json()
     assert metadata["type"] == "Collection"
@@ -610,13 +629,38 @@ class _BuildItem:
     kwargs: dict
     labels: FrozenSet[str]
 
+    def call(self):
+        # Pass extra args if `build()` accepts them
+        kwargs = copy.deepcopy(self.kwargs)
+        for arg, value in {
+            "collection_id": self.collection_id,
+            "labels": self.labels,
+        }.items():
+            if function_has_argument(self.build, arg) or function_supports_kwargs(self.build):
+                assert arg not in self.kwargs, f"{arg=} should not be in {kwargs=}"
+                kwargs.update({arg: value})
+
+        # Call the builder now
+        metadata = self.build(**kwargs)
+        if self.collection_id != metadata.get("id"):
+            raise MetadataException(f"Generated {metadata.get('id')=} does not match {self.collection_id=}")
+
+        return metadata
+
+
 
 class CollectionMetadataBuilderRegistry:
     """
-    Registry for collection metadata builder functions.
-    """
+    Registry for "builder functions" that produce openEO collection metadata.
 
-    # TODO: support labels (e.g. to flag collections for "prod", "dev", ...)
+    Building metadata for a single collection can take a bit of time
+    because of HTTP requests to external resources,
+    which easily adds up for large catalogs of collections.
+    This registry utility separates the definition of these builders from executing them,
+    which allows for more flexibily:
+    dry-run listings, building the metadata for just a subset of collections by label,
+    parallelization, splitting the layercatalog in mulitple parts, customized builds per deploy target, ...
+    """
 
     def __init__(self):
         self._builders: List[_BuildItem] = []
@@ -627,9 +671,9 @@ class CollectionMetadataBuilderRegistry:
         collection_id: CollectionId,
         builder: Callable,
         *,
+        kwargs: Optional[dict] = None,
         label: Optional[str] = None,
         labels: Iterable[str] = (),
-        kwargs: Optional[dict] = None,
     ):
         """
         Register a metadata builder for given collection id,
@@ -643,6 +687,32 @@ class CollectionMetadataBuilderRegistry:
         self._builders.append(_BuildItem(collection_id=collection_id, build=builder, kwargs=kwargs, labels=labels))
         self._stats["register"] += 1
 
+    def register_multiple(self, builder: Callable, *, cases: List[tuple]):
+        """
+        Register multiple collection cases on the same builder.
+
+        Usage example:
+
+            registry.register_multiple(
+                builder,
+                cases=[
+                    # At least a collection id should be specified:
+                    ("COLLECTION123", ),
+                    # Custom kwargs can be specified as second element
+                    ("COLLECTION_FOO", {"biopar": "FOO"}),
+                    # Labels are optional third element
+                    ("COLLECTION_BAR", {"biopar": "BAR"}, ["dev"]),
+                ]
+            )
+        """
+        for case in cases:
+            if not 1 <= len(case) <= 3:
+                raise MetadataException(f"Case should have 1,2 or 3 elements, got {case=}")
+            collection_id = case[0]
+            kwargs = case[1] if len(case) >= 2 else {}
+            labels = case[2] if len(case) >= 3 else []
+            self.register(collection_id=collection_id, builder=builder, kwargs=kwargs, labels=labels)
+
     def decorator(
         self,
         collection_id: CollectionId,
@@ -653,12 +723,49 @@ class CollectionMetadataBuilderRegistry:
     ):
         """
         Decorator to compactly register a builder function
-        optionally with kwargs to use at build time
+        optionally with kwargs to use at build time.
+
+        Suggested usage:
+
+            openeo_collection = registry.decorator
+
+            @openeo_collection("SENTINEL_FOO")
+            def build_sentinel_foo() -> dict:
+                ...
+
         """
 
         def wrapper(build: Callable):
             self.register(collection_id=collection_id, builder=build, label=label, labels=labels, kwargs=kwargs)
             self._stats["decorated"] += 1
+            return build
+
+        return wrapper
+
+    def decorator_multiple(self, cases: Union[Dict[str, dict], List[tuple]]):
+        """
+        Decorator to compactly register a builder function
+        for multiple cases
+
+        Suggested usage:
+
+            openeo_collections = registry.decorator_multiple
+
+            @openeo_collections(
+                {
+                    "SENTINEL_FOO": {"biopar": "FOO"},
+                    "SENTINEL_BAR": {"biopar": "BAR"},
+                }
+            )
+            def build_biopar(collection_id: str, biopar: str) -> dict:
+                ....
+        """
+        def wrapper(build: Callable):
+            nonlocal cases
+            if isinstance(cases, dict):
+                _log.warning("Deprecated dict usage in decorator_multiple")
+                cases = list(cases.items())
+            self.register_multiple(builder=build, cases=cases)
             return build
 
         return wrapper
@@ -692,35 +799,163 @@ class CollectionMetadataBuilderRegistry:
         *,
         collection_id_filter: Optional[Callable[[CollectionId], bool]] = None,
         label_filter: Optional[Callable[[FrozenSet[str]], bool]] = None,
-    ) -> Iterator[dict]:
+        include_build_item: bool = False,
+    ) -> Iterator[Union[CollectionMetadataDict, Tuple[CollectionMetadataDict, _BuildItem]]]:
         """
         Iterate through all or a subset of the builders and call them with their associated args/kwargs
         to produce metadata
 
         :param collection_id_filter: optional filter to select a subset based on collection id
+        :param include_build_item: whether to include build item in return
         :return:
         """
-        builders = self.get_builders(collection_id_filter=collection_id_filter, label_filter=label_filter)
-        for i, builder in enumerate(builders):
-            collection_id = builder.collection_id
-            _log.info(f"[{i+1}/{len(builders)}] Building metadata for {collection_id=}")
-
-            # Pass extra args if build accepts them
-            kwargs = builder.kwargs
-            for arg, value in {
-                "collection_id": collection_id,
-                "labels": builder.labels,
-            }.items():
-                if function_has_argument(builder.build, arg) or function_supports_kwargs(builder.build):
-                    assert arg not in builder.kwargs, f"{arg=} should not be in {kwargs=}"
-                    kwargs = dict(kwargs, **{arg: value})
-
-            # Call the builder now
-            metadata = builder.build(**kwargs)
-            if collection_id != metadata.get("id"):
-                raise MetadataException(f"Generated {metadata.get('id')=} does not match {collection_id=}")
-            yield metadata
+        build_items = self.get_builders(collection_id_filter=collection_id_filter, label_filter=label_filter)
+        for i, build_item in enumerate(build_items):
+            _log.info(f"[{i+1}/{len(build_items)}] Building metadata for collection_id={build_item.collection_id!r}")
+            metadata = build_item.call()
             self._stats["build call"] += 1
+
+            if include_build_item:
+                yield metadata, build_item
+            else:
+                yield metadata
 
     def get_stats(self) -> dict:
         return self._stats
+
+
+class LayerCatalogManagerCliApp:
+    """
+    Generic command line app for layer catalog management
+    """
+
+    def __init__(self, *, registry: CollectionMetadataBuilderRegistry):
+        self.collection_metadata_builder_registry = registry
+
+    def main(self, argv: Optional[Iterable[str]] = None) -> None:
+        argument_parser = self.build_argument_parser()
+        args = argument_parser.parse_args(argv)
+        self.setup_logging(args=args)
+        with TimingLogger(title=f"LayerCatalogManagerCliApp.main: {args.subcommand}", logger=_log):
+            args.handler(args=args)
+
+    def build_argument_parser(self) -> argparse.ArgumentParser:
+        cli = argparse.ArgumentParser()
+        # Generic cli args
+        cli.add_argument("-v", "--verbose", action="store_true")
+        # Subcommands
+        subparsers = cli.add_subparsers(dest="subcommand", required=True)
+
+        # Subcommand: generate
+        parser_generate = subparsers.add_parser("generate", help="Generate layer catalog")
+        parser_generate.set_defaults(handler=self.handle_generate)
+        parser_generate.add_argument(
+            "catalog_path",
+            help="Layer catalog JSON file to load (if available) and to overwrite (unless a different output path is specified)",
+        )
+        parser_generate.add_argument(
+            "--output",
+            dest="output_catalog_path",
+            default=None,
+            help="Output layer catalog JSON file (to specify when to write to a different file than input)",
+        )
+        parser_generate.add_argument(
+            "-k",
+            dest="cid_substring",
+            help="Only update collections with id matching this given substring.",
+        )
+        parser_generate.add_argument(
+            "--label-partition",
+            metavar="LABEL:PATH",
+            action="append",
+            default=[],
+            help="Enable label based layer catalog partitioning: store collection metadata from builder with specified label in a different JSON file. Can be specified multiple times.",
+        )
+
+        # Subcommand: list
+        parser_list = subparsers.add_parser("list", help="List managed openEO collection ids")
+        parser_list.set_defaults(handler=self.handle_list)
+        parser_list.add_argument(
+            "-l", dest="show_extended", action="store_true", help="Show additional build info per collection"
+        )
+
+        # TODO other possible subcommands:
+        #       health check (e.g. check for unmanaged collections, check for run-time enrichment, ...)
+
+        return cli
+
+    def setup_logging(self, args: argparse.Namespace) -> None:
+        # TODO: option to not do rich logging (or detect when inappropriate)?
+        try:
+            # Use fancy logging if `rich` is available in environment.
+            import rich.logging
+            import rich.console
+
+            log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+        except ImportError:
+            log_handlers = []
+        logging.basicConfig(
+            level=logging.DEBUG if args.verbose else logging.INFO,
+            handlers=log_handlers,
+        )
+
+    def handle_generate(self, args: argparse.Namespace) -> List[Path]:
+
+        partitions: Dict[Optional[str], Tuple[LayerCatalog, Path]] = {}
+        # Base/default layer catalog partition (at key `None`)
+        DEFAULT_KEY = None
+        partitions[DEFAULT_KEY] = (
+            LayerCatalog.from_json_file(path=args.catalog_path, allow_empty=True),
+            Path(args.output_catalog_path or args.catalog_path),
+        )
+
+        # Optional label based partitions
+        search_labels = []
+        for label_partition in args.label_partition:
+            label, output_path = label_partition.split(":")
+            search_labels.append(label)
+            partitions[label] = (
+                LayerCatalog.from_json_file(path=output_path, allow_empty=True),
+                Path(output_path),
+            )
+
+        # Build collection_id filter
+        if cid_substring := args.cid_substring:
+            collection_id_filter = lambda cid: cid_substring in cid
+        else:
+            collection_id_filter = None
+
+        for metadata, build_item in self.collection_metadata_builder_registry.call_builders(
+            collection_id_filter=collection_id_filter,
+            include_build_item=True,
+        ):
+            # Find layer catalog partition by label: pick first match, and fallback to `None`
+            partition_key = ([l for l in search_labels if l in build_item.labels] + [DEFAULT_KEY])[0]
+            layer_catalog = partitions.get(partition_key)[0]
+            layer_catalog.set_collection_metadata(metadata=metadata)
+
+        for layer_catalog, output_path in partitions.values():
+            layer_catalog.write_json_file(output_path)
+
+            # Some stats
+            _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
+            _log.info(f"{layer_catalog.get_stats()=}")
+            unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
+            _log.log(
+                level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
+                msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
+            )
+
+        return [p for _, p in partitions.values()]
+
+    def handle_list(self, args: argparse.Namespace) -> None:
+        # TODO: add collection counter
+        # TODO: (option to) render in Markdown format
+        for item in sorted(
+            self.collection_metadata_builder_registry.get_builders(),
+            key=lambda item: item.collection_id,
+        ):
+            if args.show_extended:
+                print(item.collection_id, f"labels={sorted(item.labels)}", f"kwargs={item.kwargs}")
+            else:
+                print(item.collection_id)

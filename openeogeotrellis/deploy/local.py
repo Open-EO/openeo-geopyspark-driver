@@ -2,6 +2,7 @@
 """
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
 """
+
 import datetime
 import logging
 import os
@@ -14,9 +15,10 @@ from typing import Optional
 
 import openeo_driver.config.load
 from openeo_driver.server import run_gunicorn
-from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level, LOG_HANDLER_STDERR_JSON
+from openeo_driver.util.logging import LOG_HANDLER_STDERR_JSON, get_logging_config, setup_logging, show_log_level
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+
 from openeogeotrellis.config import get_backend_config
 
 _log = logging.getLogger(__name__)
@@ -191,6 +193,7 @@ def get_minikube_ip() -> Optional[str]:
     except Exception as e:
         _log.warning(f"Failed to get minikube IP: {e}")
         return None
+
 
 def setup_environment(log_dir: Path = Path.cwd()):
     repository_root = Path(__file__).parent.parent.parent

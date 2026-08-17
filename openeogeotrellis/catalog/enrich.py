@@ -3,8 +3,8 @@ import functools
 import logging
 from typing import Callable, Dict, List, Optional, Union
 
-import requests
 from openeo.util import deep_get
+from openeo_driver.util.http import requests_with_retry
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.config import get_backend_config
@@ -142,7 +142,7 @@ def _enrichment_metadata_from_stac(
     links_filter: Optional[LinksFilter] = None,
 ) -> dict:
     """Fetch and normalise STAC collection metadata for enrichment purposes."""
-    resp = requests.get(url=stac_url, timeout=10)
+    resp = requests_with_retry().get(url=stac_url, timeout=10)
     resp.raise_for_status()
     metadata: dict = resp.json()
 

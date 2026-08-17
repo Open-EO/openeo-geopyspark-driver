@@ -18,6 +18,7 @@ without compromising stable operations.
 - Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
 - `load_stac`: disable version-migration of certain properties (e.g. `proj:epsg`) to avoid breaking post-query property filtering, and support feature flag to disable or fine-tune post-query property filtering ([#1728](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1728))
 - Improved support for separate "derived_from" auxiliary links on kubernetes deployments ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
+- Add `load_stac` feature flag `use_raw_asset_href` to force usage of raw asset href instead of leveraging standard pystac href normalization ([#1748](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1748))
 
 
 ## 0.72.0

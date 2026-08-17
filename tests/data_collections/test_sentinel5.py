@@ -1,14 +1,21 @@
+from __future__ import annotations
+
 import calendar
+import glob
 import logging
 import os.path
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 import rasterio
 import xarray
+
+from openeogeotrellis.utils import typechecked
 
 if __name__ == "__main__":
     import openeogeotrellis.deploy.local
@@ -20,11 +27,13 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_product
+from openeogeotrellis.collections.sentinel5p_functions import all_gases, parse_gas_from_filename
 
 np.random.seed(42)
 
 _log = logging.getLogger(__name__)
 
+@typechecked
 def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
     """Create a minimal synthetic Sentinel-5P NetCDF file for unit tests.
 
@@ -82,7 +91,7 @@ def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
 
 # Per-product spec used to synthesize NetCDF fixtures and to drive the parametrized
 # "default bands" test below: name -> (filename product code, band builder, qa_value, expected default band count).
-def _co_bands():
+def _co_bands() -> dict[str, Any]:
     nd = np.random.uniform(0.025, 0.040, (20, 10))
     assert isinstance(nd, np.ndarray)
     co_col = nd.astype(np.float32)
@@ -92,13 +101,15 @@ def _co_bands():
     }
 
 
-def _no2_bands():
+@typechecked
+def _no2_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(1e-5, 5e-5, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"nitrogendioxide_tropospheric_column": nd.astype(np.float32)}
 
 
-def _ch4_bands():
+@typechecked
+def _ch4_bands() -> dict[str, Any]:
     nd = np.random.uniform(1800, 1900, (20, 10))
     assert isinstance(nd, np.ndarray)
     ch4_ratio = nd.astype(np.float32)
@@ -108,22 +119,63 @@ def _ch4_bands():
     }
 
 
-def _so2_bands():
+@typechecked
+def _so2_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(-1e-4, 5e-4, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"sulfurdioxide_total_vertical_column": nd.astype(np.float32)}
 
 
-def _hcho_bands():
+@typechecked
+def _hcho_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(1e-5, 1e-4, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"formaldehyde_tropospheric_vertical_column": nd.astype(np.float32)}
 
 
-def _o3_bands():
+@typechecked
+def _o3_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(0.05, 0.09, (20, 10))
     assert isinstance(nd, np.ndarray)
     return {"ozone_total_vertical_column": nd.astype(np.float32)}
+
+
+@typechecked
+def _aer_ai_bands() -> dict[str, np.ndarray]:
+    nd = np.random.uniform(-1.0, 2.0, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    return {
+        "aerosol_index_340_380": nd.astype(np.float32),
+        "aerosol_index_354_388": (nd * 0.95).astype(np.float32),
+    }
+
+
+@typechecked
+def _cloud_bands() -> dict[str, np.ndarray]:
+    fraction = np.random.uniform(0.0, 1.0, (20, 10)).astype(np.float32)
+    top_pressure = np.random.uniform(20000, 60000, (20, 10)).astype(np.float32)
+    base_pressure = top_pressure + np.random.uniform(1000, 5000, (20, 10)).astype(np.float32)
+    top_height = np.random.uniform(3000, 10000, (20, 10)).astype(np.float32)
+    base_height = top_height - np.random.uniform(500, 2000, (20, 10)).astype(np.float32)
+    optical_thickness = np.random.uniform(1.0, 50.0, (20, 10)).astype(np.float32)
+    return {
+        "cloud_fraction": fraction,
+        "cloud_top_pressure": top_pressure,
+        "cloud_base_pressure": base_pressure,
+        "cloud_top_height": top_height,
+        "cloud_base_height": base_height,
+        "cloud_optical_thickness": optical_thickness,
+    }
+
+
+@typechecked
+def _aer_lh_bands():
+    mid_height = np.random.uniform(1000, 8000, (20, 10)).astype(np.float32)
+    mid_pressure = np.random.uniform(30000, 90000, (20, 10)).astype(np.float32)
+    return {
+        "aerosol_mid_height": mid_height,
+        "aerosol_mid_pressure": mid_pressure,
+    }
 
 
 SYNTHETIC_PRODUCT_SPECS = {
@@ -133,6 +185,9 @@ SYNTHETIC_PRODUCT_SPECS = {
     "so2": ("SO2____", _so2_bands, 0.6, 1),
     "hcho": ("HCHO___", _hcho_bands, 0.6, 1),
     "o3": ("O3_____", _o3_bands, 0.6, 1),
+    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 1),
+    "cloud": ("CLOUD__", _cloud_bands, 0.5, 1),
+    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 1),
 }
 
 
@@ -180,7 +235,7 @@ def test_read_product_returns_tiles(synthetic_co_file):
         resolution=0.1,
     )
     assert len(result) > 0, "Expected at least one tile"
-    key, tile = result[0]
+    _, tile = result[0]
     assert tile.cells.shape[0] == 2, "Expected 2 bands"
     assert tile.cells.shape[1] == 4, "Expected tile_size rows"
     assert tile.cells.shape[2] == 4, "Expected tile_size cols"
@@ -260,7 +315,7 @@ def test_invalid_time_exception():
     assert ["Input temporal extent is not in the file" in str(excinfo.value)]
 
 
-@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3"])
+@pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3", "aer_ai", "cloud", "aer_lh"])
 def test_read_product_default_bands_per_product(synthetic_products, product_name):
     """read_product uses each product's default band(s) when band_names is empty."""
     _product_code, _bands_fn, _qa_value, expected_band_count = SYNTHETIC_PRODUCT_SPECS[product_name]
@@ -283,6 +338,48 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
     assert (
         tile.cells.shape[0] == expected_band_count
     ), f"Expected {expected_band_count} default band(s) for {product_name}"
+
+
+@pytest.mark.parametrize(
+    "collection_id, expected_band",
+    [
+        ("SENTINEL5P_L2_CLOUD_FRACTION", "cloud_fraction"),
+        ("SENTINEL5P_L2_CLOUD_TOP_PRESSURE", "cloud_top_pressure"),
+        ("SENTINEL5P_L2_CLOUD_BASE_PRESSURE", "cloud_base_pressure"),
+        ("SENTINEL5P_L2_CLOUD_TOP_HEIGHT", "cloud_top_height"),
+        ("SENTINEL5P_L2_CLOUD_BASE_HEIGHT", "cloud_base_height"),
+        ("SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS", "cloud_optical_thickness"),
+    ],
+)
+def test_read_product_default_band_per_cloud_collection(synthetic_products, collection_id, expected_band):
+    """Without an explicit `bands` filter, each CLOUD collection ID should default to its own
+    band, not silently fall back to `cloud_fraction` (the shared gas-level default)."""
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+            "key_epsg": 4326,
+        }
+    ]
+    result_default = read_product(
+        (synthetic_products["cloud"], features),
+        band_names=[],
+        tile_size=4,
+        resolution=0.1,
+        collection_id=collection_id,
+    )
+    result_explicit = read_product(
+        (synthetic_products["cloud"], features),
+        band_names=[expected_band],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert len(result_default) > 0 and len(result_explicit) > 0
+    _key_default, tile_default = result_default[0]
+    _key_explicit, tile_explicit = result_explicit[0]
+    assert tile_default.cells.shape[0] == 1
+    np.testing.assert_array_equal(tile_default.cells, tile_explicit.cells)
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +413,81 @@ def assert_tif_file_is_healthy(tif_path):
     if errors:
         print(f"COG validation errors for {tif_path}: {errors}")
     assert is_valid_cog, str(errors)
+
+
+# Directory (under /eodata) known to contain at least one real product file for each gas/product
+# short name, used to cross-check the `FILTER_VALUE` configured in `all_gases` against the
+# `qa_value` variable's `comment` attribute embedded in the actual netCDF product.
+GAS_TYPE_SAMPLE_DIR = {
+    "co": "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2024/09/02",
+    "no2": "/eodata/Sentinel-5P/TROPOMI/L2__NO2___/2024/09/02",
+    "ch4": "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2024/10/07",
+    "so2": "/eodata/Sentinel-5P/TROPOMI/L2__SO2___/2024/12/01",
+    "hcho": "/eodata/Sentinel-5P/TROPOMI/L2__HCHO__/2024/10/07",
+    "o3": "/eodata/Sentinel-5P/TROPOMI/L2__O3____/2024/10/07",
+    "aer_ai": "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2024/10/07",
+    "cloud": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_/2023/06/01",
+    "aer_lh": "/eodata/Sentinel-5P/TROPOMI/L2__AER_LH/2024/01/02",
+}
+
+
+def _get_qa_value_recommended_threshold(nc_path) -> float:
+    """Parse the recommended qa_value filtering threshold from the netCDF product's
+    `PRODUCT/qa_value` variable `comment` attribute, e.g.:
+    "... Recommend to ignore data with qa_value < 0.5" -> 0.5
+    """
+    import netCDF4
+
+    with netCDF4.Dataset(nc_path) as ds:
+        comment = ds.groups["PRODUCT"].variables["qa_value"].comment
+    match = re.search(r"qa_value\s*<\s*([\d.]+)", comment)
+    assert match, f"Could not parse qa_value threshold from comment: {comment!r}"
+    return float(match.group(1))
+
+
+@pytest.mark.parametrize(
+    "gas_short_name",
+    [
+        "co",
+        pytest.param(
+            "no2",
+            marks=pytest.mark.xfail(
+                reason="NO2 intentionally uses a stricter documented qa_value threshold (0.75) "
+                "than the generic in-file recommendation (0.5), to filter out cloud/aerosol effects "
+                "on the tropospheric column.",
+                strict=True,
+            ),
+        ),
+        "ch4",
+        "so2",
+        "hcho",
+        "o3",
+        pytest.param(
+            "aer_ai",
+            marks=pytest.mark.xfail(
+                reason="AER_AI intentionally uses a stricter documented qa_value threshold (0.8) "
+                "than the generic in-file recommendation (0.5), as recommended for aerosol index products.",
+                strict=True,
+            ),
+        ),
+        "cloud",
+        "aer_lh",
+    ],
+)
+def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
+    """The FILTER_VALUE configured for each gas/product in `all_gases` should match the qa_value
+    threshold documented in the `comment` attribute of a real product's netCDF metadata, unless
+    explicitly (and intentionally) overridden with a stricter, externally-documented threshold."""
+    sample_dir = GAS_TYPE_SAMPLE_DIR[gas_short_name]
+    nc_files = glob.glob(os.path.join(sample_dir, "*.nc"))
+    assert nc_files, f"No sample netCDF file found for gas '{gas_short_name}' in {sample_dir}"
+
+    parsed_gas_short_name = parse_gas_from_filename(nc_files[0])
+    assert parsed_gas_short_name == gas_short_name
+
+    metadata_threshold = _get_qa_value_recommended_threshold(nc_files[0])
+    configured_threshold = all_gases["gas_" + gas_short_name]["FILTER_VALUE"]
+    assert configured_threshold == metadata_threshold
 
 
 class TestSentinel5:
@@ -382,7 +554,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_SO2",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
                 ["sulfurdioxide_total_vertical_column", "qa_value"],
             ),
             (
@@ -397,8 +569,78 @@ class TestSentinel5:
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
                 ["ozone_total_vertical_column", "qa_value"],
             ),
+            (
+                "SENTINEL5P_L2_AER_AI_340_380",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["aerosol_index_340_380", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_AER_AI_354_388",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["aerosol_index_354_388", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_base_pressure", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_top_pressure", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_base_height", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_top_height", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_optical_thickness", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_CLOUD_FRACTION",
+                {"west": 4, "south": 32, "east": 11, "north": 37},
+                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
+                ["cloud_fraction", "qa_value"],
+            ),
+            (
+                "SENTINEL5P_L2_AER_LH",
+                {"west": 1, "south": 33, "east": 11, "north": 37},
+                ["2024-01-02T12:00:00Z", "2024-01-02T14:00:00Z"],
+                ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
+            ),
         ],
-        ids=["co", "no2", "ch4", "so2", "hcho", "o3"],
+        ids=[
+            "co",
+            "no2",
+            "ch4",
+            "so2",
+            "hcho",
+            "o3",
+            "aer_ai_340_380",
+            "aer_ai_354_388",
+            "cloud_base_pressure",
+            "cloud_top_pressure",
+            "cloud_base_height",
+            "cloud_top_height",
+            "cloud_optical_thickness",
+            "cloud_fraction",
+            "aer_lh",
+        ],
     )
     def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
         process_graph = {

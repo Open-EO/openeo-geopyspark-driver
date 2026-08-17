@@ -35,41 +35,43 @@ Algorithm:
 
 """
 
+from __future__ import annotations
+
+import datetime as dt
 import json
 import logging
-import sys
-import datetime as dt
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Optional, Sequence
 
 import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
 import shapely.geometry
-from py4j.java_gateway import JavaObject
-
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.geometry import BoundingBox
+from py4j.java_gateway import JavaObject
+
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
-from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
-from .sentinel5p_functions import (
+from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
     get_gas_variables,
     interpolate,
     load_data_from_file,
+    parse_gas_from_filename,
     resample_data,
 )
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
 
-
-def load_level2_data(params: dict):
+@typechecked
+def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     """Load Sentinel-5P level-2 data from a NetCDF file.
 
     Args:
@@ -89,18 +91,14 @@ def load_level2_data(params: dict):
                    if the spatial extent is invalid.
 
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
     # filename, spatial_extent, temporal_extent, bands, filter_value
     # check if the file exists
-    file_path = Path(params.get("filename", ""))
+    file_path = Path(params["filename"])
 
     if not file_path.exists():
         raise Exception(f"read_product: path {file_path} does not exist.")
     # get the gas
-    file_gas = file_path.name.split("_")[4]
+    file_gas = parse_gas_from_filename(file_path.name)
     VARIABLE_LOC_IN_FILE, DEFAULT_BANDS, DEFAULT_FILTER_VALUE = get_gas_variables(file_gas)
 
     # check the spatial extent and temporal extent keys
@@ -123,7 +121,7 @@ def load_level2_data(params: dict):
     filter_value = params.get("filter_value", DEFAULT_FILTER_VALUE)
     # this should be on the client side
     if not ((filter_value >= 0.0) and (filter_value <= 1.0)):
-        raise IOError(
+        raise ValueError(
             f"Warning: filter_value {filter_value} is not standard as per Sentinel-5P documentation."
             " It should be between 0.0-1.0."
         )
@@ -165,6 +163,7 @@ def load_level2_data(params: dict):
     return final_data
 
 
+@typechecked
 def _instant_ms_to_minute(instant: int) -> datetime:
     """Convert a Unix millisecond timestamp to a datetime rounded down to the minute.
 
@@ -173,12 +172,14 @@ def _instant_ms_to_minute(instant: int) -> datetime:
     return datetime(*(datetime.fromtimestamp(instant // 1000, dt.timezone.utc).timetuple()[:5]))
 
 
+@typechecked
 def read_product(
-    product: Tuple[Union[Path, str], List[dict]],
-    band_names: List[str],
+    product: tuple[Path | str, list[dict]],
+    band_names: list[str],
     tile_size: int,
     resolution: float,
-) -> List[Tuple]:
+    collection_id: Optional[str] = None,
+) -> list[tuple[geopyspark.SpaceTimeKey, geopyspark.Tile]]:
     """Read Sentinel-5P data from a NetCDF file and return GeoTrellis tiles.
 
     Follows the same interface as :func:`openeogeotrellis.collections.sentinel3.read_product`
@@ -190,28 +191,29 @@ def read_product(
             ``key``, ``key_extent`` and ``key_epsg`` as produced by
             ``FileRDDFactory.loadSpatialFeatureJsonRDD``).
         band_names: Band names to load (e.g. ``["carbonmonoxide_total_column_corrected"]``).
-            When empty the gas-specific defaults are used.
+            When empty the default band(s) are used (see *collection_id*).
         tile_size: Number of pixels per tile edge.
         resolution: Pixel size in degrees (EPSG:4326).
+        collection_id: openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``).
+            Used to resolve the correct default band when *band_names* is empty: several
+            collection IDs share the same underlying gas/product file type (all "CLOUD"
+            sub-products, and the two "AER_AI" wavelength-pair variants), so the generic
+            gas-level default would otherwise silently return the wrong band. When not
+            given, or not one of those ambiguous collections, the gas-level default is used.
 
     Returns:
         List of ``(SpaceTimeKey, Tile)`` tuples ready for a GeoTrellis
         ``TiledRasterLayer``.  Returns an empty list when no valid data falls
         within the requested extent.
     """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     creo_path, features = product
     creo_path = Path(creo_path)
 
     if not creo_path.exists():
         raise Exception(f"read_product: path {creo_path} does not exist.")
 
-    file_gas = creo_path.name.split("_")[4]
-    variable_loc_in_file, default_bands, default_filter_value = get_gas_variables(file_gas)
+    file_gas = parse_gas_from_filename(creo_path.name)
+    variable_loc_in_file, default_bands, default_filter_value = get_gas_variables(file_gas, collection_id)
 
     col_min = min(f["key"]["col"] for f in features)
     col_max = max(f["key"]["col"] for f in features)
@@ -220,7 +222,7 @@ def read_product(
     cols = col_max - col_min + 1
     rows = row_max - row_min + 1
 
-    instants = set(f["key"]["instant"] for f in features)
+    instants = {f["key"]["instant"] for f in features}
     assert len(instants) == 1, f"Expected a single instant, got: {instants}"
     instant = instants.pop()
 
@@ -247,7 +249,7 @@ def read_product(
                 "Input spatial extent is not in the file",
             ]
         ):
-            logger.debug(f"No S5P data for {creo_path.name} in extent {spatial_extent}: {exc}")
+            logger.info(f"No S5P data for {creo_path.name} in extent {spatial_extent}: {exc}")
             return []
         raise
 
@@ -267,7 +269,7 @@ def read_product(
     if xmin > xmax:  # anti-meridian crossing
         source_coords, target_coords = adapt_coordinates(source_coords, target_coords)
 
-    # Resample quality mask with "nearest" (preserves boolean semantics)
+    # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.
     qa_flat = raw_data["qa_value_mask"].ravel().astype(np.float64)
     qa_grid = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x).astype(bool)
 
@@ -319,19 +321,15 @@ def read_product(
     return tiles
 
 
+@typechecked
 def _build_stac_opensearch_client(
     stac_url: str,
-    spatial_extent: Union[Dict, BoundingBox, None],
-    temporal_extent: Tuple[Optional[str], Optional[str]],
+    spatial_extent: dict | BoundingBox | None,
+    temporal_extent: tuple[Optional[str], Optional[str]],
     jvm: Any,
-    feature_flags: Optional[Dict] = None,
+    feature_flags: Optional[dict] = None,
 ) -> JavaObject:
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
-
-        check_argument_types()
-
     feature_flags = feature_flags or {}
 
     spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
@@ -365,7 +363,7 @@ def _build_stac_opensearch_client(
         builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
         product_id = None
-        for _asset_id, asset in band_assets.items():
+        for asset in band_assets.values():
             href = asset.href
             if href.startswith("s3://"):
                 href = "/" + href[len("s3://") :]
@@ -382,28 +380,30 @@ def _build_stac_opensearch_client(
 
     return opensearch_client
 
+
+@typechecked
 def pyramid(
-    metadata_properties,
-    projected_polygons_native_crs,
+    metadata_properties: dict[str, Any],
+    projected_polygons_native_crs: JavaObject,
     from_date: Optional[str],
     to_date: Optional[str],
-    band_names: List[str],
-    data_cube_parameters,
+    band_names: list[str],
+    data_cube_parameters: JavaObject,
     native_cell_size,
-    feature_flags: Dict,
+    feature_flags: dict,
     jvm,
-    spatial_extent: Union[Dict, BoundingBox, None] = None,
-) -> Dict[int, geopyspark.TiledRasterLayer]:
+    spatial_extent: dict | BoundingBox | None = None,
+    collection_id: Optional[str] = None,
+) -> dict[int, geopyspark.TiledRasterLayer]:
     """Build a GeoTrellis pyramid from Sentinel-5P level-2 NetCDF files.
 
     Mirrors :func:`openeogeotrellis.collections.sentinel3.pyramid` so that
     Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
     layer catalog.
-    """
-    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
-        from typeguard import check_argument_types
 
-        check_argument_types()
+    :param collection_id: the openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``),
+        used to resolve the correct default band in :func:`read_product` when *band_names* is empty.
+    """
     latlng_crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
 
     if projected_polygons_native_crs.crs() != latlng_crs:
@@ -418,12 +418,10 @@ def pyramid(
                 global_extent_latlng.ymax(),
                 "EPSG:4326",
             )
-    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    load_stac_feature_flags = feature_flags["load_stac_feature_flags"]
     stac_url = load_stac_feature_flags["url"]
-    if stac_url is None:
-        raise ValueError("stac_url is required for Sentinel-5P pyramid; set opensearch_endpoint in the layer catalog")
 
-    collection_id = "Sentinel5P"
+    file_rdd_factory_collection_id = "Sentinel5P"
     correlation_id = ""
 
     opensearch_client = _build_stac_opensearch_client(
@@ -431,12 +429,12 @@ def pyramid(
         spatial_extent=spatial_extent,
         temporal_extent=(from_date, to_date),
         jvm=jvm,
-        feature_flags=feature_flags.get("load_stac_feature_flags", {}),
+        feature_flags=load_stac_feature_flags,
     )
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
         opensearch_client,
-        collection_id,
+        file_rdd_factory_collection_id,
         metadata_properties,
         correlation_id,
         native_cell_size,
@@ -459,6 +457,7 @@ def pyramid(
 
     layer_metadata_py = convert_scala_metadata(metadata_sc, epoch_ms_to_datetime=_instant_ms_to_minute, logger=logger)
 
+    @typechecked
     def process_feature(feature: dict):
         creo_path = feature["feature"]["id"]
         return creo_path, {
@@ -475,7 +474,9 @@ def pyramid(
     resolution = native_cell_size.width()
 
     tile_rdd = per_product.partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index).flatMap(
-        partial(read_product, band_names=band_names, tile_size=tile_size, resolution=resolution)
+        partial(
+            read_product, band_names=band_names, tile_size=tile_size, resolution=resolution, collection_id=collection_id
+        )
     )
 
     logger.info(f"Constructing Sentinel-5P TiledRasterLayer with metadata {layer_metadata_py!r}")

@@ -12,6 +12,7 @@ from openeo_driver.util.logging import (
     setup_logging,
 )
 from openeo_driver.views import build_app
+
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket, patch_sar_backscatter_spec
@@ -55,27 +56,21 @@ def main():
     backend_implementation = GeoPySparkBackendImplementation(
         use_job_registry=bool(get_backend_config().ejr_api),
         elastic_job_registry=(
-            None if get_backend_config().ejr_api  # instantiates an ElasticJobRegistry from the environment
+            None
+            if get_backend_config().ejr_api  # instantiates an ElasticJobRegistry from the environment
             else EagerlyK8sTrackingInMemoryJobRegistry(kube_client("CustomObject"))  # an in-memory one for free
         ),
     )
     app = build_app(backend_implementation=backend_implementation)
     patch_sar_backscatter_spec(backend_implementation)
 
-    host = os.environ.get('SPARK_LOCAL_IP', None)
+    host = os.environ.get("SPARK_LOCAL_IP", None)
     if host is None:
         host, _ = get_socket()
-    port = os.environ.get('KUBE_OPENEO_API_PORT', 50001)
+    port = os.environ.get("KUBE_OPENEO_API_PORT", 50001)
 
-    run_gunicorn(
-        app,
-        threads=30,
-        host=host,
-        port=port,
-        on_started=on_started
-    )
+    run_gunicorn(app, threads=30, host=host, port=port, on_started=on_started)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

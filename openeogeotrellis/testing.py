@@ -370,7 +370,7 @@ class DummyStacApiServer:
         items: List[dict]
 
     def __init__(self):
-        # Mapping of collection id -> (collection dict, list of item dicts)
+        # Mapping of collection id -> (collection dict, _CollectionData)
         self._collections: Dict[str, DummyStacApiServer._CollectionData] = {}
 
         self.request_history: List[dict] = []
@@ -404,7 +404,7 @@ class DummyStacApiServer:
             properties={"flavor": "apple"},
             assets={
                 "asset-1": StacDummyBuilder.asset(
-                    href=str(asset_root / "asset-1.tiff"),
+                    href=f"file://{asset_root / 'asset-1.tiff'}",
                     roles=["data"],
                     proj_code="EPSG:4326",
                     proj_bbox=[2, 49, 3, 50],
@@ -421,7 +421,7 @@ class DummyStacApiServer:
             properties={"flavor": "banana"},
             assets={
                 "asset-2": StacDummyBuilder.asset(
-                    href=str(asset_root / "asset-2.tiff"),
+                    href=f"file://{asset_root / 'asset-2.tiff'}",
                     roles=["data"],
                     proj_code="EPSG:4326",
                     proj_bbox=[3, 50, 5, 51],
@@ -438,7 +438,7 @@ class DummyStacApiServer:
             properties={"flavor": "coconut"},
             assets={
                 "asset-2": StacDummyBuilder.asset(
-                    href=str(asset_root / "asset-3.tiff"),
+                    href=f"file://{asset_root / 'asset-3.tiff'}",
                     roles=["data"],
                     proj_code="EPSG:4326",
                     proj_bbox=[4, 51, 7, 52],
@@ -576,6 +576,29 @@ class DummyStacApiServer:
             )
             return flask.jsonify(response)
 
+        def _add_item_links(item: pystac.Item, cid: str) -> pystac.Item:
+            """Helper to dynamically add self/root/... links to an item (in placce)"""
+            links = [
+                pystac.Link.from_dict(link(rel="self", endpoint="get_item", collection_id=cid, item_id=item.id)),
+                pystac.Link.from_dict(link(rel="root", endpoint="get_index")),
+                pystac.Link.from_dict(link(rel="collection", endpoint="get_collection", collection_id=cid)),
+                pystac.Link.from_dict(link(rel="parent", endpoint="get_collection", collection_id=cid)),
+            ]
+            item.add_links(links)
+            return item
+
+        @app.route("/collections/<collection_id>/items/<item_id>", methods=["GET"])
+        def get_item(collection_id, item_id):
+            if collection_id not in self._collections:
+                flask.abort(404, description=f"Collection {collection_id!r} not found")
+            matches = [i for i in self._collections[collection_id].items if i.get("id") == item_id]
+            if len(matches) == 1:
+                (item,) = matches
+            else:
+                flask.abort(404, description=f"Not found: {item_id=} {collection_id=} ({len(matches)=})")
+            item = _add_item_links(pystac.Item.from_dict(item, migrate=False), cid=collection_id)
+            return item.to_dict(transform_hrefs=False)
+
         @app.route("/search", methods=["GET"])
         def get_search():
             collections = flask.request.args.get("collections")
@@ -620,18 +643,8 @@ class DummyStacApiServer:
         ) -> pystac.ItemCollection:
             collection_ids = [cid for cid in collections if cid in self._collections]
 
-            def add_links(item: pystac.Item, cid: str) -> pystac.Item:
-                links = [
-                    pystac.Link.from_dict(link(rel="root", endpoint="get_index")),
-                    pystac.Link.from_dict(link(rel="collection", endpoint="get_collection", collection_id=cid)),
-                    pystac.Link.from_dict(link(rel="parent", endpoint="get_collection", collection_id=cid)),
-                    # TODO: add self link too?
-                ]
-                item.add_links(links)
-                return item
-
             items = [
-                add_links(pystac.Item.from_dict(item, migrate=False), cid=cid)
+                _add_item_links(pystac.Item.from_dict(item, migrate=False), cid=cid)
                 for cid in collection_ids
                 for item in self._collections[cid].items
             ]

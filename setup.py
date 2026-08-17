@@ -51,6 +51,7 @@ typing_require = [
     'typechecked; python_version>="3.10"',
     "types-shapely",
     'scipy-stubs; python_version>="3.10"',
+    "typeguard",
 ]
 
 setup(
@@ -137,6 +138,8 @@ setup(
         "yarn": yarn_require,
         "spark35": ["pyspark>=3.5.0,<4.0.0"],
         "spark4": ["pyspark>=4.0.0,<5.0.0"],
+        # "extras" trick to allow pinning down on pyspark 4.0.x for particular CI contexts
+        "spark40x": ["pyspark~=4.0.0"],
     },
     entry_points={
         "console_scripts": [

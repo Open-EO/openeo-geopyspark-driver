@@ -8,6 +8,7 @@ metadata:
   labels:
     user: {{ user_id }}
     correlation_id: {{ job_id_full }}
+    credit_plan: {{ credit_plan }}
 {%- endblock %}
 spec:
 {%- block spec_options %}
@@ -109,6 +110,13 @@ spec:
     onSubmissionFailureRetryInterval: 20
 {%- endblock %}
   volumes:
+{%- block volume_layercatalog %}
+  {%- if layer_catalog_init_image != "DISABLED" %}
+    - name: layercatalogs
+      emptyDir: {}
+  {%- endif %}
+{%- endblock %}
+
 {%- block volumes %}
     - name: "eodata"
       hostPath:
@@ -161,6 +169,28 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
+{%- block init_container_layer_catalog %}
+  {%- if layer_catalog_init_image != "DISABLED" %}
+      - name: init-layercatalog
+        image: {{ layer_catalog_init_image }}
+        imagePullPolicy: {{ layer_catalog_init_pull_policy }}
+        env:
+          - name: TARGET_DIR
+            value: {{ layer_catalog_init_dir }}
+        volumeMounts:
+          - name: "layercatalogs"
+            mountPath: {{ layer_catalog_init_dir }}
+        {%- block init_container_layer_catalog_resources %}
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "64Mi"
+        {%- endblock %}
+  {%- endif %}
+{%- endblock %}
 {%- block driver_lifecycle %}
     lifecycle:
       preStop:
@@ -286,6 +316,12 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
 {%- endif %}
+{%- block volume_mount_layercatalog %}
+{%- if layer_catalog_init_image != "DISABLED" %}
+      - name: "layercatalogs"
+        mountPath: {{ layer_catalog_init_dir }}
+{%- endif %}
+{%- endblock %}
 {%- endblock %}
   executor:
     annotations:
@@ -302,8 +338,10 @@ spec:
     memoryOverhead: "{{ executor_memory_overhead }}"
     javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
 {%- endblock %}
-{%- if mount_tmp %}
+{%- if mount_tmp or layer_catalog_init_image != "DISABLED" %}
     initContainers:
+{%- endif %}
+{%- if mount_tmp %}
 {%- block executor_initContainers %}
       - name: init-tmp-dir
         image: busybox:1.28
@@ -313,6 +351,7 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
+{{ self.init_container_layer_catalog() }}
     lifecycle:
       preStop:
         exec:
@@ -386,6 +425,8 @@ spec:
         value: "{{ python_max_memory }}"
       - name: CPL_DEBUG
         value: "OFF"
+      - name: GDAL_NETCDF_BOTTOMUP
+        value: "NO"
 {%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
@@ -420,6 +461,7 @@ spec:
         mountPath: {{batch_job_config_dir}}
         readOnly: true
 {%- endif %}
+{{ self.volume_mount_layercatalog() }}
 {%- endblock %}
   deps:
 {%- block deps %}
@@ -428,7 +470,16 @@ spec:
       - 'local:///opt/openeo-logging-static.jar'
       - 'local:///opt/geotrellis-dependencies-static.jar'
     files:
+      {%- block deps_layercatalog %}
+        {%- if layer_catalog_init_image != "DISABLED" %}
+      {# layercatalog.json is provided at runtime by the init container, so it must not be listed here.
+         At least one entry is required to keep the files: structure valid, so os-release is used as a
+         guaranteed-present placeholder (it is available on any Linux container image). #}
+      - 'local:///etc/os-release'
+        {%- else %}
       - 'local:///opt/layercatalog.json'
+        {%- endif %}
+      {%- endblock %}
       {%- for line in py_files %}
       - {{ line -}}
       {% endfor %}

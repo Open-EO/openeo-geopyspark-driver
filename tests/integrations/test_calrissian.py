@@ -9,6 +9,7 @@ from unittest import mock
 
 import dirty_equals
 import kubernetes.client
+import pystac
 import pytest
 import yaml
 
@@ -26,6 +27,7 @@ from openeogeotrellis.integrations.calrissian import (
     parse_cwl_outputs_listing,
     find_stac_root,
     cwl_to_stac,
+    _write_stac_catalog_for_write_assets_result,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
@@ -654,6 +656,131 @@ class TestCalrissianJobLauncher:
                 cwl_source=CwLSource.from_string("class: Dummy"),
             )
 
+    def test_write_stac_catalog_for_write_assets_result(self, tmp_path):
+        stac_root = _write_stac_catalog_for_write_assets_result(
+            output_dir=tmp_path,
+            items={
+                "916537ca-071f-4c2b-8f0f-791a607eb67f": {
+                    "id": "916537ca-071f-4c2b-8f0f-791a607eb67f",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [[5.125, 51.1875], [5.125, 51.25], [5.0625, 51.25], [5.0625, 51.1875], [5.125, 51.1875]]
+                        ],
+                    },
+                    "bbox": [5.0625, 51.1875, 5.125, 51.25],
+                    "assets": {
+                        "openEO": {
+                            "href": "/data/projects/OpenEO/r-26072216284543f2afad5bc9aa90936f/cwl_input/datacube_s2/openEO.tif",
+                            "type": "image/tiff; application=geotiff",
+                            "roles": ["data"],
+                            "nodata": "NaN",
+                            "proj:bbox": [5.0625, 51.1875, 5.125, 51.25],
+                            "proj:shape": [1, 1],
+                            "proj:epsg": 4326,
+                            "bands": [{"name": "Longitude"}, {"name": "Latitude"}, {"name": "Day"}],
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [
+                                    [
+                                        [5.125, 51.1875],
+                                        [5.125, 51.25],
+                                        [5.0625, 51.25],
+                                        [5.0625, 51.1875],
+                                        [5.125, 51.1875],
+                                    ]
+                                ],
+                            },
+                            "bbox": [5.0625, 51.1875, 5.125, 51.25],
+                        }
+                    },
+                }
+            },
+            collection_id="test_write_stac_catalog_for_write_assets_result",
+        )
+        pystac.Catalog.from_file(stac_root).validate_all()
+        files = [f for f in os.listdir(tmp_path) if os.path.isfile(os.path.join(tmp_path, f))]
+        for file in files:
+            content = Path(os.path.join(tmp_path, file)).read_text()
+            assert "/data/projects/OpenEO/" not in content, "Links should be relative"
+            assert '"/' not in content, "Links should not start with slash"
+
+    def test_datacube_to_cwl_argument(self, api110, tmp_path):
+        from openeogeotrellis.backend import GpsUdfRuntimes
+        from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
+        import glob
+        import rasterio
+
+        example_collection_json = str(
+            Path(__file__).parents[2] / "docker" / "local_batch_job" / "example_stac_catalog" / "collection.json"
+        )
+
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["Longitude", "Latitude", "Day"],
+                    "id": "TestCollection-LonLat16x16",
+                    "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                    "temporal_extent": ["2023-06-01", "2023-06-07"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadcollection1"}, "format": "GTiff", "options": {}},
+            },
+            "runudf1": {
+                "process_id": "run_udf",
+                "arguments": {
+                    "context": {"datacube_s2": {"from_node": "saveresult1"}},
+                    "data": None,
+                    "runtime": "EOAP-CWL",
+                    "udf": "https://raw.githubusercontent.com/Open-EO/openeo-geotrellis-kubernetes/master/openeo-geopyspark-k8s-custom-processes/src/openeo_geopyspark_k8s_custom_processes/cwl/dummy_stac.cwl",
+                },
+                "result": True,
+            },
+        }
+
+        fake_result = mock.Mock()
+        fake_result.generate_public_url.return_value = example_collection_json
+        fake_result.generate_presigned_url.return_value = example_collection_json
+
+        # Ensure "EOAP-CWL" is a recognized UDF runtime regardless of `is_kube_deploy`/`OPENEO_LOCAL_DEBUGGING`
+        # config in the test environment.
+        fake_udf_runtimes = {
+            "EOAP-CWL": {
+                "default": "1",
+                "title": "EOAP-CWL",
+                "type": "language",
+                "versions": {"1": {"libraries": {}}},
+            }
+        }
+
+        fake_launcher = mock.Mock()
+        fake_launcher.run_cwl_workflow.return_value = {example_collection_json: fake_result}
+
+        with mock.patch.object(CalrissianJobLauncher, "from_context", return_value=fake_launcher), mock.patch.object(
+            GpsUdfRuntimes, "get_udf_runtimes", return_value=fake_udf_runtimes
+        ), mock.patch("openeogeotrellis.integrations.calrissian.ensure_kubernetes_config"), gps_config_overrides(
+            batch_job_work_dir_root=str(tmp_path)
+        ):
+            run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
+
+        # The CWL job should have received the "datacube_s2" context argument
+        # as a string (path/URL to the STAC catalog written for it), not the raw datacube object.
+        fake_launcher.run_cwl_workflow.assert_called_once()
+        cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
+        assert isinstance(cwl_arguments["datacube_s2"], str)
+
+        files = list(glob.glob(str(tmp_path / "*.tif")))
+        print(files)
+        output_file = files[0]
+
+        with rasterio.open(output_file) as ds:
+            # dummy_stac.cwl should return a catalog with B04, B03, B02 bands, ignoring the input argument.
+            print(ds.descriptions)
+            assert ds.descriptions == ("B04", "B03", "B02")
+
 
 class TestCalrissianS3Result:
     @pytest.fixture
@@ -744,6 +871,27 @@ class TestCwlSource:
     def test_from_resource(self):
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
         assert "Hello World" in cwl.get_content()
+
+    @pytest.mark.parametrize(
+        ["cwl_yaml", "input_name", "expected"],
+        [
+            ("inputs:\n  message:\n    type: string\n", "message", False),
+            ("inputs:\n  message: string\n", "message", False),
+            ("inputs:\n  items:\n    type: string[]\n", "items", True),
+            ("inputs:\n  items: string[]\n", "items", True),
+            (
+                "inputs:\n  items:\n    type:\n      type: array\n      items: string\n",
+                "items",
+                True,
+            ),
+            ('inputs:\n  items:\n    type: ["null", "string[]"]\n', "items", True),
+            ('inputs:\n  items:\n    type: ["null", "string"]\n', "items", False),
+            ("inputs:\n  message:\n    type: string\n", "does-not-exist", False),
+        ],
+    )
+    def test_is_string_array_input(self, cwl_yaml, input_name, expected):
+        cwl = CwLSource.from_string("class: CommandLineTool\n" + cwl_yaml)
+        assert cwl.is_string_array_input(input_name) is expected
 
     @pytest.mark.parametrize(
         ["cwl_path", "expected_memory"],
