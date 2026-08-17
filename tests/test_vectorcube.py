@@ -24,14 +24,14 @@ from tests.data import get_test_data_file
 
 
 @pytest.mark.parametrize(
-    "file",[
-    (
-        "https://github.com/Open-EO/openeo-python-client/raw/master/tests/data/example_aoi.pq"
-    ),
-    (
-        str(get_test_data_file("geometries/geoms.pq"))
-    )
-        ]
+    "file", [
+        (
+            str(get_test_data_file("geometries/example_aoi.pq"))
+        ),
+        (
+            str(get_test_data_file("geometries/geoms.pq"))
+        )
+    ]
 )
 def test_from_parquet(file):
 
