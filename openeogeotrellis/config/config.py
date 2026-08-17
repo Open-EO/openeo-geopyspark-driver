@@ -143,6 +143,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     etl_api_config: Optional[EtlApiConfig] = None
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
+    otel_prometheus_metrics_port: int = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT", "9464"))
 
     max_executor_or_driver_memory: str = "64G"  # Executors and drivers have the same amount of memory
 
