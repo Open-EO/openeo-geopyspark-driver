@@ -1983,6 +1983,8 @@ class GpsBatchJobs(backend.BatchJobs):
             if image_name:
                 log.info(f'No job_options["image-name"] specified, setting fallback {image_name!r}')
                 job_options["image-name"] = image_name
+                # Writes must happen on options_object since job_options is already parsed
+                options.image_name = image_name
 
         if (dependencies is None
             and job_info.get("dependency_status")
