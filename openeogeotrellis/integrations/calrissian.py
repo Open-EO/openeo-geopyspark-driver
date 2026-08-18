@@ -569,7 +569,7 @@ class CalrissianJobLauncher:
         cwl_path: str,
         cwl_arguments: List[str],
         env_vars: Optional[Dict[str, str]] = None,
-    ) -> Tuple[kubernetes.client.V1Job, str, str]:
+    ) -> Tuple[kubernetes.client.V1Job, str, str, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.
 
@@ -581,6 +581,7 @@ class CalrissianJobLauncher:
             - k8s job manifest
             - relative output directory (inside the output volume)
             - relative path to the CWL outputs listing (JSON dump inside the output volume)
+            - relative path to the CWL stderr/tool log (inside the output volume)
         """
         name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
@@ -592,8 +593,10 @@ class CalrissianJobLauncher:
         tmp_dir = self._volume_tmp.mount_path.rstrip("/") + "/"
         relative_output_dir = name
         relative_cwl_outputs_listing = f"{name}.cwl-outputs.json"
+        relative_stderr_log = f"{name}.cwl-stderr.log"
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
         cwl_outputs_listing = str(Path(self._volume_output.mount_path) / relative_cwl_outputs_listing)
+        stderr_log = str(Path(self._volume_output.mount_path) / relative_stderr_log)
 
         labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
 
@@ -607,6 +610,8 @@ class CalrissianJobLauncher:
                 output_dir,
                 "--stdout",
                 cwl_outputs_listing,
+                "--stderr",
+                stderr_log,
                 cwl_path,
             ]
             + cwl_arguments
@@ -631,6 +636,16 @@ class CalrissianJobLauncher:
                 value="NO",
             )
         ]
+        if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+            container_env_vars.append(
+                kubernetes.client.V1EnvVar(
+                    name="CALRISSIAN_DELETE_PODS",  # Debug: keep step pods around so their k8s pod logs can still
+                    # be inspected (e.g. via `kubectl logs`) after a failure, since calrissian's own log capturing
+                    # (follow_logs) can miss very short-lived step pods
+                    value="NO",
+                )
+            )
+
         if env_vars:
             container_env_vars.extend(kubernetes.client.V1EnvVar(name=k, value=v) for k, v in env_vars.items())
 
@@ -681,7 +696,7 @@ class CalrissianJobLauncher:
                 backoff_limit=self._backoff_limit,
             ),
         )
-        return manifest, relative_output_dir, relative_cwl_outputs_listing
+        return manifest, relative_output_dir, relative_cwl_outputs_listing, relative_stderr_log
 
     def launch_job_and_wait(
         self,
@@ -771,6 +786,26 @@ class CalrissianJobLauncher:
         volume_name = pvc.spec.volume_name
         return volume_name
 
+    def _log_cwl_stderr(self, relative_stderr_log: str, cause: Exception) -> None:
+        """
+        Best-effort attempt to fetch and log the CWL `--stderr` tool log (written to the output volume, see
+        `create_cwl_job_manifest`) after a CWL job failure, since the ephemeral step pods (and their
+        `kubectl logs`) are typically already gone by the time we notice the failure.
+        """
+        try:
+            output_volume_name = self.get_output_volume_name()
+            stderr_result = CalrissianS3Result(
+                s3_region=self._s3_region,
+                s3_bucket=self._s3_bucket,
+                s3_key=f"{output_volume_name}/{relative_stderr_log.strip('/')}",
+            )
+            stderr_content = stderr_result.read(encoding="utf-8")
+            _log.error(f"CWL job failed ({cause}). CWL tool log ({stderr_result.s3_uri()}):\n{stderr_content}")
+        except Exception as log_read_exception:
+            _log.warning(
+                f"CWL job failed ({cause}). Failed to read CWL tool log {relative_stderr_log=}: {log_read_exception}"
+            )
+
     def run_cwl_workflow(
         self,
         cwl_source: CwLSource,
@@ -800,16 +835,23 @@ class CalrissianJobLauncher:
             cwl_arguments = [cwl_arguments_path]
 
         # CWL job
-        cwl_manifest, relative_output_dir, relative_cwl_outputs_listing = self.create_cwl_job_manifest(
-            cwl_path=cwl_path,
-            cwl_arguments=cwl_arguments,
-            env_vars=env_vars,
+        cwl_manifest, relative_output_dir, relative_cwl_outputs_listing, relative_stderr_log = (
+            self.create_cwl_job_manifest(
+                cwl_path=cwl_path,
+                cwl_arguments=cwl_arguments,
+                env_vars=env_vars,
+            )
         )
 
         # Calrissian secret for launch config file
         self._calrissian_launch_config.create_secret_for_files(job=cwl_manifest.metadata.name)
 
-        cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
+        try:
+            cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
+        except Exception as e:
+            if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+                self._log_cwl_stderr(relative_stderr_log=relative_stderr_log, cause=e)
+            raise
         self._calrissian_launch_config.cleanup_secret_for_files()
 
         # Collect results
