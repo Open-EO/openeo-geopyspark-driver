@@ -271,7 +271,10 @@ def read_product(
 
     # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.
     qa_flat = raw_data["qa_value_mask"].ravel().astype(np.float64)
-    qa_grid = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x).astype(bool)
+    qa_grid_raw = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x)
+    # NaN (outside the source data's convex hull) means "no valid data", i.e. should not pass
+    # quality filtering.
+    qa_grid = np.where(np.isnan(qa_grid_raw), False, qa_grid_raw).astype(bool)
 
     # Resample each band and apply quality mask
     band_grids = []

@@ -530,6 +530,17 @@ class TestSentinel5:
         self.spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
+        aer_lh_sample_dir = GAS_TYPE_SAMPLE_DIR["aer_lh"]
+        # This is the orbit whose scan time (12:30-14:11 UTC) overlaps the 12:00-14:00 UTC
+        # temporal_extent used in `test_sentinel5p_l2`'s SENTINEL5P_L2_AER_LH case.
+        aer_lh_nc_files = glob.glob(os.path.join(aer_lh_sample_dir, "*AER_LH_20240102T123029*.nc"))
+        assert aer_lh_nc_files, f"No sample netCDF file found for AER_LH in {aer_lh_sample_dir}"
+        self.filename_aer_lh = test_data_path / Path(aer_lh_nc_files[0]).name
+        if not os.path.exists(self.filename_aer_lh):
+            shutil.copyfile(aer_lh_nc_files[0], self.filename_aer_lh)
+        self.spatial_extent_aer_lh = [1.0, 33.0, 11.0, 37.0]  # min_lon, min_lat, max_lon, max_lat
+        self.temporal_extent_aer_lh = [datetime(2024, 1, 2, 12, 0, 0), datetime(2024, 1, 2, 14, 0, 0)]
+
     @pytest.mark.parametrize(
         "collection_id, spatial_extent, temporal_extent, bands",
         [
@@ -798,3 +809,50 @@ class TestSentinel5:
         assert "qa_value" in data
         assert np.allclose(data["nitrogendioxide_tropospheric_column"], no2_act, equal_nan=True)
         assert data["nitrogendioxide_tropospheric_column"].shape == data["qa_value"].shape
+
+    def test_data_loading_aer_lh(self, tmp_path):
+        """Test if it loads all bands, data and shape of bands, using the same spatial/temporal
+        extent and bands as the SENTINEL5P_L2_AER_LH `test_sentinel5p_l2` case, but calling
+        `load_level2_data` directly instead of going through the full `load_collection` process.
+        The resampled result is also written to a GeoTIFF, for manual/visual inspection of e.g.
+        edge-clamping artifacts."""
+        params = {
+            "filename": self.filename_aer_lh,
+            "spatial_extent": self.spatial_extent_aer_lh,
+            "temporal_extent": self.temporal_extent_aer_lh,
+            "bands": ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
+            "resample_factor": [True, 0.025, "nearest"],
+        }
+        data = load_level2_data(params)
+        assert "aerosol_mid_height" in data
+        assert "aerosol_mid_pressure" in data
+        assert "qa_value" in data
+        assert data["aerosol_mid_height"].shape == data["aerosol_mid_pressure"].shape
+        assert data["aerosol_mid_height"].shape == data["qa_value"].shape
+        assert not np.all(np.isnan(data["aerosol_mid_height"]))
+
+        band_names = ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"]
+        height, width = data["aerosol_mid_height"].shape
+        west, south, east, north = self.spatial_extent_aer_lh
+        transform = rasterio.transform.from_bounds(west, south, east, north, width, height)
+        output_file = tmp_path / "test_data_loading_aer_lh.tif"
+        with rasterio.open(
+            output_file,
+            "w",
+            driver="GTiff",
+            height=height,
+            width=width,
+            count=len(band_names),
+            dtype="float32",
+            crs="EPSG:4326",
+            transform=transform,
+            nodata=np.nan,
+        ) as dst:
+            for i, band_name in enumerate(band_names, start=1):
+                dst.write(data[band_name].astype(np.float32), i)
+                dst.set_band_description(i, band_name)
+
+        with rasterio.open(output_file) as ds:
+            assert ds.count == len(band_names)
+            assert ds.shape == (height, width)
+            assert ds.bounds == (west, south, east, north)

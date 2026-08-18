@@ -477,6 +477,49 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     return grid_x, grid_y
 
 
+def griddata_local(points, values, xi, method="linear", fill_value=np.nan, rescale=False):
+    from scipy.interpolate.ndgriddata import NearestNDInterpolator
+    from scipy.interpolate import LinearNDInterpolator
+    from scipy.interpolate._interpnd import _ndim_coords_from_arrays
+
+    points = _ndim_coords_from_arrays(points)
+
+    if points.ndim < 2:
+        ndim = points.ndim
+    else:
+        ndim = points.shape[-1]
+
+    if ndim == 1 and method in ("nearest", "linear", "cubic"):
+        from scipy.interpolate._interpolate import interp1d
+
+        points = points.ravel()
+        if isinstance(xi, tuple):
+            if len(xi) != 1:
+                raise ValueError("invalid number of dimensions in xi")
+            (xi,) = xi
+        # Sort points/values together, necessary as input for interp1d
+        idx = np.argsort(points)
+        points = points[idx]
+        values = values[idx]
+        # if method == 'nearest':
+        #     fill_value = 'extrapolate'
+        ip = interp1d(points, values, kind=method, axis=0, bounds_error=False, fill_value=fill_value)
+        return ip(xi)
+    elif method == "nearest":
+        ip = NearestNDInterpolator(points, values, rescale=rescale)
+        return ip(xi)
+    elif method == "linear":
+        ip = LinearNDInterpolator(points, values, fill_value=fill_value, rescale=rescale)
+        return ip(xi)
+    elif method == "cubic" and ndim == 2:
+        from scipy.interpolate import CloughTocher2DInterpolator
+
+        ip = CloughTocher2DInterpolator(points, values, fill_value=fill_value, rescale=rescale)
+        return ip(xi)
+    else:
+        raise ValueError(f"Unknown interpolation method {method!r} for {ndim} dimensional data")
+
+
 @typechecked
 def interpolate(
     source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
@@ -499,13 +542,21 @@ def interpolate(
     method = method.lower()
     method = cast(Literal["nearest", "linear", "cubic"], method)  # for mypy
     assert method in ["nearest", "linear", "cubic"]  # for typing
-    interpolated_data = griddata(
+    interpolated_data = griddata(  # griddata_local
         source_coordinates,
         source_data,
         target_coordinates,
         method=method,
         fill_value=np.nan,
     )
+    if method == "nearest" and len(source_coordinates) > 0:
+        # Unlike "linear"/"cubic", "nearest" extrapolates indefinitely, "clamping" target
+        # points far outside the swath (e.g. at tile edges) to a distant, spurious source
+        # value. Restrict it to the convex hull of the source points, like the other methods.
+        in_hull = ~np.isnan(
+            griddata(source_coordinates, np.ones(len(source_coordinates)), target_coordinates, method="linear")
+        )
+        interpolated_data = np.where(in_hull, interpolated_data, np.nan)
     return interpolated_data
 
 
@@ -562,9 +613,14 @@ def resample_data(
     # Interpolate qa_value_mask to new grid with nearest method for masking
     # Do not use other methods as it can create intermediate values
     # which can lead to incorrect masking.
-    interpolated_data["qa_value_mask"] = interpolate(
+    qa_value_mask_interp = interpolate(
         source_coordinates, data["qa_value_mask"].ravel(), target_coordinates, method="nearest"
     ).reshape(target_shape)
+    # NaN (outside the source data's convex hull) means "no valid data", i.e. should not pass
+    # quality filtering.
+    interpolated_data["qa_value_mask"] = np.where(np.isnan(qa_value_mask_interp), False, qa_value_mask_interp).astype(
+        bool
+    )
 
     # all other bands
     for key, val in data.items():
