@@ -270,10 +270,8 @@ def read_product(
     if xmin > xmax:  # anti-meridian crossing
         source_coords, target_coords = adapt_coordinates(source_coords, target_coords)
 
-    # Cap "nearest" interpolation to target points that are reasonably close to an actual source
-    # pixel. Otherwise scipy.interpolate.griddata's nearest-neighbor mode extrapolates without
-    # limit, "clamping" far-away target pixels (e.g. beyond the swath edge, or in gaps between
-    # scanlines) to a distant, and thus meaningless, source value.
+    # "nearest" interpolation can sample far away pixels, because it uses a KDTree.
+    # This threshold helps to avoid that:
     max_nearest_distance = estimate_source_pixel_spacing(source_coords) * 1.5
 
     # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.

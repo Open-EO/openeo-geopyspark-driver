@@ -479,22 +479,7 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
 
 @typechecked
 def estimate_source_pixel_spacing(source_coordinates: np.ndarray) -> float:
-    """Estimate the typical spacing between neighboring source points.
-
-    Used to derive a sensible ``max_distance`` for :func:`interpolate` with
-    ``method="nearest"``: without such a limit, `scipy.interpolate.griddata`'s nearest-neighbor
-    mode extrapolates indefinitely, "clamping" target pixels far outside the actual swath
-    (e.g. at tile edges or in gaps between orbits) to the value of the closest, but potentially
-    very distant, source pixel.
-
-    Args:
-        source_coordinates (Array of float): 2-d array of shape (n, 2) representing source
-            coordinates (lon, lat).
-
-    Returns:
-        float: median distance between each source point and its nearest neighbor, or ``inf``
-            when there are fewer than 2 source points (no meaningful spacing can be derived).
-    """
+    """Estimate the typical spacing between neighboring source points."""
     from scipy.spatial import cKDTree
 
     if len(source_coordinates) < 2:
@@ -602,12 +587,9 @@ def resample_data(
     if spatial_extent[0] > spatial_extent[2]:  # anti-meridian crossing
         source_coordinates, target_coordinates = adapt_coordinates(source_coordinates, target_coordinates)
 
-    # Cap "nearest" interpolation to target points that are reasonably close to an actual source
-    # pixel. Otherwise scipy.interpolate.griddata's nearest-neighbor mode extrapolates without
-    # limit, "clamping" far-away target pixels (e.g. beyond the swath edge, or in gaps between
-    # scanlines) to a distant, and thus meaningless, source value.
-    source_pixel_spacing = estimate_source_pixel_spacing(source_coordinates)
-    max_nearest_distance = source_pixel_spacing * 1.5
+    # "nearest" interpolation can sample far away pixels, because it uses a KDTree.
+    # This threshold helps to avoid that:
+    max_nearest_distance = estimate_source_pixel_spacing(source_coordinates) * 1.5
 
     # Interpolate qa_value_mask to new grid with nearest method for masking
     # Do not use other methods as it can create intermediate values
