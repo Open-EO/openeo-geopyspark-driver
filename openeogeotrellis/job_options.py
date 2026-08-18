@@ -220,7 +220,8 @@ class JobOptions:
                     self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
                     #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
 
-        if self.credit_plans is not None:
+        # Web-editor does not respect default of None but replaces it with []
+        if self.credit_plans is not None and len(self.credit_plans) > 0:
             get_backend_config().credit_check.check_format_user_provided_plans(self.credit_plans)
 
     def soft_errors_arg(self) -> str:
