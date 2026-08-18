@@ -86,7 +86,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters, query
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
+from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.credit_check import ExecutionDetails
@@ -1004,12 +1004,11 @@ Example usage:
             CwLSource.from_any(cwl),
         )
 
-        load_stac_dummy_url = "dummy"
         dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
         if dry_run_tracer:
             # TODO: use something else than `dry_run_tracer.load_stac`
             #       to avoid risk on conflict with "regular" load_stac code flows?
-            return dry_run_tracer.load_stac(url=load_stac_dummy_url, arguments={})
+            return dry_run_tracer.load_stac(url=DUMMY_STAC_URL, arguments={})
 
         direct_s3_mode = False
         if direct_s3_mode:
@@ -1017,7 +1016,7 @@ Example usage:
         else:
             load_stac_kwargs = {}
 
-        source_id = DataSource.load_stac(load_stac_dummy_url, properties={}, bands=[], env=env).get_source_id()
+        source_id = DataSource.load_stac(DUMMY_STAC_URL, properties={}, bands=[], env=env).get_source_id()
         load_params = _extract_load_parameters(env, source_id=source_id)
 
         env = env.push(
@@ -1983,6 +1982,8 @@ class GpsBatchJobs(backend.BatchJobs):
             if image_name:
                 log.info(f'No job_options["image-name"] specified, setting fallback {image_name!r}')
                 job_options["image-name"] = image_name
+                # Writes must happen on options_object since job_options is already parsed
+                options.image_name = image_name
 
         if (dependencies is None
             and job_info.get("dependency_status")

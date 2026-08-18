@@ -21,3 +21,6 @@ JOB_OPTION_LOGGING_THRESHOLD = "logging-threshold"  # Deprecated in favor of JOB
 
 
 STAC_API_FILTER_BY_GEOMETRY_DEFAULT = True
+
+# ".invalid" is a reserved TLD, so it can't collide with a real STAC URL.
+DUMMY_STAC_URL = "https://dummy.invalid/"

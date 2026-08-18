@@ -23,13 +23,13 @@ pythonPipeline {
   python_version = ["3.11"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
   downstream_job = 'openEO/trigger-python311-build'
-  wheel_repo = ''
-  wheel_repo_dev = ''
+  wheel_repo = 'python-openeo'
+  wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
   /* Note: extra "spark40x" to align with "almalinux9-spark4-py311-openeo" which is hardcoded for spark 4.0.1 at the moment #1755 */
   extras_require = 'dev,spark40x'
   upload_dev_wheels = false
-  build_wheel = false
+  build_wheel = true
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
   custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest'
