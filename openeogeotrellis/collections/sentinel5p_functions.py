@@ -477,52 +477,41 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     return grid_x, grid_y
 
 
-def griddata_local(points, values, xi, method="linear", fill_value=np.nan, rescale=False):
-    from scipy.interpolate.ndgriddata import NearestNDInterpolator
-    from scipy.interpolate import LinearNDInterpolator
-    from scipy.interpolate._interpnd import _ndim_coords_from_arrays
+@typechecked
+def estimate_source_pixel_spacing(source_coordinates: np.ndarray) -> float:
+    """Estimate the typical spacing between neighboring source points.
 
-    points = _ndim_coords_from_arrays(points)
+    Used to derive a sensible ``max_distance`` for :func:`interpolate` with
+    ``method="nearest"``: without such a limit, `scipy.interpolate.griddata`'s nearest-neighbor
+    mode extrapolates indefinitely, "clamping" target pixels far outside the actual swath
+    (e.g. at tile edges or in gaps between orbits) to the value of the closest, but potentially
+    very distant, source pixel.
 
-    if points.ndim < 2:
-        ndim = points.ndim
-    else:
-        ndim = points.shape[-1]
+    Args:
+        source_coordinates (Array of float): 2-d array of shape (n, 2) representing source
+            coordinates (lon, lat).
 
-    if ndim == 1 and method in ("nearest", "linear", "cubic"):
-        from scipy.interpolate._interpolate import interp1d
+    Returns:
+        float: median distance between each source point and its nearest neighbor, or ``inf``
+            when there are fewer than 2 source points (no meaningful spacing can be derived).
+    """
+    from scipy.spatial import cKDTree
 
-        points = points.ravel()
-        if isinstance(xi, tuple):
-            if len(xi) != 1:
-                raise ValueError("invalid number of dimensions in xi")
-            (xi,) = xi
-        # Sort points/values together, necessary as input for interp1d
-        idx = np.argsort(points)
-        points = points[idx]
-        values = values[idx]
-        # if method == 'nearest':
-        #     fill_value = 'extrapolate'
-        ip = interp1d(points, values, kind=method, axis=0, bounds_error=False, fill_value=fill_value)
-        return ip(xi)
-    elif method == "nearest":
-        ip = NearestNDInterpolator(points, values, rescale=rescale)
-        return ip(xi)
-    elif method == "linear":
-        ip = LinearNDInterpolator(points, values, fill_value=fill_value, rescale=rescale)
-        return ip(xi)
-    elif method == "cubic" and ndim == 2:
-        from scipy.interpolate import CloughTocher2DInterpolator
-
-        ip = CloughTocher2DInterpolator(points, values, fill_value=fill_value, rescale=rescale)
-        return ip(xi)
-    else:
-        raise ValueError(f"Unknown interpolation method {method!r} for {ndim} dimensional data")
+    if len(source_coordinates) < 2:
+        return np.inf
+    tree = cKDTree(source_coordinates)
+    # k=2 because the nearest neighbor of a point in the tree is the point itself (distance 0)
+    distances, _ = tree.query(source_coordinates, k=2)
+    return float(np.median(distances[:, 1]))
 
 
 @typechecked
 def interpolate(
-    source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
+    source_coordinates: np.ndarray,
+    source_data: np.ndarray,
+    target_coordinates: np.ndarray,
+    method: str = "nearest",
+    max_distance: Optional[float] = None,
 ) -> np.ndarray:
     """Interpolate source data to target grid based on source and target coordinates.
 
@@ -531,6 +520,11 @@ def interpolate(
         source_data (Array of float): 1-d array of shape (n,) representing source data values.
         target_coordinates (Array of float): 2-d array of shape (m, 2) representing target coordinates (lon, lat).
         method (str): Interpolation method. Options are "Nearest", "Linear", "Cubic".
+        max_distance (float, optional): Only relevant for ``method="nearest"``. Target points
+            further away from their nearest source point than this distance are set to NaN
+            instead of being clamped to that (too distant) source value. "Linear" and "Cubic"
+            already return NaN outside the convex hull of the source points, so they are
+            unaffected by this parameter.
 
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
@@ -542,21 +536,19 @@ def interpolate(
     method = method.lower()
     method = cast(Literal["nearest", "linear", "cubic"], method)  # for mypy
     assert method in ["nearest", "linear", "cubic"]  # for typing
-    interpolated_data = griddata(  # griddata_local
+    interpolated_data = griddata(
         source_coordinates,
         source_data,
         target_coordinates,
         method=method,
         fill_value=np.nan,
     )
-    if method == "nearest" and len(source_coordinates) > 0:
-        # Unlike "linear"/"cubic", "nearest" extrapolates indefinitely, "clamping" target
-        # points far outside the swath (e.g. at tile edges) to a distant, spurious source
-        # value. Restrict it to the convex hull of the source points, like the other methods.
-        in_hull = ~np.isnan(
-            griddata(source_coordinates, np.ones(len(source_coordinates)), target_coordinates, method="linear")
-        )
-        interpolated_data = np.where(in_hull, interpolated_data, np.nan)
+    if method == "nearest" and max_distance is not None and len(source_coordinates) > 0:
+        from scipy.spatial import cKDTree
+
+        tree = cKDTree(source_coordinates)
+        nearest_distances, _ = tree.query(target_coordinates, k=1)
+        interpolated_data = np.where(nearest_distances <= max_distance, interpolated_data, np.nan)
     return interpolated_data
 
 
@@ -610,14 +602,24 @@ def resample_data(
     if spatial_extent[0] > spatial_extent[2]:  # anti-meridian crossing
         source_coordinates, target_coordinates = adapt_coordinates(source_coordinates, target_coordinates)
 
+    # Cap "nearest" interpolation to target points that are reasonably close to an actual source
+    # pixel. Otherwise scipy.interpolate.griddata's nearest-neighbor mode extrapolates without
+    # limit, "clamping" far-away target pixels (e.g. beyond the swath edge, or in gaps between
+    # scanlines) to a distant, and thus meaningless, source value.
+    source_pixel_spacing = estimate_source_pixel_spacing(source_coordinates)
+    max_nearest_distance = source_pixel_spacing * 1.5
+
     # Interpolate qa_value_mask to new grid with nearest method for masking
     # Do not use other methods as it can create intermediate values
     # which can lead to incorrect masking.
     qa_value_mask_interp = interpolate(
-        source_coordinates, data["qa_value_mask"].ravel(), target_coordinates, method="nearest"
+        source_coordinates,
+        data["qa_value_mask"].ravel(),
+        target_coordinates,
+        method="nearest",
+        max_distance=max_nearest_distance,
     ).reshape(target_shape)
-    # NaN (outside the source data's convex hull) means "no valid data", i.e. should not pass
-    # quality filtering.
+    # NaN (no source pixel close enough) means "no valid data", i.e. should not pass quality filtering
     interpolated_data["qa_value_mask"] = np.where(np.isnan(qa_value_mask_interp), False, qa_value_mask_interp).astype(
         bool
     )
@@ -627,7 +629,11 @@ def resample_data(
         if key in bands:
             # interpolate to new grid
             interpolated_data[key] = interpolate(
-                source_coordinates, val.ravel(), target_coordinates, method=interpolation_method
+                source_coordinates,
+                val.ravel(),
+                target_coordinates,
+                method=interpolation_method,
+                max_distance=max_nearest_distance,
             ).reshape(target_shape)
     return interpolated_data
 

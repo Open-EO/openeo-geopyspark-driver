@@ -59,6 +59,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
+    estimate_source_pixel_spacing,
     get_gas_variables,
     interpolate,
     load_data_from_file,
@@ -269,11 +270,18 @@ def read_product(
     if xmin > xmax:  # anti-meridian crossing
         source_coords, target_coords = adapt_coordinates(source_coords, target_coords)
 
+    # Cap "nearest" interpolation to target points that are reasonably close to an actual source
+    # pixel. Otherwise scipy.interpolate.griddata's nearest-neighbor mode extrapolates without
+    # limit, "clamping" far-away target pixels (e.g. beyond the swath edge, or in gaps between
+    # scanlines) to a distant, and thus meaningless, source value.
+    max_nearest_distance = estimate_source_pixel_spacing(source_coords) * 1.5
+
     # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.
     qa_flat = raw_data["qa_value_mask"].ravel().astype(np.float64)
-    qa_grid_raw = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x)
-    # NaN (outside the source data's convex hull) means "no valid data", i.e. should not pass
-    # quality filtering.
+    qa_grid_raw = interpolate(
+        source_coords, qa_flat, target_coords, method="nearest", max_distance=max_nearest_distance
+    ).reshape(n_y, n_x)
+    # NaN (no source pixel close enough) means "no valid data", i.e. should not pass quality filtering
     qa_grid = np.where(np.isnan(qa_grid_raw), False, qa_grid_raw).astype(bool)
 
     # Resample each band and apply quality mask
@@ -282,7 +290,13 @@ def read_product(
         if band not in raw_data:
             continue
         grid = (
-            interpolate(source_coords, raw_data[band].ravel(), target_coords, method="nearest")
+            interpolate(
+                source_coords,
+                raw_data[band].ravel(),
+                target_coords,
+                method="nearest",
+                max_distance=max_nearest_distance,
+            )
             .reshape(n_y, n_x)
             .astype(np.float32)
         )
