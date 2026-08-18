@@ -16,7 +16,7 @@ from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none
 from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.constants import EVAL_ENV_KEY
+from openeogeotrellis.constants import DUMMY_STAC_URL, EVAL_ENV_KEY
 
 import openeogeotrellis.load_stac
 from openeogeotrellis.util.geometry import BoundingBoxMerger
@@ -277,6 +277,8 @@ def _extract_spatial_extent_from_constraint_load_collection(
 def _extract_spatial_extent_from_constraint_load_stac(
     stac_url: str, *, constraint: dict, feature_flags: Optional[dict] = None
 ) -> Union[None, AlignedExtentResult]:
+    if stac_url == DUMMY_STAC_URL:
+        return None
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
 
     extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
