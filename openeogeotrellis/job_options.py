@@ -159,7 +159,7 @@ class JobOptions:
     )
 
     credit_plans: List[str] = field(
-        default=None,
+        default_factory=list,
         metadata={
             "description": get_backend_config().credit_check.get_job_option_description(),
             "experimental": True,
@@ -220,8 +220,7 @@ class JobOptions:
                     self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
                     #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
 
-        # Web-editor does not respect default of None but replaces it with []
-        if self.credit_plans is not None and len(self.credit_plans) > 0:
+        if len(self.credit_plans) > 0:
             get_backend_config().credit_check.check_format_user_provided_plans(self.credit_plans)
 
     def soft_errors_arg(self) -> str:

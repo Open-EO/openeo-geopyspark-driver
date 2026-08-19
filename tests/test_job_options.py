@@ -1,4 +1,6 @@
 import json
+import typing
+from dataclasses import fields
 
 import pytest
 
@@ -139,14 +141,37 @@ def test_list_options_with_public_only():
     assert all(option.get("public", True) for option in options)
 
 
+def test_mutable_job_options_do_not_have_none_as_default():
+    """
+    The webeditor looks at JSON schemas for options and will provide
+    an empty list/dict if the schema is list or dict rather than the default None
+    specified in the option. This is a safeguard against bugs due to unexpected values.
+    """
+
+    def is_list_type(t) -> bool:
+        return typing.get_origin(t) is list or t is list
+
+    def is_dict_type(t) -> bool:
+        return typing.get_origin(t) is dict or t is dict
+
+    for field in fields(JobOptions):
+        if is_list_type(field.type) or is_dict_type(field.type):
+            assert field.default is not None, f"{field.name} should not have default of None"
+
+
 class TestCreditPlansJobOption:
+    @staticmethod
+    def assert_is_emtpy_list(item):
+        assert len(item) == 0
+        assert isinstance(item, list)
+
     def test_credit_plans_parsed(self):
         job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a"]})
         assert job_options.credit_plans == ["plan-a"]
 
-    def test_credit_plans_absent_is_none(self):
+    def test_credit_plans_absent_is_empty_list(self):
         job_options = JobOptions.from_dict({})
-        assert job_options.credit_plans is None
+        self.assert_is_emtpy_list(job_options.credit_plans)
 
     def test_credit_plans_empty_list_does_not_raises(self):
         """
@@ -155,8 +180,7 @@ class TestCreditPlansJobOption:
         """
         options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: []})
         options.validate()
-        assert len(options.credit_plans) == 0
-        assert isinstance(options.credit_plans, list)
+        self.assert_is_emtpy_list(options.credit_plans)
 
     def test_credit_plans_multiple_plans_accepted(self):
         job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a", "plan-b"]})
