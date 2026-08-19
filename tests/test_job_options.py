@@ -148,12 +148,15 @@ class TestCreditPlansJobOption:
         job_options = JobOptions.from_dict({})
         assert job_options.credit_plans is None
 
-    def test_credit_plans_empty_list_raises(self):
-        with pytest.raises(OpenEOApiException) as exc_info:
-            options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: []})
-            options.validate()
-        assert exc_info.value.status_code == 400
-        assert exc_info.value.code == "CreditPlansInvalid"
+    def test_credit_plans_empty_list_does_not_raises(self):
+        """
+        The webeditor does not really respect the default None but instead
+        sets the value to the empty list so we mustn't fail on that input.
+        """
+        options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: []})
+        options.validate()
+        assert len(options.credit_plans) == 0
+        assert isinstance(options.credit_plans, list)
 
     def test_credit_plans_multiple_plans_accepted(self):
         job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a", "plan-b"]})
