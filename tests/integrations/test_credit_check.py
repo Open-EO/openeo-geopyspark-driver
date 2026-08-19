@@ -62,14 +62,14 @@ class TestGetUserProvidedCreditPlans:
     def setup_method(self):
         self.credit_check = AlwaysAllowCreditCheck()
 
-    def test_returns_none_when_job_options_absent(self):
-        assert self.credit_check.get_user_provided_credit_plans({}) is None
+    def test_returns_empty_list_when_job_options_absent(self):
+        assert self.credit_check.get_user_provided_credit_plans({}) == []
 
-    def test_returns_none_when_job_options_is_none(self):
-        assert self.credit_check.get_user_provided_credit_plans({"job_options": None}) is None
+    def test_returns_empty_list_when_job_options_is_none(self):
+        assert self.credit_check.get_user_provided_credit_plans({"job_options": None}) == []
 
-    def test_returns_none_when_credit_plans_key_absent(self):
-        assert self.credit_check.get_user_provided_credit_plans({"job_options": {"driver-memory": "4G"}}) is None
+    def test_returns_empty_list_when_credit_plans_key_absent(self):
+        assert self.credit_check.get_user_provided_credit_plans({"job_options": {"driver-memory": "4G"}}) == []
 
     def test_returns_plans_when_present(self):
         result = self.credit_check.get_user_provided_credit_plans(

@@ -83,14 +83,14 @@ class CreditCheck(ABC):
         else:
             self._raise_invalid_plan(f"Plan should be a list of strings got a {type(user_provided_plans)}")
 
-    def get_user_provided_credit_plans(self, job_details: JobDict) -> Optional[List[str]]:
+    def get_user_provided_credit_plans(self, job_details: JobDict) -> List[str]:
         """
         Get the credit plans that were provided by the user and have been validated as being valid job-options.
 
-        If the user did not specify a value this will return None
+        If the user did not specify a value this will return an empty list
         """
         job_options_dict = job_details.get("job_options", {}) or {}
-        return job_options_dict.get(JOB_OPTION_CREDIT_PLANS)
+        return job_options_dict.get(JOB_OPTION_CREDIT_PLANS, [])
 
 
 class AlwaysAllowCreditCheck(CreditCheck):
