@@ -45,12 +45,6 @@ class TestCreditCheckFormatValidation:
         # Should not raise
         self.credit_check.check_format_user_provided_plans(["plan-a", "plan-b"])
 
-    def test_empty_list_raises(self):
-        with pytest.raises(OpenEOApiException) as exc_info:
-            self.credit_check.check_format_user_provided_plans([])
-        assert exc_info.value.status_code == 400
-        assert exc_info.value.code == "CreditPlansInvalid"
-
     @pytest.mark.parametrize("invalid_input", ["plan-a", 123, {"plan": "x"}, None])
     def test_non_list_raises(self, invalid_input):
         with pytest.raises(OpenEOApiException) as exc_info:
@@ -60,7 +54,7 @@ class TestCreditCheckFormatValidation:
 
     def test_error_message_contains_job_option_name(self):
         with pytest.raises(OpenEOApiException) as exc_info:
-            self.credit_check.check_format_user_provided_plans([])
+            self.credit_check.check_format_user_provided_plans("invalidInput")
         assert JOB_OPTION_CREDIT_PLANS in exc_info.value.message
 
 

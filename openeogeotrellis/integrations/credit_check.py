@@ -77,8 +77,6 @@ class CreditCheck(ABC):
         valid. Implementation classes should call this super method first and then perform their additional checks.
         """
         if isinstance(user_provided_plans, list):
-            if len(user_provided_plans) == 0:
-                self._raise_invalid_plan(f"Plan should be a list of strings with at least 1 plan got 0 plans.")
             for plan in user_provided_plans:
                 if not isinstance(plan, str):
                     self._raise_invalid_plan(f"Plan should be a list of strings got a list containing {type(plan)}")
