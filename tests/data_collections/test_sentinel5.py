@@ -386,8 +386,10 @@ def test_read_product_default_band_per_cloud_collection(synthetic_products, coll
 # Tests that require a real eodata mount
 # ---------------------------------------------------------------------------
 
-if not os.path.exists("/eodata") or not os.listdir("/eodata"):
-    pytest.skip(reason="requires mounting /eodata.", allow_module_level=True)
+requires_eodata = pytest.mark.skipif(
+    not os.path.exists("/eodata") or not os.listdir("/eodata"),
+    reason="requires mounting /eodata.",
+)
 
 
 def assert_tif_file_is_healthy(tif_path):
@@ -474,6 +476,7 @@ def _get_qa_value_recommended_threshold(nc_path) -> float:
         "aer_lh",
     ],
 )
+@requires_eodata
 def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
     """The FILTER_VALUE configured for each gas/product in `all_gases` should match the qa_value
     threshold documented in the `comment` attribute of a real product's netCDF metadata, unless
@@ -490,6 +493,7 @@ def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
     assert configured_threshold == metadata_threshold
 
 
+@requires_eodata
 class TestSentinel5:
     def setup_method(self):
         test_data_path = Path("/tmp/Sentinel5data/")
