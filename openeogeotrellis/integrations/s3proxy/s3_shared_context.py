@@ -53,7 +53,7 @@ def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, interna
     region_name = bucket_details.region
     if region_name == _REGION_UNKNOWN:
         raise S3ProxyDisabled(
-            f"Bucket {bucket!r} has unknown region: no workspace config found providing region information."
+            f"Bucket {bucket!r} has unknown region."
         )
     try:
         if internal:
