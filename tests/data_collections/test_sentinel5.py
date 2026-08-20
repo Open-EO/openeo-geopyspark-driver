@@ -8,7 +8,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pytest
@@ -670,6 +670,53 @@ class TestSentinel5:
         with rasterio.open(output_file) as ds:
             print(ds.bounds)
             assert ds.bounds.right == 11.0
+
+    def test_sentinel5p_l2_qa_value_featureflag(self, api110, tmp_path) -> None:
+        """A stricter `qa_value` featureflag masks out more pixels than the CO default (0.5).
+
+        Runs the same `load_collection` process graph twice (default vs. a strict `qa_value`
+        override) through the full backend, so the resulting GeoTIFFs can be compared directly.
+        """
+        collection_id = "SENTINEL5P_L2_CO"
+
+        # collection_id = "SENTINEL5P_L2_NO2" # was also tested with this.
+
+        def run_and_save(qa_value: Optional[float]) -> Path:
+            arguments: dict[str, Any] = {
+                "id": collection_id,
+                "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
+                "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
+                # "bands": ["carbonmonoxide_total_column_corrected"],
+                "bands": ["nitrogendioxide_tropospheric_column"],
+            }
+            if collection_id == "SENTINEL5P_L2_CO":
+                arguments["bands"] = ["carbonmonoxide_total_column_corrected"]
+            elif collection_id == "SENTINEL5P_L2_NO2":
+                arguments["bands"] = ["nitrogendioxide_tropospheric_column"]
+            else:
+                raise Exception(f"Unknown collection id: {collection_id}")
+            if qa_value is not None:
+                arguments["featureflags"] = {"qa_value": qa_value}
+            graph = {
+                "loadcollection1": {
+                    "process_id": "load_collection",
+                    "arguments": arguments,
+                    "result": True,
+                },
+            }
+            response = api110.check_result(graph)
+            output_file = tmp_path / f"test_{collection_id}_qa{qa_value}.tif"
+            with output_file.open(mode="wb") as f:
+                f.write(response.data)
+            return output_file
+
+        ds____zero = rasterio.open(run_and_save(0.00)).read(1, masked=True)
+        ds_default = rasterio.open(run_and_save(None)).read(1, masked=True)
+        ds__strict = rasterio.open(run_and_save(0.99)).read(1, masked=True)
+
+        # A stricter qa_value should never yield more valid (unmasked) pixels than the default.
+        assert ds__strict.count() <= ds_default.count()
+        assert ds_default.count() <= ds____zero.count()
 
     def test_invalid_spatial_extent_exception(self):
         params = {
