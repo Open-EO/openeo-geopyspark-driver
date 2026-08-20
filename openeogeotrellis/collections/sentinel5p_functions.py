@@ -487,6 +487,7 @@ def estimate_source_pixel_spacing(source_coordinates: np.ndarray) -> float:
     tree = cKDTree(source_coordinates)
     # k=2 because the nearest neighbor of a point in the tree is the point itself (distance 0)
     distances, _ = tree.query(source_coordinates, k=2)
+    assert isinstance(distances, np.ndarray)
     return float(np.median(distances[:, 1]))
 
 
