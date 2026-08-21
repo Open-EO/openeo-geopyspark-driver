@@ -2714,7 +2714,13 @@ class GeopysparkDataCube(DriverDataCube):
             if to_zip:
                 shutil.make_archive(zarr_file, 'zip', zarr_file)
                 return {str(os.path.basename(zarr_file + ".zip")):{"href": zarr_file + ".zip", "roles": ["data"]}}
-            return {str(os.path.basename(zarr_file)):{"href": zarr_file, "roles": ["data"]}}
+            return {
+                str(os.path.basename(zarr_file)):{
+                    "href": zarr_file,
+                    "roles": ["data"],
+                    "type": "application/zip" if to_zip else "application/x-zarr",
+                }
+            }
 
         elif format == "DEBUG_GENERAL":
             # Write debug information to a json file without going through spark.
