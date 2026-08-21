@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -12,9 +13,10 @@ import boto3
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3ProxyUnsupportedBucketType
+from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri, split_s3_uri_and_alias
 from openeogeotrellis.integrations.s3proxy.sts import get_job_aws_credentials_for_proxy
 from openeo_driver.errors import OpenEOApiException
-from openeo_driver.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket, _REGION_UNKNOWN
+from openeo_driver.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket
 from openeo_driver.integrations.s3.presigned_url import create_presigned_url
 from openeo_driver.util.caching import BoundedTtlCache
 
@@ -32,10 +34,12 @@ _client_cache = BoundedTtlCache(ttl=10 * 60, max_size=50)
 
 
 def get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, internal: bool = True) -> S3Client:
-    """
-    Get an S3 proxy client that is scoped with job context. Clients are specific per bucket since the endpoint depends
-    on the bucket. job_id and user_id are the context for which the client gets created. An internal client is a client
-    that is usable only inside the OpenEO backend execution context.
+    """Return a cached S3 proxy client scoped to a job execution context.
+
+    The client endpoint is bucket-specific (the endpoint depends on the bucket's region).
+    Set ``internal=True`` (the default) for a client that resolves to the cluster-internal
+    proxy endpoint (usable only from within the cluster, e.g. by Spark executors).
+    Set ``internal=False`` for a client that resolves to the externally accessible proxy endpoint.
     """
     return _client_cache.get_or_call(
         (bucket, job_id, user_id, str(internal)),
@@ -44,17 +48,19 @@ def get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, internal
 
 
 def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, internal: bool) -> S3Client:
-    """
-    A proxy S3 client gets a client which is configured for bucket access scoped to an execution context.
+    """Construct a boto3 S3 client pointed at the S3 proxy for the given bucket and job context.
 
-    It takes a bucket because a bucket is required to identify the region where the data resides.
+    Raises S3ProxyDisabled if the bucket is not a known workspace bucket (no region available)
+    or if no proxy endpoint is configured for the bucket's region.
     """
     bucket_details = BucketDetails.from_name(bucket)
-    region_name = bucket_details.region
-    if region_name == _REGION_UNKNOWN:
+    # Currently only workspace buckets are supported: they are the only bucket type for which
+    # we can derive both a region (needed to pick the proxy endpoint) and a role ARN.
+    if not is_workspace_bucket(bucket_details):
         raise S3ProxyDisabled(
-            f"Bucket {bucket!r} has unknown region."
+            f"Bucket {bucket!r} is not a known workspace bucket; cannot determine region for S3 proxy."
         )
+    region_name = bucket_details.region
     try:
         if internal:
             endpoint_url = os.environ[AWSConfig.S3PROXY_S3_ENDPOINT_URL]
@@ -69,29 +75,7 @@ def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, interna
             **creds.as_client_kwargs(),
         )
     except KeyError:
-        raise S3ProxyDisabled(f"Region {region_name} is not supported by proxy.")
-
-
-def _split_s3_uri_and_alias(s3_uri: str) -> Tuple[str, Optional[str]]:
-    """Split an S3 URI into the URI without alias and an optional alias fragment.
-
-    Returns (s3_uri_without_alias, alias) where alias may be None if no '#' is present.
-    Raises OpenEOApiException if the URI has more than one '#' or an empty alias.
-    """
-    if s3_uri.count("#") > 1:
-        raise OpenEOApiException(
-            status_code=400,
-            message=f"Invalid S3 URI {s3_uri!r}: expected at most one '#'.",
-        )
-    if "#" in s3_uri:
-        s3_uri_without_alias, alias = s3_uri.split("#", 1)
-        if not alias:
-            raise OpenEOApiException(
-                status_code=400,
-                message=f"Invalid S3 URI {s3_uri!r}: expected non-empty alias after '#'.",
-            )
-        return s3_uri_without_alias, alias
-    return s3_uri, None
+        raise S3ProxyDisabled(f"No S3 proxy endpoint configured for region {region_name!r}.")
 
 
 def presign_s3_urls_for_internal_usage(
@@ -105,19 +89,14 @@ def presign_s3_urls_for_internal_usage(
     Non-S3 URIs are passed through unchanged. S3 URIs may optionally carry a Spark alias
     fragment (``s3://bucket/key#alias``); if present it is re-appended after the presigned URL.
     """
-    from urllib.parse import urlparse
-
     resolved = []
     for uri in s3_uris:
         if not uri.startswith("s3://"):
             resolved.append(uri)
             continue
 
-        # Avoid circular import: asset_urls imports from this module
-        from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
-
-        s3_uri_without_alias, alias = _split_s3_uri_and_alias(uri)
-        bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(s3_uri_without_alias)
+        s3_uri_without_alias, alias = split_s3_uri_and_alias(uri)
+        bucket, key = get_bucket_key_from_uri(s3_uri_without_alias)
         s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id, internal=True)
         presigned_url = create_presigned_url(
             s3_client,

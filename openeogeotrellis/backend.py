@@ -102,6 +102,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
+from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -2651,7 +2652,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if uri_parts.scheme == "file":
                 return try_get_results_metadata_from_disk(uri_parts.path)
             elif uri_parts.scheme == "s3":
-                bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+                bucket, key = get_bucket_key_from_uri(results_metadata_uri)
                 return try_get_results_metadata_from_object_storage(key, bucket)
             else:
                 raise NotImplementedError(results_metadata_uri)

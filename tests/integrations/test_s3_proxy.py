@@ -6,10 +6,8 @@ import pytest
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled
-from openeogeotrellis.integrations.s3proxy.s3_shared_context import (
-    _split_s3_uri_and_alias,
-    presign_s3_urls_for_internal_usage,
-)
+from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
+from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri, split_s3_uri_and_alias
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.testing import gps_config_overrides
@@ -17,7 +15,7 @@ from openeogeotrellis.workspace import ObjectStorageWorkspace
 
 
 def test_get_bucket_key_from_uri():
-    bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri("s3://my-bucket/my/key")
+    bucket, key = get_bucket_key_from_uri("s3://my-bucket/my/key")
 
     assert bucket == "my-bucket"
     assert key == "my/key"
@@ -25,23 +23,23 @@ def test_get_bucket_key_from_uri():
 
 class TestSplitS3UriAndAlias:
     def test_uri_with_alias(self):
-        uri, alias = _split_s3_uri_and_alias("s3://bucket/key#myalias")
+        uri, alias = split_s3_uri_and_alias("s3://bucket/key#myalias")
         assert uri == "s3://bucket/key"
         assert alias == "myalias"
 
     def test_uri_without_alias(self):
-        uri, alias = _split_s3_uri_and_alias("s3://bucket/key")
+        uri, alias = split_s3_uri_and_alias("s3://bucket/key")
         assert uri == "s3://bucket/key"
         assert alias is None
 
     def test_multiple_hashes_rejected(self):
         with pytest.raises(OpenEOApiException) as exc_info:
-            _split_s3_uri_and_alias("s3://bucket/key#alias#extra")
+            split_s3_uri_and_alias("s3://bucket/key#alias#extra")
         assert exc_info.value.status_code == 400
 
     def test_empty_alias_rejected(self):
         with pytest.raises(OpenEOApiException) as exc_info:
-            _split_s3_uri_and_alias("s3://bucket/key#")
+            split_s3_uri_and_alias("s3://bucket/key#")
         assert exc_info.value.status_code == 400
 
 
