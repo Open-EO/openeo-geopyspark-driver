@@ -8,7 +8,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pytest
@@ -386,8 +386,10 @@ def test_read_product_default_band_per_cloud_collection(synthetic_products, coll
 # Tests that require a real eodata mount
 # ---------------------------------------------------------------------------
 
-if not os.path.exists("/eodata") or not os.listdir("/eodata"):
-    pytest.skip(reason="requires mounting /eodata.", allow_module_level=True)
+requires_eodata = pytest.mark.skipif(
+    not os.path.exists("/eodata") or not os.listdir("/eodata"),
+    reason="requires mounting /eodata.",
+)
 
 
 def assert_tif_file_is_healthy(tif_path):
@@ -474,6 +476,7 @@ def _get_qa_value_recommended_threshold(nc_path) -> float:
         "aer_lh",
     ],
 )
+@requires_eodata
 def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
     """The FILTER_VALUE configured for each gas/product in `all_gases` should match the qa_value
     threshold documented in the `comment` attribute of a real product's netCDF metadata, unless
@@ -490,6 +493,7 @@ def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
     assert configured_threshold == metadata_threshold
 
 
+@requires_eodata
 class TestSentinel5:
     def setup_method(self):
         test_data_path = Path("/tmp/Sentinel5data/")
@@ -571,13 +575,13 @@ class TestSentinel5:
             ),
             (
                 "SENTINEL5P_L2_AER_AI_340_380",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
+                {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
                 ["aerosol_index_340_380", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_354_388",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
+                {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
                 ["aerosol_index_354_388", "qa_value"],
             ),
@@ -666,6 +670,93 @@ class TestSentinel5:
         with rasterio.open(output_file) as ds:
             print(ds.bounds)
             assert ds.bounds.right == 11.0
+
+    def test_sentinel5p_l2_qa_value_featureflag(self, api110, tmp_path) -> None:
+        """A stricter `qa_value` featureflag masks out more pixels than the CO default (0.5).
+
+        Runs the same `load_collection` process graph twice (default vs. a strict `qa_value`
+        override) through the full backend, so the resulting GeoTIFFs can be compared directly.
+        """
+        collection_id = "SENTINEL5P_L2_CO"
+
+        # collection_id = "SENTINEL5P_L2_NO2" # was also tested with this.
+
+        def run_and_save(qa_value: Optional[float]) -> Path:
+            arguments: dict[str, Any] = {
+                "id": collection_id,
+                "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
+                "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
+                # "bands": ["carbonmonoxide_total_column_corrected"],
+                "bands": ["nitrogendioxide_tropospheric_column"],
+            }
+            if collection_id == "SENTINEL5P_L2_CO":
+                arguments["bands"] = ["carbonmonoxide_total_column_corrected"]
+            elif collection_id == "SENTINEL5P_L2_NO2":
+                arguments["bands"] = ["nitrogendioxide_tropospheric_column"]
+            else:
+                raise Exception(f"Unknown collection id: {collection_id}")
+            if qa_value is not None:
+                arguments["featureflags"] = {"qa_value": qa_value}
+            graph = {
+                "loadcollection1": {
+                    "process_id": "load_collection",
+                    "arguments": arguments,
+                    "result": True,
+                },
+            }
+            response = api110.check_result(graph)
+            output_file = tmp_path / f"test_{collection_id}_qa{qa_value}.tif"
+            with output_file.open(mode="wb") as f:
+                f.write(response.data)
+            return output_file
+
+        ds____zero = rasterio.open(run_and_save(0.00)).read(1, masked=True)
+        ds_default = rasterio.open(run_and_save(None)).read(1, masked=True)
+        ds__strict = rasterio.open(run_and_save(0.99)).read(1, masked=True)
+
+        # A stricter qa_value should never yield more valid (unmasked) pixels than the default.
+        assert ds__strict.count() <= ds_default.count()
+        assert ds_default.count() <= ds____zero.count()
+
+    def test_sentinel5p_l2_long_vertical_extent(self, api110, tmp_path) -> None:
+        """A very tall spatial extent (near the equator up to near the north pole) should load fine.
+
+        This exercises multiple S5P orbits/tiles stacked vertically over a large latitude range,
+        which is a much larger extent than the other tests use.
+        """
+        collection_id = "SENTINEL5P_L2_CO"
+        spatial_extent = {"west": 4, "south": 1, "east": 11, "north": 80}
+        temporal_extent = ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"]
+        bands = ["carbonmonoxide_total_column_corrected"]
+
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": collection_id,
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": temporal_extent,
+                    "bands": bands,
+                },
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"test_{collection_id}_long_vertical.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+
+        with rasterio.open(output_file) as ds:
+            print(ds.bounds)
+            assert ds.bounds.left <= 4.0
+            assert ds.bounds.right >= 11.0
+            assert ds.bounds.bottom <= 1.0
+            assert ds.bounds.top >= 80.0
+            # the extent spans much more latitude than longitude
+            assert (ds.bounds.top - ds.bounds.bottom) > 5 * (ds.bounds.right - ds.bounds.left)
 
     def test_invalid_spatial_extent_exception(self):
         params = {

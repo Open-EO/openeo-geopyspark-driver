@@ -477,9 +477,48 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     return grid_x, grid_y
 
 
+def _scale_lon_by_latitude(coordinates: np.ndarray) -> np.ndarray:
+    """Scale the longitude component of (lon, lat) coordinates by cos(latitude).
+
+    A degree of longitude covers far less physical (ground) distance near the poles than
+    near the equator, so Euclidean distances computed directly on raw (lon, lat) pairs are
+    not comparable across latitude ranges: the very same physical spacing between source
+    points corresponds to a much larger longitude *degree* difference near the poles. Scaling
+    longitude by cos(latitude) makes nearest-neighbour distances (and thresholds derived from
+    them) approximately height/latitude independent, i.e. comparable to physical ground
+    distance regardless of how close to the poles the points are.
+    """
+    lon, lat = coordinates[:, 0], coordinates[:, 1]
+    return np.stack((lon * np.cos(np.radians(lat)), lat), axis=-1)
+
+
+@typechecked
+def estimate_source_pixel_spacing(source_coordinates: np.ndarray) -> float:
+    """Estimate the typical spacing between neighboring source points.
+
+    Longitude is scaled by cos(latitude) (see :func:`_scale_lon_by_latitude`) before
+    computing distances, so the estimate stays meaningful for source data spanning a wide
+    range of latitudes (e.g. equator to poles).
+    """
+    from scipy.spatial import cKDTree
+
+    if len(source_coordinates) < 2:
+        return np.inf
+    scaled_coordinates = _scale_lon_by_latitude(source_coordinates)
+    tree = cKDTree(scaled_coordinates)
+    # k=2 because the nearest neighbor of a point in the tree is the point itself (distance 0)
+    distances, _ = tree.query(scaled_coordinates, k=2)
+    assert isinstance(distances, np.ndarray)
+    return float(np.median(distances[:, 1]))
+
+
 @typechecked
 def interpolate(
-    source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
+    source_coordinates: np.ndarray,
+    source_data: np.ndarray,
+    target_coordinates: np.ndarray,
+    method: str = "nearest",
+    max_distance: Optional[float] = None,
 ) -> np.ndarray:
     """Interpolate source data to target grid based on source and target coordinates.
 
@@ -488,6 +527,11 @@ def interpolate(
         source_data (Array of float): 1-d array of shape (n,) representing source data values.
         target_coordinates (Array of float): 2-d array of shape (m, 2) representing target coordinates (lon, lat).
         method (str): Interpolation method. Options are "Nearest", "Linear", "Cubic".
+        max_distance (float, optional): Only relevant for ``method="nearest"``. Target points
+            further away from their nearest source point than this distance are set to NaN
+            instead of being clamped to that (too distant) source value. "Linear" and "Cubic"
+            already return NaN outside the convex hull of the source points, so they are
+            unaffected by this parameter.
 
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
@@ -506,6 +550,18 @@ def interpolate(
         method=method,
         fill_value=np.nan,
     )
+    if method == "nearest" and max_distance is not None and len(source_coordinates) > 0:
+        from scipy.spatial import cKDTree
+
+        # Use latitude-scaled coordinates (see _scale_lon_by_latitude) so that max_distance
+        # is comparable across the full latitude range of the target grid, instead of being
+        # biased towards whatever latitude the source data happens to be denser/sparser in
+        # degree-space.
+        scaled_source_coordinates = _scale_lon_by_latitude(source_coordinates)
+        scaled_target_coordinates = _scale_lon_by_latitude(target_coordinates)
+        tree = cKDTree(scaled_source_coordinates)
+        nearest_distances, _ = tree.query(scaled_target_coordinates, k=1)
+        interpolated_data = np.where(nearest_distances <= max_distance, interpolated_data, np.nan)
     return interpolated_data
 
 
@@ -559,19 +615,35 @@ def resample_data(
     if spatial_extent[0] > spatial_extent[2]:  # anti-meridian crossing
         source_coordinates, target_coordinates = adapt_coordinates(source_coordinates, target_coordinates)
 
+    # "nearest" interpolation can sample far away pixels, because it uses a KDTree.
+    # This threshold helps to avoid that:
+    max_nearest_distance = estimate_source_pixel_spacing(source_coordinates) * 1.5
+
     # Interpolate qa_value_mask to new grid with nearest method for masking
     # Do not use other methods as it can create intermediate values
     # which can lead to incorrect masking.
-    interpolated_data["qa_value_mask"] = interpolate(
-        source_coordinates, data["qa_value_mask"].ravel(), target_coordinates, method="nearest"
+    qa_value_mask_interp = interpolate(
+        source_coordinates,
+        data["qa_value_mask"].ravel(),
+        target_coordinates,
+        method="nearest",
+        max_distance=max_nearest_distance,
     ).reshape(target_shape)
+    # NaN (no source pixel close enough) means "no valid data", i.e. should not pass quality filtering
+    interpolated_data["qa_value_mask"] = np.where(np.isnan(qa_value_mask_interp), False, qa_value_mask_interp).astype(
+        bool
+    )
 
     # all other bands
     for key, val in data.items():
         if key in bands:
             # interpolate to new grid
             interpolated_data[key] = interpolate(
-                source_coordinates, val.ravel(), target_coordinates, method=interpolation_method
+                source_coordinates,
+                val.ravel(),
+                target_coordinates,
+                method=interpolation_method,
+                max_distance=max_nearest_distance,
             ).reshape(target_shape)
     return interpolated_data
 

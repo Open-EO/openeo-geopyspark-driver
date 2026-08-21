@@ -59,6 +59,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
+    estimate_source_pixel_spacing,
     get_gas_variables,
     interpolate,
     load_data_from_file,
@@ -179,6 +180,7 @@ def read_product(
     tile_size: int,
     resolution: float,
     collection_id: Optional[str] = None,
+    qa_value: Optional[float] = None,
 ) -> list[tuple[geopyspark.SpaceTimeKey, geopyspark.Tile]]:
     """Read Sentinel-5P data from a NetCDF file and return GeoTrellis tiles.
 
@@ -200,6 +202,9 @@ def read_product(
             sub-products, and the two "AER_AI" wavelength-pair variants), so the generic
             gas-level default would otherwise silently return the wrong band. When not
             given, or not one of those ambiguous collections, the gas-level default is used.
+        qa_value: optional override for the minimum acceptable QA value (0.0-1.0) used to mask
+            out low-quality pixels. When not given, the gas-specific default (per Sentinel-5P
+            documentation) is used.
 
     Returns:
         List of ``(SpaceTimeKey, Tile)`` tuples ready for a GeoTrellis
@@ -214,6 +219,13 @@ def read_product(
 
     file_gas = parse_gas_from_filename(creo_path.name)
     variable_loc_in_file, default_bands, default_filter_value = get_gas_variables(file_gas, collection_id)
+
+    if qa_value is not None:
+        if not (0.0 <= qa_value <= 1.0):
+            raise OpenEOApiException(
+                f"qa_value {qa_value} is not standard as per Sentinel-5P documentation. It should be between 0.0-1.0."
+            )
+        default_filter_value = qa_value
 
     col_min = min(f["key"]["col"] for f in features)
     col_max = max(f["key"]["col"] for f in features)
@@ -269,9 +281,17 @@ def read_product(
     if xmin > xmax:  # anti-meridian crossing
         source_coords, target_coords = adapt_coordinates(source_coords, target_coords)
 
+    # "nearest" interpolation can sample far away pixels, because it uses a KDTree.
+    # This threshold helps to avoid that:
+    max_nearest_distance = estimate_source_pixel_spacing(source_coords) * 1.5
+
     # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.
     qa_flat = raw_data["qa_value_mask"].ravel().astype(np.float64)
-    qa_grid = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x).astype(bool)
+    qa_grid_raw = interpolate(
+        source_coords, qa_flat, target_coords, method="nearest", max_distance=max_nearest_distance
+    ).reshape(n_y, n_x)
+    # NaN (no source pixel close enough) means "no valid data", i.e. should not pass quality filtering
+    qa_grid = np.where(np.isnan(qa_grid_raw), False, qa_grid_raw).astype(bool)
 
     # Resample each band and apply quality mask
     band_grids = []
@@ -279,7 +299,13 @@ def read_product(
         if band not in raw_data:
             continue
         grid = (
-            interpolate(source_coords, raw_data[band].ravel(), target_coords, method="nearest")
+            interpolate(
+                source_coords,
+                raw_data[band].ravel(),
+                target_coords,
+                method="nearest",
+                max_distance=max_nearest_distance,
+            )
             .reshape(n_y, n_x)
             .astype(np.float32)
         )
@@ -403,6 +429,9 @@ def pyramid(
 
     :param collection_id: the openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``),
         used to resolve the correct default band in :func:`read_product` when *band_names* is empty.
+    :param feature_flags: supports an optional ``qa_value`` key (float, 0.0-1.0) in ``load_collection``'s
+        ``featureflags`` argument, overriding the gas-specific default minimum QA value used to mask
+        out low-quality pixels.
     """
     latlng_crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
 
@@ -420,6 +449,7 @@ def pyramid(
             )
     load_stac_feature_flags = feature_flags["load_stac_feature_flags"]
     stac_url = load_stac_feature_flags["url"]
+    qa_value = feature_flags.get("qa_value")
 
     file_rdd_factory_collection_id = "Sentinel5P"
     correlation_id = ""
@@ -475,7 +505,12 @@ def pyramid(
 
     tile_rdd = per_product.partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index).flatMap(
         partial(
-            read_product, band_names=band_names, tile_size=tile_size, resolution=resolution, collection_id=collection_id
+            read_product,
+            band_names=band_names,
+            tile_size=tile_size,
+            resolution=resolution,
+            collection_id=collection_id,
+            qa_value=qa_value,
         )
     )
 
