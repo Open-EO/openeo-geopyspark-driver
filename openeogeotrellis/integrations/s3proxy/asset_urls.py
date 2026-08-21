@@ -19,7 +19,7 @@ class PresignedS3AssetUrls(AssetUrl):
         if isinstance(href, str) and href.startswith("s3://"):
             try:
                 bucket, key = self.get_bucket_key_from_uri(href)
-                return self._get_presigned_url_against_proxy(bucket, key, job_id, user_id)
+                return self._get_presigned_url_against_proxy(bucket, key, job_id, user_id, internal=False)
             except (ValueError, ProxyException) as e:
                 logging.debug(f"Falling back to default asset getter because: {e}")
         return super().build_url(asset_metadata=asset_metadata, asset_name=asset_name, job_id=job_id, user_id=user_id)
@@ -36,8 +36,8 @@ class PresignedS3AssetUrls(AssetUrl):
             key = _parsed.path.lstrip("/")
         return bucket, key
 
-    def _get_presigned_url_against_proxy(self, bucket: str, key: str, job_id: str, user_id: str) -> str:
-        s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id)
+    def _get_presigned_url_against_proxy(self, bucket: str, key: str, job_id: str, user_id: str, internal: bool) -> str:
+        s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id, internal)
         url = create_presigned_url(
             s3_client,
             bucket_name=bucket,
@@ -49,3 +49,8 @@ class PresignedS3AssetUrls(AssetUrl):
         if url is None:
             raise ValueError(f"Could not create a presigned url for s3://{bucket}/{key} job_id={job_id} user={user_id}")
         return url
+
+    def get_presigned_url_against_internal_proxy(self, bucket: str, key: str, job_id: str, user_id: str) -> str:
+        return self._get_presigned_url_against_proxy(
+            bucket=bucket, key=key, job_id=job_id, user_id=user_id, internal=True
+        )
