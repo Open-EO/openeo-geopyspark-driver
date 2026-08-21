@@ -37,7 +37,3 @@ class PresignedS3AssetUrls(AssetUrl):
             raise ValueError(f"Could not create a presigned url for s3://{bucket}/{key} job_id={job_id} user={user_id}")
         return url
 
-    def get_presigned_url_against_internal_proxy(self, bucket: str, key: str, job_id: str, user_id: str) -> str:
-        return self._get_presigned_url_against_proxy(
-            bucket=bucket, key=key, job_id=job_id, user_id=user_id, internal=True
-        )
