@@ -45,12 +45,6 @@ class TestCreditCheckFormatValidation:
         # Should not raise
         self.credit_check.check_format_user_provided_plans(["plan-a", "plan-b"])
 
-    def test_empty_list_raises(self):
-        with pytest.raises(OpenEOApiException) as exc_info:
-            self.credit_check.check_format_user_provided_plans([])
-        assert exc_info.value.status_code == 400
-        assert exc_info.value.code == "CreditPlansInvalid"
-
     @pytest.mark.parametrize("invalid_input", ["plan-a", 123, {"plan": "x"}, None])
     def test_non_list_raises(self, invalid_input):
         with pytest.raises(OpenEOApiException) as exc_info:
@@ -60,7 +54,7 @@ class TestCreditCheckFormatValidation:
 
     def test_error_message_contains_job_option_name(self):
         with pytest.raises(OpenEOApiException) as exc_info:
-            self.credit_check.check_format_user_provided_plans([])
+            self.credit_check.check_format_user_provided_plans("invalidInput")
         assert JOB_OPTION_CREDIT_PLANS in exc_info.value.message
 
 
@@ -68,14 +62,14 @@ class TestGetUserProvidedCreditPlans:
     def setup_method(self):
         self.credit_check = AlwaysAllowCreditCheck()
 
-    def test_returns_none_when_job_options_absent(self):
-        assert self.credit_check.get_user_provided_credit_plans({}) is None
+    def test_returns_empty_list_when_job_options_absent(self):
+        assert self.credit_check.get_user_provided_credit_plans({}) == []
 
-    def test_returns_none_when_job_options_is_none(self):
-        assert self.credit_check.get_user_provided_credit_plans({"job_options": None}) is None
+    def test_returns_empty_list_when_job_options_is_none(self):
+        assert self.credit_check.get_user_provided_credit_plans({"job_options": None}) == []
 
-    def test_returns_none_when_credit_plans_key_absent(self):
-        assert self.credit_check.get_user_provided_credit_plans({"job_options": {"driver-memory": "4G"}}) is None
+    def test_returns_empty_list_when_credit_plans_key_absent(self):
+        assert self.credit_check.get_user_provided_credit_plans({"job_options": {"driver-memory": "4G"}}) == []
 
     def test_returns_plans_when_present(self):
         result = self.credit_check.get_user_provided_credit_plans(

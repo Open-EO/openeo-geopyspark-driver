@@ -423,9 +423,9 @@ def pyramid(
 ) -> dict[int, geopyspark.TiledRasterLayer]:
     """Build a GeoTrellis pyramid from Sentinel-5P level-2 NetCDF files.
 
-    Mirrors :func:`openeogeotrellis.collections.sentinel3.pyramid` so that
-    Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
-    layer catalog.
+     Mirrors :func:`openeogeotrellis.collections.sentinel3.pyramid` so that
+     Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
+     layer catalog.
 
     :param collection_id: the openEO collection ID (e.g. ``"SENTINEL5P_L2_CLOUD_TOP_PRESSURE"``),
         used to resolve the correct default band in :func:`read_product` when *band_names* is empty.
