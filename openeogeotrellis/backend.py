@@ -2228,6 +2228,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 layer_catalog_init_image=os.environ.get("LAYER_CATALOG_INIT_IMAGE", "DISABLED"),
                 layer_catalog_init_dir=os.environ.get("LAYER_CATALOG_INIT_DIR", "/opt/layercatalogs"),
                 layer_catalog_init_pull_policy=os.environ.get("LAYER_CATALOG_INIT_IMAGE_PULL_POLICY", "IfNotPresent"),
+                initdata_dir=os.environ.get("INITDATA_DIR", ""),
                 credit_plan=execution_details.plan,
             )
 
