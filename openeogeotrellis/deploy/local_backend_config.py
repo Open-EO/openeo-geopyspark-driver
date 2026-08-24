@@ -31,6 +31,7 @@ oidc_providers = [
 os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {
     "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
+    "openeo-data": ObjectStorageWorkspace(bucket="openeo-data", region="REGION-NOT-APPLICABLE"),
     "calrissian": ObjectStorageWorkspace(bucket="calrissian", region="REGION-NOT-APPLICABLE"),
 }
 
