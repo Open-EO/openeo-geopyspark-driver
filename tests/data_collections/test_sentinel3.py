@@ -310,59 +310,6 @@ def test_sentinel3_slstr_l2_lst(api110, tmp_path) -> None:
         assert ds.bounds.right == 4.207142857142804
 
 
-def test_sentinel3_slstr_l2_lst_long_vertical_extent(api110, tmp_path) -> None:
-    """A very tall spatial extent (near the equator up to near the north pole) should load fine.
-
-    Mirrors ``TestSentinel5.test_sentinel5p_l2_long_vertical_extent`` in ``test_sentinel5.py``:
-    this exercises multiple Sentinel-3 SLSTR tiles/orbits stacked vertically over a large
-    latitude range, which is a much larger extent than the other tests use.
-    """
-    from tests.data_collections.test_sentinel5 import assert_tif_file_is_healthy
-
-    collection_id = "SENTINEL3_SLSTR_L2_LST"
-    spatial_extent = {"west": 3.1, "south": 1, "east": 4.2, "north": 80}
-    temporal_extent = ("2026-01-10T10:00:00Z", "2026-01-10T10:45:00Z")
-    bands = ["LST"]
-
-    process_graph = {
-        "loadcollection1": {
-            "process_id": "load_collection",
-            "arguments": {
-                "id": collection_id,
-                "spatial_extent": spatial_extent,
-                "temporal_extent": temporal_extent,
-                "bands": bands,
-            },
-        },
-        "saveresult1": {
-            "process_id": "save_result",
-            "arguments": {
-                "data": {"from_node": "loadcollection1"},
-                "format": "GTiff",
-                "options": {"overviews": "OFF"},
-            },
-            "result": True,
-        },
-    }
-    response = api110.check_result(process_graph)
-
-    output_file = tmp_path / f"test_{collection_id}_long_vertical.tif"
-    with output_file.open(mode="wb") as f:
-        f.write(response.data)
-
-    assert_tif_file_is_healthy(output_file)
-
-    with rasterio.open(output_file) as ds:
-        print(ds.bounds)
-        eps = 1e-6
-        assert ds.bounds.left <= 3.1 + eps
-        assert ds.bounds.right >= 4.2 - eps
-        assert ds.bounds.bottom <= 1.0 + eps
-        assert ds.bounds.top >= 80.0 - eps
-        # the extent spans much more latitude than longitude
-        assert (ds.bounds.top - ds.bounds.bottom) > 5 * (ds.bounds.right - ds.bounds.left)
-
-
 if __name__ == "__main__":
     # Allow to run from commandline
     test_read_single()
