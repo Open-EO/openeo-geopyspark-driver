@@ -940,6 +940,15 @@ class TestCalrissianUtils:
         assert len(results) == 7
         assert results[0].startswith("r-")
 
+    def test_parse_cwl_outputs_listing_scalars(self):
+        # CWL outputs can also be scalars (str/int/bool/None), not just File/Directory objects.
+        # These don't reference any files and should be silently skipped instead of raising.
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_scalars.json").open())
+        )
+        print(results)
+        assert sorted(results) == ["logs.txt", "output.json"]
+
     def test_parse_cwl_outputs_listing_txt(self):
         results = parse_cwl_outputs_listing(
             json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open())
