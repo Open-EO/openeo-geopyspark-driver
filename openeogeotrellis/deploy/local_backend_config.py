@@ -6,6 +6,7 @@ from openeo_driver.workspace import DiskWorkspace
 
 from openeogeotrellis.config import GpsBackendConfig
 from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
+from openeogeotrellis.workspace import ObjectStorageWorkspace
 
 # TODO: avoid VITO default client here. Only provide simple basic auth by default?
 oidc_default_client_egi = {
@@ -28,7 +29,10 @@ oidc_providers = [
 ]
 
 os.makedirs("/tmp/workspace", exist_ok=True)
-workspaces = {"tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace"))}
+workspaces = {
+    "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
+    "calrissian": ObjectStorageWorkspace(bucket="calrissian", region="REGION-NOT-APPLICABLE"),
+}
 
 if "OPENEO_CATALOG_FILES" in os.environ:
     layer_catalog_files = os.environ["OPENEO_CATALOG_FILES"].split(",")
