@@ -77,22 +77,20 @@ class CreditCheck(ABC):
         valid. Implementation classes should call this super method first and then perform their additional checks.
         """
         if isinstance(user_provided_plans, list):
-            if len(user_provided_plans) == 0:
-                self._raise_invalid_plan(f"Plan should be a list of strings with at least 1 plan got 0 plans.")
             for plan in user_provided_plans:
                 if not isinstance(plan, str):
                     self._raise_invalid_plan(f"Plan should be a list of strings got a list containing {type(plan)}")
         else:
             self._raise_invalid_plan(f"Plan should be a list of strings got a {type(user_provided_plans)}")
 
-    def get_user_provided_credit_plans(self, job_details: JobDict) -> Optional[List[str]]:
+    def get_user_provided_credit_plans(self, job_details: JobDict) -> List[str]:
         """
         Get the credit plans that were provided by the user and have been validated as being valid job-options.
 
-        If the user did not specify a value this will return None
+        If the user did not specify a value this will return an empty list
         """
         job_options_dict = job_details.get("job_options", {}) or {}
-        return job_options_dict.get(JOB_OPTION_CREDIT_PLANS)
+        return job_options_dict.get(JOB_OPTION_CREDIT_PLANS, [])
 
 
 class AlwaysAllowCreditCheck(CreditCheck):
