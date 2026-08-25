@@ -575,6 +575,11 @@ Example usage:
                             "description": "Specifies band-level metadata for each band (band-(key-value)).",
                             "default": None,
                         },
+                        "retain_nodata_tiles": {
+                            "type": "boolean",
+                            "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
+                        },
                     },
                 },
                 "PNG": {
@@ -624,6 +629,11 @@ Example usage:
                             "type": "string",
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
+                        },
+                        "retain_nodata_tiles": {
+                            "type": "boolean",
+                            "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
                         },
                     },
                 },
