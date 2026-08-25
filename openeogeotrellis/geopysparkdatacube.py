@@ -2196,7 +2196,7 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
-                    gtiff_options.setRetTainNodataTiles(retain_nodata_tiles)
+                    gtiff_options.setRetainNodataTiles(retain_nodata_tiles)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
@@ -2298,7 +2298,7 @@ class GeopysparkDataCube(DriverDataCube):
                     for file_metadata_key, file_metadata_value in file_metadata.items():
                         gtiff_options.addHeadTag(file_metadata_key, str(file_metadata_value))
                     gtiff_options.setResampleMethod(overview_resample)
-                    gtiff_options.setRetTainNodataTiles(retain_nodata_tiles)
+                    gtiff_options.setRetainNodataTiles(retain_nodata_tiles)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     color_cmap = get_color_cmap()
                     if color_cmap is not None:
