@@ -2606,7 +2606,7 @@ class GeopysparkDataCube(DriverDataCube):
                 options.setAttributes(global_metadata)
                 options.setBandsMetadata(bands_metadata)
                 options.setAddBandStatistics(add_bands_statistics)
-                options.setRetainNodataTiles(retainNodataTiles)
+                options.setRetainNoDataTiles(retainNodataTiles)
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
@@ -2640,7 +2640,7 @@ class GeopysparkDataCube(DriverDataCube):
                     options.setBandsMetadata(bands_metadata)
                     options.setZLevel(zlevel)
                     options.setAddBandStatistics(add_bands_statistics)
-                    options.setRetainNodataTiles(retainNodataTiles)
+                    options.setRetainNoDataTiles(retainNodataTiles)
                     if strict_cropping:
                         options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
