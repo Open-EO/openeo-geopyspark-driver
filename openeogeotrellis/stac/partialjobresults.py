@@ -2,6 +2,7 @@ from typing import Optional
 
 from openeo.util import TimingLogger
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
+from openeogeotrellis.constants import DUMMY_STAC_URL
 
 
 class PartialJobResults:
@@ -11,6 +12,8 @@ class PartialJobResults:
                                                      requests_session, supports_async_tasks) -> Optional[dict]:
         url = arguments[0]  # properties will be taken care of @ process graph evaluation time
 
+        if url == DUMMY_STAC_URL:
+            return None
         if url.startswith("http://") or url.startswith("https://"):
             dependency_job_info = extract_own_job_info(url)
             if dependency_job_info:
