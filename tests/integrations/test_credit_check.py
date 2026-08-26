@@ -1,12 +1,17 @@
 import pytest
+from unittest.mock import MagicMock
 
 from openeo_driver.errors import OpenEOApiException
 
+import openeogeotrellis.integrations.credit_check as credit_check_module
 from openeogeotrellis.integrations.credit_check import (
     AlwaysAllowCreditCheck,
     CreditCheck,
     ExecutionDetails,
     JOB_OPTION_CREDIT_PLANS,
+    get_batch_execution_details,
+    get_credit_check,
+    register_credit_check,
 )
 
 
@@ -92,3 +97,64 @@ class TestCreditCheckAbstract:
             credit_check.get_batch_execution_details({"job_options": {}})
         assert exc_info.value.status_code == 402
         assert exc_info.value.code == "PaymentRequired"
+
+
+@pytest.fixture
+def isolated_registry(monkeypatch):
+    """Replace the module-level registry with a fresh dict for each test."""
+    fresh = {}
+    monkeypatch.setattr(credit_check_module, "_credit_checks", fresh)
+    return fresh
+
+
+@pytest.fixture
+def mock_config(monkeypatch):
+    """Return a helper that sets the active credit_check name in config."""
+    config = MagicMock()
+    monkeypatch.setattr(credit_check_module, "get_backend_config", lambda: config)
+    return config
+
+
+class TestRegisterCreditCheck:
+    def test_registers_instance_under_name(self, isolated_registry):
+        instance = AlwaysAllowCreditCheck()
+        register_credit_check("MyCheck", instance)
+        assert isolated_registry["MyCheck"] is instance
+
+    def test_rejects_duplicate_name(self, isolated_registry):
+        register_credit_check("MyCheck", AlwaysAllowCreditCheck())
+        with pytest.raises(AssertionError, match="Overwriting credit checks is not allowed"):
+            register_credit_check("MyCheck", AlwaysAllowCreditCheck())
+
+    def test_allows_different_names(self, isolated_registry):
+        register_credit_check("CheckA", AlwaysAllowCreditCheck())
+        register_credit_check("CheckB", AlwaysAllowCreditCheck())
+        assert "CheckA" in isolated_registry
+        assert "CheckB" in isolated_registry
+
+
+class TestGetCreditCheck:
+    def test_returns_registered_instance(self, isolated_registry, mock_config):
+        instance = AlwaysAllowCreditCheck()
+        isolated_registry["MyCheck"] = instance
+        mock_config.credit_check = "MyCheck"
+        assert get_credit_check() is instance
+
+    def test_raises_for_unregistered_name(self, isolated_registry, mock_config):
+        mock_config.credit_check = "UnknownCheck"
+        with pytest.raises(KeyError, match="UnknownCheck"):
+            get_credit_check()
+
+
+class TestGetBatchExecutionDetails:
+    def test_delegates_to_registered_implementation(self, isolated_registry, mock_config):
+        isolated_registry["AlwaysAllowCreditCheck"] = AlwaysAllowCreditCheck()
+        mock_config.credit_check = "AlwaysAllowCreditCheck"
+        result = get_batch_execution_details({})
+        assert result == ExecutionDetails(plan="default")
+
+    def test_uses_plan_from_job_options(self, isolated_registry, mock_config):
+        isolated_registry["AlwaysAllowCreditCheck"] = AlwaysAllowCreditCheck()
+        mock_config.credit_check = "AlwaysAllowCreditCheck"
+        result = get_batch_execution_details({"job_options": {JOB_OPTION_CREDIT_PLANS: ["premium"]}})
+        assert result == ExecutionDetails(plan="premium")

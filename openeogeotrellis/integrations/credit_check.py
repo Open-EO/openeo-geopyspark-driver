@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.jobregistry import JobDict
+from openeogeotrellis.config import get_backend_config
+
 
 JOB_OPTION_CREDIT_PLANS = "credit-plans"
 
@@ -93,6 +95,30 @@ class CreditCheck(ABC):
         return job_options_dict.get(JOB_OPTION_CREDIT_PLANS, [])
 
 
+_credit_checks: Dict[str, CreditCheck] = {}
+
+
+def register_credit_check(name: str, credit_check: CreditCheck) -> None:
+    """Register a CreditCheck instance under the given name.
+
+    The instance is shared (singleton) — implementations must be stateless or
+    thread-safe, because the same object is reused across all requests.
+    """
+    assert name not in _credit_checks, "Overwriting credit checks is not allowed"
+    _credit_checks[name] = credit_check
+
+
+def get_credit_check() -> CreditCheck:
+    name = get_backend_config().credit_check
+    if name not in _credit_checks:
+        raise KeyError(f"No credit check registered under name {name!r}. ")
+    return _credit_checks[name]
+
+
+def get_batch_execution_details(job_details: JobDict) -> ExecutionDetails:
+    return get_credit_check().get_batch_execution_details(job_details)
+
+
 class AlwaysAllowCreditCheck(CreditCheck):
     """
     A dummy implementation that always assumes credits are available and that the provided plans have valid names.
@@ -112,3 +138,6 @@ class AlwaysAllowCreditCheck(CreditCheck):
     def _get_message_insufficient_credits(self) -> str:
         # https://github.com/Open-EO/openeo-api/blob/1881dae18b3c2c417f1305774cf295c81d60d400/errors.json#L325C15-L325C104
         return "The budget required to fulfil the request is not sufficient. A payment is required first."
+
+
+register_credit_check("AlwaysAllowCreditCheck", AlwaysAllowCreditCheck())
