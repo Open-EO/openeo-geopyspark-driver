@@ -1978,6 +1978,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         # Job-options are validated at this point
         execution_details: ExecutionDetails = get_backend_config().credit_check.get_batch_execution_details(job_info)
+        etl_organization_id_str: str = str(job_options.get("etl_organization_id", ""))
 
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
@@ -2240,6 +2241,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 layer_catalog_init_pull_policy=os.environ.get("LAYER_CATALOG_INIT_IMAGE_PULL_POLICY", "IfNotPresent"),
                 initdata_dir=os.environ.get("INITDATA_DIR", ""),
                 credit_plan=execution_details.plan,
+                etl_organization_id_str=etl_organization_id_str,
             )
 
             with self._double_job_registry as dbl_registry:
