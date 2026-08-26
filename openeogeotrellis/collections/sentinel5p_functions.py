@@ -477,37 +477,16 @@ def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     return grid_x, grid_y
 
 
-def _scale_lon_by_latitude(coordinates: np.ndarray) -> np.ndarray:
-    """Scale the longitude component of (lon, lat) coordinates by cos(latitude).
-
-    A degree of longitude covers far less physical (ground) distance near the poles than
-    near the equator, so Euclidean distances computed directly on raw (lon, lat) pairs are
-    not comparable across latitude ranges: the very same physical spacing between source
-    points corresponds to a much larger longitude *degree* difference near the poles. Scaling
-    longitude by cos(latitude) makes nearest-neighbour distances (and thresholds derived from
-    them) approximately height/latitude independent, i.e. comparable to physical ground
-    distance regardless of how close to the poles the points are.
-    """
-    lon, lat = coordinates[:, 0], coordinates[:, 1]
-    return np.stack((lon * np.cos(np.radians(lat)), lat), axis=-1)
-
-
 @typechecked
 def estimate_source_pixel_spacing(source_coordinates: np.ndarray) -> float:
-    """Estimate the typical spacing between neighboring source points.
-
-    Longitude is scaled by cos(latitude) (see :func:`_scale_lon_by_latitude`) before
-    computing distances, so the estimate stays meaningful for source data spanning a wide
-    range of latitudes (e.g. equator to poles).
-    """
+    """Estimate the typical spacing between neighboring source points."""
     from scipy.spatial import cKDTree
 
     if len(source_coordinates) < 2:
         return np.inf
-    scaled_coordinates = _scale_lon_by_latitude(source_coordinates)
-    tree = cKDTree(scaled_coordinates)
+    tree = cKDTree(source_coordinates)
     # k=2 because the nearest neighbor of a point in the tree is the point itself (distance 0)
-    distances, _ = tree.query(scaled_coordinates, k=2)
+    distances, _ = tree.query(source_coordinates, k=2)
     assert isinstance(distances, np.ndarray)
     return float(np.median(distances[:, 1]))
 
@@ -553,14 +532,8 @@ def interpolate(
     if method == "nearest" and max_distance is not None and len(source_coordinates) > 0:
         from scipy.spatial import cKDTree
 
-        # Use latitude-scaled coordinates (see _scale_lon_by_latitude) so that max_distance
-        # is comparable across the full latitude range of the target grid, instead of being
-        # biased towards whatever latitude the source data happens to be denser/sparser in
-        # degree-space.
-        scaled_source_coordinates = _scale_lon_by_latitude(source_coordinates)
-        scaled_target_coordinates = _scale_lon_by_latitude(target_coordinates)
-        tree = cKDTree(scaled_source_coordinates)
-        nearest_distances, _ = tree.query(scaled_target_coordinates, k=1)
+        tree = cKDTree(source_coordinates)
+        nearest_distances, _ = tree.query(target_coordinates, k=1)
         interpolated_data = np.where(nearest_distances <= max_distance, interpolated_data, np.nan)
     return interpolated_data
 
