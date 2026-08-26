@@ -20,6 +20,7 @@ from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.utils import S3ClientBuilder
 
 _log = logging.getLogger(__name__)
 
@@ -208,6 +209,11 @@ def setup_environment(log_dir: Path = Path.cwd()):
 
     setup_local_spark(log_dir=log_dir)
 
+    os.environ.setdefault(
+        openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
+        str(Path(__file__).parent / "local_backend_config.py"),
+    )
+
     # Configure access to local minio to ease testing with calrissian: (Documented here: docs/calrissian-cwl.md)
     minikube_ip = get_minikube_ip()
     if minikube_ip:
@@ -217,10 +223,8 @@ def setup_environment(log_dir: Path = Path.cwd()):
         os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
         os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
 
-    os.environ.setdefault(
-        openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
-        str(Path(__file__).parent / "local_backend_config.py"),
-    )
+        # check if the bucket exists:
+        S3ClientBuilder.from_bucket("calrissian").head_bucket(Bucket="calrissian")
 
 
 def main():

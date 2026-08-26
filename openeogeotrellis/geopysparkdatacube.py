@@ -2128,6 +2128,7 @@ class GeopysparkDataCube(DriverDataCube):
         bands_metadata = format_options.get("bands_metadata", {})  # band_name -> (tag -> value)
         file_metadata = format_options.get("file_metadata", {})  # tag -> value
         attach_gdalinfo_assets = format_options.get("attach_gdalinfo_assets", False)
+        retain_nodata_tiles = format_options.get("retain_nodata_tiles", False)
         if attach_gdalinfo_assets and format != "GTIFF":
             raise OpenEOApiException(f"attach_gdalinfo_assets is only supported with format GTIFF. Was: {format}")
 
@@ -2195,6 +2196,7 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
+                    gtiff_options.setRetainNoDataTiles(retain_nodata_tiles)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
@@ -2296,6 +2298,7 @@ class GeopysparkDataCube(DriverDataCube):
                     for file_metadata_key, file_metadata_value in file_metadata.items():
                         gtiff_options.addHeadTag(file_metadata_key, str(file_metadata_value))
                     gtiff_options.setResampleMethod(overview_resample)
+                    gtiff_options.setRetainNoDataTiles(retain_nodata_tiles)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     color_cmap = get_color_cmap()
                     if color_cmap is not None:
@@ -2603,6 +2606,7 @@ class GeopysparkDataCube(DriverDataCube):
                 options.setAttributes(global_metadata)
                 options.setBandsMetadata(bands_metadata)
                 options.setAddBandStatistics(add_bands_statistics)
+                options.setRetainNoDataTiles(retain_nodata_tiles)
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
@@ -2636,6 +2640,7 @@ class GeopysparkDataCube(DriverDataCube):
                     options.setBandsMetadata(bands_metadata)
                     options.setZLevel(zlevel)
                     options.setAddBandStatistics(add_bands_statistics)
+                    options.setRetainNoDataTiles(retain_nodata_tiles)
                     if strict_cropping:
                         options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
@@ -2713,8 +2718,18 @@ class GeopysparkDataCube(DriverDataCube):
             to_zip = format_options.get("to_zip", True)
             if to_zip:
                 shutil.make_archive(zarr_file, 'zip', zarr_file)
-                return {str(os.path.basename(zarr_file + ".zip")):{"href": zarr_file + ".zip", "roles": ["data"]}}
-            return {str(os.path.basename(zarr_file)):{"href": zarr_file, "roles": ["data"]}}
+                return {str(os.path.basename(zarr_file + ".zip")):{
+                    "href": zarr_file + ".zip",
+                    "roles": ["data"],
+                    "type": "application/zip",
+                }}
+            return {
+                str(save_filename):{
+                    "href": zarr_file,
+                    "roles": ["data"],
+                    "type": "application/x-zarr",
+                }
+            }
 
         elif format == "DEBUG_GENERAL":
             # Write debug information to a json file without going through spark.

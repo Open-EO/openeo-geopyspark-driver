@@ -884,6 +884,9 @@ def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
             list_list = [recurse(item) for item in obj]
             # flatten lists:
             return [item for sublist in list_list for item in sublist]
+        if not isinstance(obj, dict):
+            # Scalar CWL outputs (e.g. string/int/bool/None) don't reference any files.
+            return []
         if obj["class"] == "File":
             return [obj["path"]]
         elif obj["class"] == "Directory":

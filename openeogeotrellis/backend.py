@@ -575,6 +575,11 @@ Example usage:
                             "description": "Specifies band-level metadata for each band (band-(key-value)).",
                             "default": None,
                         },
+                        "retain_nodata_tiles": {
+                            "type": "boolean",
+                            "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
+                        },
                     },
                 },
                 "PNG": {
@@ -624,6 +629,11 @@ Example usage:
                             "type": "string",
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
+                        },
+                        "retain_nodata_tiles": {
+                            "type": "boolean",
+                            "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
                         },
                     },
                 },
@@ -1968,6 +1978,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         # Job-options are validated at this point
         execution_details: ExecutionDetails = get_backend_config().credit_check.get_batch_execution_details(job_info)
+        etl_organization_id_str: str = str(job_options.get("etl_organization_id", ""))
 
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
@@ -2228,7 +2239,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 layer_catalog_init_image=os.environ.get("LAYER_CATALOG_INIT_IMAGE", "DISABLED"),
                 layer_catalog_init_dir=os.environ.get("LAYER_CATALOG_INIT_DIR", "/opt/layercatalogs"),
                 layer_catalog_init_pull_policy=os.environ.get("LAYER_CATALOG_INIT_IMAGE_PULL_POLICY", "IfNotPresent"),
+                initdata_dir=os.environ.get("INITDATA_DIR", ""),
                 credit_plan=execution_details.plan,
+                etl_organization_id_str=etl_organization_id_str,
             )
 
             with self._double_job_registry as dbl_registry:
