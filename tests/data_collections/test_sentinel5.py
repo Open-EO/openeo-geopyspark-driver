@@ -717,6 +717,49 @@ class TestSentinel5:
         assert ds__strict.count() <= ds_default.count()
         assert ds_default.count() <= ds____zero.count()
 
+    def test_sentinel5p_l2_long_vertical_extent(self, api110, tmp_path) -> None:
+        """A very tall spatial extent (near the equator up to near the north pole) should load fine.
+
+        This exercises multiple S5P orbits/tiles stacked vertically over a large latitude range,
+        which is a much larger extent than the other tests use.
+        """
+        collection_id = "SENTINEL5P_L2_CO"
+        spatial_extent = {"west": 4, "south": 1, "east": 11, "north": 80}
+        temporal_extent = ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"]
+        bands = ["carbonmonoxide_total_column_corrected"]
+
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": collection_id,
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": temporal_extent,
+                    "bands": bands,
+                },
+            },
+            "saveresults1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                    "options": {
+                        "overviews": "OFF",
+                    },
+                },
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"test_{collection_id}_long_vertical.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+        ds = rasterio.open(output_file).read(1, masked=True)
+        assert ds.count() > 79537 - 1
+
     def test_invalid_spatial_extent_exception(self):
         params = {
             "filename": self.filename,

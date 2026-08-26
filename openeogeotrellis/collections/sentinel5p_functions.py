@@ -506,11 +506,14 @@ def interpolate(
         source_data (Array of float): 1-d array of shape (n,) representing source data values.
         target_coordinates (Array of float): 2-d array of shape (m, 2) representing target coordinates (lon, lat).
         method (str): Interpolation method. Options are "Nearest", "Linear", "Cubic".
-        max_distance (float, optional): Only relevant for ``method="nearest"``. Target points
-            further away from their nearest source point than this distance are set to NaN
-            instead of being clamped to that (too distant) source value. "Linear" and "Cubic"
-            already return NaN outside the convex hull of the source points, so they are
-            unaffected by this parameter.
+        max_distance (float, optional): Only relevant for ``method="nearest"``, and only enables
+            the masking (any non-``None`` value works). For each target point, the nearest source
+            point is found; that source point's own local spacing (its distance to its own
+            nearest neighbor within the source point cloud) is used as a per-pixel reference. If
+            the target point is more than twice as far away as that reference spacing, it is
+            considered too isolated and set to NaN instead of being clamped to that (too distant)
+            source value. "Linear" and "Cubic" already return NaN outside the convex hull of the
+            source points, so they are unaffected by this parameter.
 
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
@@ -533,8 +536,24 @@ def interpolate(
         from scipy.spatial import cKDTree
 
         tree = cKDTree(source_coordinates)
-        nearest_distances, _ = tree.query(target_coordinates, k=1)
-        interpolated_data = np.where(nearest_distances <= max_distance, interpolated_data, np.nan)
+        nearest_distances, nearest_indices = tree.query(target_coordinates, k=1)
+        if len(source_coordinates) > 1:
+            # Per-pixel local spacing: each source point's own distance to its nearest neighbor
+            # within the source point cloud (k=2 because the point itself is its own 1st match).
+            source_spacing, _ = tree.query(source_coordinates, k=2)
+
+            source_spacing = source_spacing[:, 1]
+            assert isinstance(source_spacing, np.ndarray)
+            # A target point is masked out if it is more than twice as far from its nearest
+            # source point as that source point's own local spacing to its nearest neighbor.
+
+            valid = nearest_distances <= 4 * source_spacing[nearest_indices]
+        else:
+            raise Exception("not enough points")
+            # Only a single source point is available, so there is no local spacing to compare
+            # against; fall back to the fixed max_distance threshold.
+            valid = nearest_distances <= max_distance
+        interpolated_data = np.where(valid, interpolated_data, np.nan)
     return interpolated_data
 
 
