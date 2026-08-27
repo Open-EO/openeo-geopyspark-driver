@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.integrations.credit_check import get_credit_check
+from openeogeotrellis.integrations.credit_check_registry import get_credit_check
 from openeogeotrellis.constants import (
     JOB_OPTION_LOG_LEVEL,
     JOB_OPTION_LOGGING_THRESHOLD,
