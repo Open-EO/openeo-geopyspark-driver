@@ -266,7 +266,7 @@ def get_bounding_polygon(lat, lon):
     """
 
     def expand_edge(edge, neighbor):
-        return edge + (neighbor - edge)
+        return edge + (neighbor - edge)*0.5 
 
     # Bottom (row 0)
     bottom_lat = expand_edge(lat[0, :], lat[1, :]).flatten()
