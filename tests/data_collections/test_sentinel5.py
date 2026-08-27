@@ -627,23 +627,6 @@ class TestSentinel5:
                 ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
             ),
         ],
-        ids=[
-            "co",
-            "no2",
-            "ch4",
-            "so2",
-            "hcho",
-            "o3",
-            "aer_ai_340_380",
-            "aer_ai_354_388",
-            "cloud_base_pressure",
-            "cloud_top_pressure",
-            "cloud_base_height",
-            "cloud_top_height",
-            "cloud_optical_thickness",
-            "cloud_fraction",
-            "aer_lh",
-        ],
     )
     def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
         process_graph = {
@@ -716,6 +699,57 @@ class TestSentinel5:
         # A stricter qa_value should never yield more valid (unmasked) pixels than the default.
         assert ds__strict.count() <= ds_default.count()
         assert ds_default.count() <= ds____zero.count()
+
+    def test_sentinel5p_l2_aer_ai_354_388_clamping(self, api110, tmp_path, request) -> None:
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SENTINEL5P_L2_AER_AI_354_388",
+                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
+                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
+                    "bands": ["aerosol_index_354_388"],
+                },
+                "result": True,
+            }
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        ds = rasterio.open(output_file).read(1, masked=True)
+        assert ds.count() > 10  # sanity check
+        # assert ds.count() < 14000  # Enable after clamping fix.
+
+    def test_sentinel5p_l2_long_vertical_extent(self, api110, tmp_path, request) -> None:
+        """A very tall spatial extent (near the equator up to near the north pole) should load fine.
+
+        This exercises multiple S5P orbits/tiles stacked vertically over a large latitude range,
+        which is a much larger extent than the other tests use.
+        """
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SENTINEL5P_L2_CO",
+                    "spatial_extent": {"west": 4, "south": 1, "east": 11, "north": 75},
+                    "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
+                    "bands": ["carbonmonoxide_total_column_corrected"],
+                },
+                "result": True,
+            }
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+        ds = rasterio.open(output_file).read(1, masked=True)
+        assert ds.count() > 103916 - 1
 
     def test_invalid_spatial_extent_exception(self):
         params = {
