@@ -64,7 +64,7 @@ from openeogeotrellis.collections.sentinel5p_functions import (
     interpolate,
     load_data_from_file,
     parse_gas_from_filename,
-    resample_data,
+    resample_data, get_mask_from_polygon,
 )
 from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
 from openeogeotrellis.utils import typechecked
@@ -273,6 +273,9 @@ def read_product(
     yy = np.linspace(ymax - resolution / 2, ymin + resolution / 2, n_y)
     grid_x, grid_y = np.meshgrid(xx, yy)
 
+    # create mask for valid data based on raw data's bounding box
+    mask = get_mask_from_polygon(grid_x, grid_y, raw_data["bounding_polygon"])
+    
     source_lon = raw_data["longitude"].ravel()
     source_lat = raw_data["latitude"].ravel()
     source_coords = np.stack((source_lon, source_lat), axis=-1)
@@ -292,6 +295,7 @@ def read_product(
     ).reshape(n_y, n_x)
     # NaN (no source pixel close enough) means "no valid data", i.e. should not pass quality filtering
     qa_grid = np.where(np.isnan(qa_grid_raw), False, qa_grid_raw).astype(bool)
+    qa_grid = np.where(mask, qa_grid, False)  # also mask out pixels outside the raw data's bounding polygon
 
     # Resample each band and apply quality mask
     band_grids = []
@@ -310,6 +314,7 @@ def read_product(
             .astype(np.float32)
         )
         grid = np.where(qa_grid, grid, np.nan)
+        grid = np.where(mask, grid, np.nan)  # also mask out pixels outside the raw data's bounding polygon
         band_grids.append(grid)
 
     if not band_grids:

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import numpy as np
+from shapely.geometry import Point, Polygon
 from netCDF4 import Dataset, num2date
 
 from openeogeotrellis.utils import typechecked
@@ -202,6 +203,112 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
     return variable_locs, default_bands, filter_value
 
 
+# def pixel_corners_to_nodes(pixel_corners):
+#     """ Convert pixels corners to pixel nodes and correct the gaps between adjacent pixels.
+
+#     This is done by converting two adjacent points to a
+#     single point i.e., mid-point between two points.
+#     In flight direction, vertices (corners) of adjacent latitude and
+#     longitude pixels do not coincide. There is a small gap between them.
+#     so for internal points (4 pixel neighbours):
+#         array[i,:,3] != array[i+1,:,0] & array[i,:,2] != array[i+1,:,1]
+#     In Swath direction points are same so
+#     for internal points (4 pixel neighbours),
+#         array[:,i,2] = array[:,i+1,3] & array[:,i,1] = array[:,i+1,0]
+
+#     Parameters
+#     ----------
+#     pixel_corners : ndarray (m,n,4)
+#         Describes corner points of latitude or longitude.
+
+#     Returns
+#     -------
+#     pixel_nodes : ndarray of shape (m+1,n+1)
+#         Nodes of the pixels.
+
+#     """
+#     nos = pixel_corners.shape
+#     corners_corrected = pixel_corners.copy()
+#     pixel_nodes = np.zeros((nos[0] + 1, nos[1] + 1))
+#     # Border pixels in Flight direction
+#     # Bottom border
+#     corners_corrected[1:, 0, 0] = corners_corrected[:-1, 0, 3] = (
+#         pixel_corners[:-1, 0, 3] + pixel_corners[1:, 0, 0]
+#     ) * 0.5
+#     # Top border
+#     corners_corrected[:-1, -1, 2] = corners_corrected[1:, -1, 1] = (
+#         pixel_corners[:-1, -1, 2] + pixel_corners[1:, -1, 1]
+#     ) * 0.5
+#     # Corners with 4 neighbours
+#     corners_corrected[:-1, :-1, 2] = (pixel_corners[:-1, :-1, 2] + pixel_corners[1:, :-1, 1]) * 0.5
+#     corners_corrected[1:, :-1, 1] = corners_corrected[:-1, :-1, 2]
+#     corners_corrected[:-1, 1:, 3] = corners_corrected[:-1, :-1, 2]
+#     corners_corrected[1:, 1:, 0] = corners_corrected[1:, :-1, 1]
+#     # transform corners to nodes
+#     pixel_nodes[:-1, :-1] = corners_corrected[:, :, 0]
+#     pixel_nodes[-1, :-1] = corners_corrected[-1, :, 3]
+#     pixel_nodes[:-1, -1] = corners_corrected[:, -1, 1]
+#     pixel_nodes[-1, -1] = corners_corrected[-1, -1, 2]
+#     return pixel_nodes
+
+
+def get_bounding_polygon(lat, lon):
+    """Get bounding polygon from lat-lon arrays.
+
+    Args:
+        lat (Array of float): Pixel centers latitude.
+        lon (Array of float): Pixel centers longitude.
+
+    Returns:
+        polygon_lat (Array of float): Polygon latitude coordinates.
+        polygon_lon (Array of float): Polygon longitude coordinates.
+
+    """
+
+    def expand_edge(edge, neighbor):
+        return edge + (neighbor - edge)
+
+    # Bottom (row 0)
+    bottom_lat = expand_edge(lat[0, :], lat[1, :]).flatten()
+    bottom_lon = expand_edge(lon[0, :], lon[1, :]).flatten()
+    # Top (last row)
+    top_lat = expand_edge(lat[-1, :], lat[-2, :]).flatten()
+    top_lon = expand_edge(lon[-1, :], lon[-2, :]).flatten()
+    # Left (column 0)
+    left_lat = expand_edge(lat[:, 0], lat[:, 1]).flatten()
+    left_lon = expand_edge(lon[:, 0], lon[:, 1]).flatten()
+    # Right (last column)
+    right_lat = expand_edge(lat[:, -1], lat[:, -2]).flatten()
+    right_lon = expand_edge(lon[:, -1], lon[:, -2]).flatten()
+
+    polygon_lat = np.concatenate([top_lat, right_lat[-2::-1], bottom_lat[::-1][1:], left_lat[1:-1]])
+    polygon_lon = np.concatenate([top_lon, right_lon[-2::-1], bottom_lon[::-1][1:], left_lon[1:-1]])
+    polygon = Polygon(zip(polygon_lon, polygon_lat))
+    return polygon
+
+
+def get_mask_from_polygon(lon, lat, polygon):
+    """Mask coordinates (lat,lon) that are not inside the polygon.
+
+    Args:
+        lon (2d Array of float): Pixel centers longitude.
+        lat (2d Array of float): Pixel centers latitude.
+        polygon (shapely Polygon): Polygon to mask the coordinates.
+
+    Returns:
+        mask (Array of bool): Boolean mask for the coordinates inside the polygon.
+
+    """
+    # Create meshgrid of lon, lat
+    shape_data = lat.shape
+    # Flatten meshgrid for vectorized point-in-polygon test
+    points = np.column_stack((lon.ravel(), lat.ravel()))
+    # Use list comprehension for shapely point-in-polygon
+    mask_flat = np.array([polygon.contains(Point(x, y)) for x, y in points])
+    mask = mask_flat.reshape(shape_data)
+    return mask
+
+
 @typechecked
 def load_data_from_file(
     file_path: Path,
@@ -269,6 +376,7 @@ def load_data_from_file(
         # Define a mask where data is present based on spatial extent and temporal extents
         lat_path = variable_loc_in_file["latitude"]
         lon_path = variable_loc_in_file["longitude"]
+
         file_lat = f[lat_path][0]  # lat and lon are 2-d arrays
         file_lon = f[lon_path][0]
         spatial_mask = get_spatial_extent_mask(file_lat, file_lon, spatial_extent)
@@ -304,6 +412,8 @@ def load_data_from_file(
         # Load lat and lon based on combined mask
         data["latitude"] = _get_2d_data_from_mask(file_lat, spatio_temporal_mask)
         data["longitude"] = _get_2d_data_from_mask(file_lon, spatio_temporal_mask)
+        data["bounding_polygon"] = get_bounding_polygon(data["latitude"], data["longitude"])
+
         # trim qa_value mask to spatio-temporal mask
         data["qa_value_mask"] = _get_2d_data_from_mask(filter_mask, spatio_temporal_mask)
 
