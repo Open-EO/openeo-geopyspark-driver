@@ -17,6 +17,8 @@ from openeogeotrellis import get_backend_version
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 
+from openeogeotrellis.integrations.credit_check import CreditCheck, AlwaysAllowCreditCheck
+
 from openeogeotrellis.deploy import (
     build_gps_backend_deploy_metadata,
     find_geotrellis_jars,
@@ -357,7 +359,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     load_stac_deduplicate_items_default: Union[bool, dict] = False
 
-    credit_check: str = "AlwaysAllowCreditCheck"
+    credit_check: CreditCheck = AlwaysAllowCreditCheck()
+
+    credit_check_name: str = "AlwaysAllowCreditCheck"
 
     # (Experimental) how job-local asset references should be encoded
     job_local_href_format: Optional[str] = "s3" if _is_kube_deploy else None

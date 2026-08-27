@@ -3,15 +3,17 @@ from unittest.mock import MagicMock
 
 from openeo_driver.errors import OpenEOApiException
 
-import openeogeotrellis.integrations.credit_check as credit_check_module
+import openeogeotrellis.integrations.credit_check_registry as credit_check_registry_module
 from openeogeotrellis.integrations.credit_check import (
     AlwaysAllowCreditCheck,
     CreditCheck,
     ExecutionDetails,
     JOB_OPTION_CREDIT_PLANS,
-    get_batch_execution_details,
-    get_credit_check,
+)
+from openeogeotrellis.integrations.credit_check_registry import (
     register_credit_check,
+    get_credit_check,
+    get_batch_execution_details,
 )
 
 
@@ -103,7 +105,7 @@ class TestCreditCheckAbstract:
 def isolated_registry(monkeypatch):
     """Replace the module-level registry with a fresh dict for each test."""
     fresh = {}
-    monkeypatch.setattr(credit_check_module, "_credit_checks", fresh)
+    monkeypatch.setattr(credit_check_registry_module, "_credit_checks", fresh)
     return fresh
 
 
@@ -111,7 +113,7 @@ def isolated_registry(monkeypatch):
 def mock_config(monkeypatch):
     """Return a helper that sets the active credit_check name in config."""
     config = MagicMock()
-    monkeypatch.setattr(credit_check_module, "get_backend_config", lambda: config)
+    monkeypatch.setattr(credit_check_registry_module, "get_backend_config", lambda: config)
     return config
 
 
@@ -137,11 +139,11 @@ class TestGetCreditCheck:
     def test_returns_registered_instance(self, isolated_registry, mock_config):
         instance = AlwaysAllowCreditCheck()
         isolated_registry["MyCheck"] = instance
-        mock_config.credit_check = "MyCheck"
+        mock_config.credit_check_name = "MyCheck"
         assert get_credit_check() is instance
 
     def test_raises_for_unregistered_name(self, isolated_registry, mock_config):
-        mock_config.credit_check = "UnknownCheck"
+        mock_config.credit_check_name = "UnknownCheck"
         with pytest.raises(KeyError, match="UnknownCheck"):
             get_credit_check()
 
@@ -149,12 +151,25 @@ class TestGetCreditCheck:
 class TestGetBatchExecutionDetails:
     def test_delegates_to_registered_implementation(self, isolated_registry, mock_config):
         isolated_registry["AlwaysAllowCreditCheck"] = AlwaysAllowCreditCheck()
-        mock_config.credit_check = "AlwaysAllowCreditCheck"
+        mock_config.credit_check_name = "AlwaysAllowCreditCheck"
         result = get_batch_execution_details({})
         assert result == ExecutionDetails(plan="default")
 
     def test_uses_plan_from_job_options(self, isolated_registry, mock_config):
         isolated_registry["AlwaysAllowCreditCheck"] = AlwaysAllowCreditCheck()
-        mock_config.credit_check = "AlwaysAllowCreditCheck"
+        mock_config.credit_check_name = "AlwaysAllowCreditCheck"
         result = get_batch_execution_details({"job_options": {JOB_OPTION_CREDIT_PLANS: ["premium"]}})
         assert result == ExecutionDetails(plan="premium")
+
+
+def test_backwards_compatibility():
+    """
+    credit_check option was part of a release with images openeo-geotrellis-kube:20260826-4185 and
+    openeo-geotrellis-kube-python311:20260817-989 The following call signatures mustn't error out as long as those
+    images are used.
+    """
+    from openeogeotrellis.config import get_backend_config
+
+    get_backend_config().credit_check.get_job_option_description()
+    get_backend_config().credit_check.check_format_user_provided_plans(["free"])
+    get_backend_config().credit_check.get_batch_execution_details({})

@@ -89,7 +89,8 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.credit_check import get_batch_execution_details, ExecutionDetails
+from openeogeotrellis.integrations.credit_check import ExecutionDetails
+from openeogeotrellis.integrations.credit_check_registry import get_batch_execution_details
 from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
