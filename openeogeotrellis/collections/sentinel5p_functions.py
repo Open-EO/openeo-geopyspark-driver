@@ -538,16 +538,17 @@ def interpolate(
         tree = cKDTree(source_coordinates)
         nearest_distances, nearest_indices = tree.query(target_coordinates, k=1)
         if len(source_coordinates) > 1:
-            # Per-pixel local spacing: each source point's own distance to its nearest neighbor
-            # within the source point cloud (k=2 because the point itself is its own 1st match).
-            source_spacing, _ = tree.query(source_coordinates, k=2)
+            # Per-pixel local spacing: each source point's own distance to the farthest of its
+            # 3 closest points in the source point cloud (k=3 because the point itself is its
+            # own 1st match, so index 2 is the largest of these 3 distances).
+            source_spacing, _ = tree.query(source_coordinates, k=9)
 
-            source_spacing = source_spacing[:, 1]
+            source_spacing = source_spacing[:, 8]
             assert isinstance(source_spacing, np.ndarray)
             # A target point is masked out if it is more than twice as far from its nearest
             # source point as that source point's own local spacing to its nearest neighbor.
 
-            valid = nearest_distances <= 4 * source_spacing[nearest_indices]
+            valid = nearest_distances <= 2 * source_spacing[nearest_indices]
         else:
             raise Exception("not enough points")
             # Only a single source point is available, so there is no local spacing to compare
