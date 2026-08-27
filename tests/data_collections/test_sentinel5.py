@@ -721,7 +721,7 @@ class TestSentinel5:
 
         ds = rasterio.open(output_file).read(1, masked=True)
         assert ds.count() > 10  # sanity check
-        # assert ds.count() < 14000  # Enable after clamping fix.
+        assert ds.count() < 3000  # Enable after clamping fix.
 
     def test_sentinel5p_l2_long_vertical_extent(self, api110, tmp_path, request) -> None:
         """A very tall spatial extent (near the equator up to near the north pole) should load fine.
