@@ -551,7 +551,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_CH4",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-10-07T12:00:00Z", "2024-10-07T13:00:00Z"],
                 ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
             ),
             (
@@ -563,25 +563,25 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_HCHO",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
                 ["formaldehyde_tropospheric_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_O3",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
                 ["ozone_total_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_340_380",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                {"west": 8, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
                 ["aerosol_index_340_380", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_354_388",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                {"west": 8, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
                 ["aerosol_index_354_388", "qa_value"],
             ),
             (
@@ -623,7 +623,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_AER_LH",
                 {"west": 1, "south": 33, "east": 11, "north": 37},
-                ["2024-01-02T12:00:00Z", "2024-01-02T14:00:00Z"],
+                ["2024-01-02T13:00:00Z", "2024-01-02T14:00:00Z"],
                 ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
             ),
         ],
