@@ -1,15 +1,32 @@
 #!/bin/bash
 set -euxo pipefail
 
-# minikube delete && minikube start  # clean up previous sessions
+# Clean up previous sessions, e.g. with one of:
+# minikube delete && minikube start
+# k3d cluster delete calrissian-demo && \
+#   k3d cluster create calrissian-demo -p "30000-30001:30000-30001@server:0"
+# NOTE: on k3d, the NodePort range used below (30000-30001) must be published
+# to the host at cluster-creation time (the `-p ...@server:0` option above),
+# since k3d runs the k3s node(s) inside Docker containers with their own
+# network. `k3d cluster create` also updates ~/.kube/config / KUBECONFIG
+# automatically.
+
+# minikube runs its own VM, so NodePort services are reachable via
+# `minikube ip`. k3d runs nodes in Docker with the NodePort range published
+# to the host (see above), so NodePort services are reachable on localhost.
+if command -v minikube >/dev/null 2>&1 && minikube status >/dev/null 2>&1; then
+    NODE_IP=$(minikube ip)
+else
+    NODE_IP=localhost
+fi
 
 NAMESPACE_NAME=calrissian-demo-project
 kubectl create namespace "$NAMESPACE_NAME" --dry-run=client -o yaml | kubectl apply -f -
 helm install csi-s3 yandex-s3/csi-s3 -n calrissian-demo-project
 kubectl apply -f calrissian-local-minio.yaml
 kubectl wait -n calrissian-demo-project --for=condition=available --timeout=300s deployment/minio
-AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url "http://$(minikube ip):30000" s3 mb s3://calrissian
-AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url "http://$(minikube ip):30000" s3api put-bucket-policy --bucket calrissian --policy '{
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url "http://${NODE_IP}:30000" s3 mb s3://calrissian
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url "http://${NODE_IP}:30000" s3api put-bucket-policy --bucket calrissian --policy '{
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -22,7 +39,7 @@ AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url
 }'
 
 # For debugging, run the following:
-# open "http://$(minikube ip):30001"
+# open "http://${NODE_IP}:30001"
 # minikube dashboard &
 
 # Roles and permissions
