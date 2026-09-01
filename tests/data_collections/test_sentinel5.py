@@ -540,49 +540,41 @@ class TestSentinel5:
                 "SENTINEL5P_L2_CO",
                 {"west": 4, "south": 50, "east": 11, "north": 55},
                 ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
-                ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_NO2",
                 {"west": 4, "south": 50, "east": 11, "north": 55},
                 ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
-                ["nitrogendioxide_tropospheric_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CH4",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_SO2",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
-                ["sulfurdioxide_total_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_HCHO",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                ["formaldehyde_tropospheric_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_O3",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                ["ozone_total_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_340_380",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                ["aerosol_index_340_380", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_354_388",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
-                ["aerosol_index_354_388", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
@@ -594,41 +586,35 @@ class TestSentinel5:
                 "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_top_pressure", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_base_height", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_top_height", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_optical_thickness", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_FRACTION",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_fraction", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_LH",
                 {"west": 1, "south": 33, "east": 11, "north": 37},
                 ["2024-01-02T12:00:00Z", "2024-01-02T14:00:00Z"],
-                ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
             ),
         ],
     )
-    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
+    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent) -> None:
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",
@@ -636,7 +622,6 @@ class TestSentinel5:
                     "id": collection_id,
                     "spatial_extent": spatial_extent,
                     "temporal_extent": temporal_extent,
-                    "bands": bands,
                 },
                 "result": True,
             },
