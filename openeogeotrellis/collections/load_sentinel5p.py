@@ -176,7 +176,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 @typechecked
 def read_product(
     product: tuple[Path | str, list[dict]],
-    band_names: list[str],
+    band_names: Optional[list[str]],
     tile_size: int,
     resolution: float,
     collection_id: Optional[str] = None,
@@ -404,7 +404,7 @@ def pyramid(
     projected_polygons_native_crs: JavaObject,
     from_date: Optional[str],
     to_date: Optional[str],
-    band_names: list[str],
+    band_names: Optional[list[str]],
     data_cube_parameters: JavaObject,
     native_cell_size,
     feature_flags: dict,
