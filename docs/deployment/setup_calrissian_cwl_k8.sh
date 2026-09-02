@@ -13,12 +13,24 @@ set -euxo pipefail
 
 # minikube runs its own VM, so NodePort services are reachable via
 # `minikube ip`. k3d runs nodes in Docker with the NodePort range published
-# to the host (see above), so NodePort services are reachable on localhost.
+# to the host (see above), so NodePort services are reachable on localhost
+# *when this script runs on the host*. When this script instead runs inside
+# a container that is itself attached to the k3d cluster's docker network
+# (e.g. a dev container sharing the host's docker socket), "localhost"
+# refers to that container, not the host, so the NodePort range must be
+# reached via the k3d serverlb container's hostname instead.
+K3D_CLUSTER_NAME="${K3D_CLUSTER_NAME:-$(kubectl config current-context 2>/dev/null | sed -n 's/^k3d-//p')}"
+K3D_SERVERLB_HOST="k3d-${K3D_CLUSTER_NAME}-serverlb"
 if command -v minikube >/dev/null 2>&1 && minikube status >/dev/null 2>&1; then
     NODE_IP=$(minikube ip)
+elif [[ -n "$K3D_CLUSTER_NAME" ]] && getent hosts "$K3D_SERVERLB_HOST" >/dev/null 2>&1; then
+    NODE_IP="$K3D_SERVERLB_HOST"
 else
     NODE_IP=localhost
 fi
+
+# Check connection to cluster
+kubectl cluster-info
 
 NAMESPACE_NAME=calrissian-demo-project
 kubectl create namespace "$NAMESPACE_NAME" --dry-run=client -o yaml | kubectl apply -f -
