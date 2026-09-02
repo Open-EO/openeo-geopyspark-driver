@@ -1,28 +1,14 @@
 import logging
-import os
-import uuid
-from typing import Dict, Optional
+from typing import Optional
 
 import shapely.geometry.base
-from py4j.protocol import Py4JJavaError
 from shapely.geometry import Polygon
 
-from openeo.util import deep_get, dict_no_none
 from openeo_driver.datacube import DriverVectorCube
-from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import generate_unique_id, to_hashable
-from openeogeotrellis import sentinel_hub
-from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
-from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
-from openeogeotrellis.utils import (
-    normalize_temporal_extent,
-    to_projected_polygons,
-    BadlyHashable,
-)
 
 
 class SentinelHubDependencies:
@@ -65,8 +51,6 @@ class SentinelHubDependencies:
 
         if layer_source_info['type'] != 'sentinel-hub':
             return None
-
-
 
         spatial_extent = constraints['spatial_extent']
         crs = spatial_extent['crs']
@@ -112,11 +96,9 @@ class SentinelHubDependencies:
                                      .format(a=actual_area, c=collection_id, m=absolute_maximum_area),
                                      status_code=400)
 
-
         endpoint = layer_source_info['endpoint']
         supports_batch_processes = (endpoint.startswith("https://services.sentinel-hub.com") or
                                     endpoint.startswith("https://services-uswest2.sentinel-hub.com"))
-
 
         if not supports_batch_processes:  # always sync approach
             logger_adapter.info("endpoint {e} does not support batch processing".format(e=endpoint))

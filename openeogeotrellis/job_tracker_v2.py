@@ -52,7 +52,7 @@ from openeogeotrellis.job_costs_calculator import (
     DynamicEtlApiJobCostCalculator,
     NoJobCostsCalculator,
 )
-from openeogeotrellis.job_registry import DoubleJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import DoubleJobRegistry
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
