@@ -7,7 +7,6 @@ import time
 from subprocess import Popen, PIPE
 from typing import List, Optional
 
-import kafka
 import kazoo.client
 from py4j.java_gateway import OutputConsumer, ProcessConsumer
 from py4j.clientserver import ClientServer, JavaParameters
@@ -70,6 +69,11 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
 
     def encode(s: str) -> bytes:
         return s.encode('utf-8')
+
+    # For now: make kafka an optional dependency.
+    # Long term: drop kafka/async_task feature as a whole
+    # also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804
+    import kafka
 
     producer = kafka.KafkaProducer(
         bootstrap_servers=config.async_tasks_kafka_bootstrap_servers,

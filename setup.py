@@ -42,6 +42,7 @@ tests_require = [
     "zarr",
     "jsonschema",
     "rioxarray",
+    "kafka-python==1.4.6",  # TODO get rid of this https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804
     # TODO: GDAL (aka osgeo.gdal) should be listed here. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
 ] + yarn_require
 
@@ -113,7 +114,6 @@ setup(
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1; python_version<"3.9"',
         'jep_openeo_numpy==4.1.2; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
-        'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",
@@ -140,6 +140,9 @@ setup(
         "spark4": ["pyspark>=4.0.0,<5.0.0"],
         # "extras" trick to allow pinning down on pyspark 4.0.x for particular CI contexts
         "spark40x": ["pyspark~=4.0.0"],
+        "kafka": [
+            "kafka-python==1.4.6"
+        ],  # TODO get rid of this https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804
     },
     entry_points={
         "console_scripts": [
