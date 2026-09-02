@@ -2183,9 +2183,7 @@ class TestSentinelHubBatchJobs:
         time_machine.move_to("2020-04-20T12:02:02Z", tick=False)
         with self._submit_batch_job_mock(
             api=api
-        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
-            "kafka.KafkaProducer"
-        ) as KafkaProducer:
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service:
             # Trigger job start
             api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
 
@@ -2193,9 +2191,6 @@ class TestSentinelHubBatchJobs:
         submit_batch_job.assert_not_called()
         sh_batch_service.start_batch_process.assert_called_once_with(
             "sentinel-2-l2a", "sentinel-2-l2a", *([mock.ANY] * 8)
-        )
-        KafkaProducer.return_value.send.assert_called_once_with(
-            topic="openeo-async-tasks", value=mock.ANY, headers=None
         )
 
         # Check metadata in (elastic) job tracker
@@ -2361,9 +2356,7 @@ class TestSentinelHubBatchJobs:
         time_machine.move_to("2020-04-20T12:02:02Z")
         with self._submit_batch_job_mock(
             api=api
-        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
-            "kafka.KafkaProducer"
-        ) as KafkaProducer:
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service:
             # Trigger job start
             api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
 
@@ -2398,17 +2391,12 @@ class TestSentinelHubBatchJobs:
         time_machine.move_to("2020-04-20T12:02:02Z")
         with self._submit_batch_job_mock(
             api=api
-        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
-            "kafka.KafkaProducer"
-        ) as KafkaProducer:
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service:
             api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
 
         submit_batch_job.assert_not_called()
         sh_batch_service.start_batch_process.assert_called_once_with(
             "sentinel-2-l2a", "sentinel-2-l2a", *([mock.ANY] * 8)
-        )
-        KafkaProducer.return_value.send.assert_called_once_with(
-            topic="openeo-async-tasks", value=mock.ANY, headers=None
         )
 
         # Check status
@@ -2583,17 +2571,10 @@ class TestSentinelHubBatchJobs:
 
         # Start job
         time_machine.move_to("2020-04-20T12:02:02Z")
-        with self._submit_batch_job_mock(
-            api=api
-        ) as submit_batch_job, mock.patch(
-            "kafka.KafkaProducer"
-        ) as KafkaProducer:
+        with self._submit_batch_job_mock(api=api) as submit_batch_job:
             api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
 
         submit_batch_job.assert_not_called()
-        KafkaProducer.return_value.send.assert_called_once_with(
-            topic="openeo-async-tasks", value=mock.ANY, headers=None
-        )
 
         # Check status
         assert job_registry.db[job_id] == DictSubSet(
@@ -2742,17 +2723,10 @@ class TestSentinelHubBatchJobs:
 
         # Start job
         time_machine.move_to("2020-04-20T12:02:02Z")
-        with self._submit_batch_job_mock(
-            api=api
-        ) as submit_batch_job, mock.patch(
-            "kafka.KafkaProducer"
-        ) as KafkaProducer:
+        with self._submit_batch_job_mock(api=api) as submit_batch_job:
             api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
 
         submit_batch_job.assert_not_called()
-        KafkaProducer.return_value.send.assert_called_once_with(
-            topic="openeo-async-tasks", value=mock.ANY, headers=None
-        )
 
         # Check status
         assert job_registry.db[job_id] == DictSubSet(

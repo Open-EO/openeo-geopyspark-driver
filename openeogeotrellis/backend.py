@@ -1933,7 +1933,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
                    dependencies: Union[list, None] = None,proxy_user=None):
-        from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
         log = logging.LoggerAdapter(logger, extra={'job_id': job_id, 'user_id': user_id})
@@ -2006,7 +2005,6 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                supports_async_tasks=get_backend_config().supports_async_tasks,
                 process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
@@ -2023,15 +2021,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_dependencies(
                         job_id=job_id, user_id=user_id, dependencies=job_dependencies
-                    )
-
-                    async_task.schedule_await_job_dependencies(
-                        batch_job_id=job_id,
-                        user_id=user_id,
-                        sentinel_hub_client_alias=sentinel_hub_client_alias,
-                        vault_token=None
-                        if sentinel_hub_client_alias == "default"
-                        else get_vault_token(sentinel_hub_client_alias),
                     )
                     dbl_registry.set_dependency_status(
                         job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING
@@ -2359,7 +2348,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
-        supports_async_tasks: bool,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
@@ -2419,7 +2407,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 properties_criteria = source_id.arguments[1]
 
                 dependency = SentinelHubDependencies.schedule_for_load_collection(
-                    supports_async_tasks=supports_async_tasks,
                     collection_id=collection_id,
                     properties_criteria=properties_criteria,
                     constraints=constraints,
@@ -2441,7 +2428,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
                     logger_adapter=logger_adapter,
                     requests_session=self._requests_session,
-                    supports_async_tasks=supports_async_tasks,
                 )
             if dependency:
                 job_dependencies.append(dependency)
