@@ -4313,6 +4313,42 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
         assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)
 
 
+def test_apply_neighborhood_skips_tiles(define_extra_collection):
+    issue_dir = Path("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/apply_neighborhood skips tiles #805")
+    job_dir = Path("/tmp/test_apply_neighborhood_skips_tiles")
+
+    shutil.rmtree(job_dir, ignore_errors=True)
+    os.mkdir(job_dir)
+
+    item_file = "/tmp/item_modified.json"  # "bands" iso/ "raster/eo:bands" to interpret STAC's "data_type" and "nodata"; asset href adapted so it can be run locally
+    try:
+        os.symlink(issue_dir / "item_modified.json", item_file)
+    except FileExistsError:
+        pass
+
+    with open(issue_dir / "j-26062913345144f69f0920cadaff62c3_process_graph.json") as f:
+        process = json.load(f)
+        process["process_graph"]["loadstac1"]["arguments"]["url"] = item_file  # a symlink to "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/apply_neighborhood skips tiles #805/item_modified.json"
+
+    print(process)
+
+    with open("/home/bossie/PycharmProjects/openeo/os_creodias_openeo_k8s/kube_resources/applications/openeo_config/layercatalog.json") as f:
+        extra_collections = json.load(f)
+
+    define_extra_collection(next(c for c in extra_collections if c["id"] == "ESA_WORLDCOVER_10M_2020_V1"))
+    define_extra_collection(next(c for c in extra_collections if c["id"] == "CLMS_TCD_PANTROPICAL_10M_YEARLY_V1"))
+
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
 class TestLoadStac:
 
     # Geometry that covers `item-1` and `item-3` of DummyStacApiServer's default `collection-123`

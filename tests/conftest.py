@@ -149,7 +149,7 @@ def force_stop_spark_context():
 def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
     out.write_line("[conftest.py] Setting up local Spark")
-    master_str = "local[2]"
+    master_str = "local[4]"
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable
@@ -189,8 +189,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set("spark.ui.showConsoleProgress", verbosity >= 3)
 
     conf.set(key="spark.executor.pyspark.memory", value="3G")
-    conf.set(key="spark.driver.memory", value="2G")
-    conf.set(key="spark.executor.memory", value="2G")
+    conf.set(key="spark.driver.memory", value="4G")
+    conf.set(key="spark.executor.memory", value="4G")
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
     # Test if this causes issues on CI. Should be disabled in next commit.
@@ -231,7 +231,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                 )
             )
     # got some options from 'sparkDriverJavaOptions'
-    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+    sparkDriverJavaOptions = f"-Dlog4j2.debug=false -Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
     -Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600\
@@ -245,7 +245,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                 break
     conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
-    sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+    sparkExecutorJavaOptions = f"-Dlog4j2.debug=false -Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
      -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
      -Dscala.concurrent.context.numThreads=8"
     conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)

@@ -182,7 +182,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     The default can be overridden by feature_flags.
     """
-    default_reading_strategy: str = "load_by_target_partition"
+    default_reading_strategy: str = "load_per_product"
 
     """
     Controls the default number of threads for the batch job executors Java Virtual Machine.
