@@ -558,12 +558,12 @@ class TestSentinel5:
             ),
             (
                 "SENTINEL5P_L2_HCHO",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
+                {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
             ),
             (
                 "SENTINEL5P_L2_O3",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
+                {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
             ),
             (
