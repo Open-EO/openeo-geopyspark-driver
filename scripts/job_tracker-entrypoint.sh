@@ -11,7 +11,6 @@ fi
 batch_jobs_zookeeper_root_path=$1
 # Example values: "prod", "dev", "integrationtests"
 deploy_env=$2
-async_task_handler_env=$2
 run_id=$3
 ejr_backend_id="${4:-mep-$deploy_env}"
 
@@ -27,7 +26,6 @@ keytab="openeo.keytab"
 kinit -kt $keytab openeo@VGT.VITO.BE
 
 export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
-export ASYNC_TASK_HANDLER_ENV=$async_task_handler_env
 export PYARROW_IGNORE_TIMEZONE=1
 export OPENEO_EJR_BACKEND_ID="$ejr_backend_id"
 

@@ -8,8 +8,9 @@ from openeogeotrellis.constants import DUMMY_STAC_URL
 class PartialJobResults:
 
     @classmethod
-    def get_partial_results_from_load_stac_arguments(cls, arguments, extract_own_job_info, logger_adapter,
-                                                     requests_session, supports_async_tasks) -> Optional[dict]:
+    def get_partial_results_from_load_stac_arguments(
+        cls, arguments, extract_own_job_info, logger_adapter, requests_session
+    ) -> Optional[dict]:
         url = arguments[0]  # properties will be taken care of @ process graph evaluation time
 
         if url == DUMMY_STAC_URL:
@@ -26,14 +27,10 @@ class PartialJobResults:
                     partial_job_status = stac_object.get('openeo:status')
                     logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{partial_job_status}"')
 
-            if supports_async_tasks and partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
-                return {
-                    'partial_job_results_url': url,
-                }
-            else:  # just proceed
-                # TODO: this design choice allows the user to load partial results (their responsibility);
-                #  another option is to abort this job if status is "error" or "canceled".
-                pass
+            # just proceed
+            # TODO: this design choice allows the user to load partial results (their responsibility);
+            #  another option is to abort this job if status is "error" or "canceled".
+            pass
         else:  # assume it points to a file (convenience, non-public API)
             pass
         return None

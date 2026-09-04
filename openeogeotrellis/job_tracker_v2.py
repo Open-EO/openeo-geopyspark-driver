@@ -37,7 +37,6 @@ from openeo_driver.util.logging import (
 )
 import openeo_driver.utils
 
-from openeogeotrellis import async_task
 from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import (
@@ -53,7 +52,7 @@ from openeogeotrellis.job_costs_calculator import (
     DynamicEtlApiJobCostCalculator,
     NoJobCostsCalculator,
 )
-from openeogeotrellis.job_registry import DoubleJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import DoubleJobRegistry
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
@@ -593,14 +592,6 @@ class JobTracker:
             result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
             double_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
-
-            # there can be duplicates if batch processes are recycled
-            dependency_sources = list(set(get_deletable_dependency_sources(job_info)))
-
-            if dependency_sources:
-                async_task.schedule_delete_batch_process_dependency_sources(
-                    job_id, user_id, dependency_sources
-                )
 
             area = deep_get(result_metadata, 'area', 'value', default=None)
 

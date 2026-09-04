@@ -96,7 +96,6 @@ config = GpsBackendConfig(
     valid_basic_auth=lambda u, p: p == f"{u}123",
     workspaces=workspaces,
     freeipa_server="https://freeipa.test/",
-    supports_async_tasks=True,
     batch_runtime_to_image={
         "python38": "docker.test/openeo-geopy38:3.5.8",
         "python311": "docker.test/openeo-geopy311:7.9.11",

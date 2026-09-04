@@ -20,6 +20,7 @@ without compromising stable operations.
 - Improved support for separate "derived_from" auxiliary links on kubernetes deployments ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
 - Add `load_stac` feature flag `use_raw_asset_href` to force usage of raw asset href instead of leveraging standard pystac href normalization ([#1748](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1748))
 - `save_result`: Format option `retain_nodata_tiles` for GeoTiff and NetCDF to retain tiles with only nodata.
+- Remove left-over traces (dead code) related to "kafka" and "async_tasks" ([#1804](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804))
 
 
 ## 0.72.0
