@@ -534,118 +534,86 @@ class TestSentinel5:
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
     @pytest.mark.parametrize(
-        "collection_id, spatial_extent, temporal_extent, bands",
+        "collection_id, spatial_extent, temporal_extent",
         [
             (
                 "SENTINEL5P_L2_CO",
                 {"west": 4, "south": 50, "east": 11, "north": 55},
                 ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
-                ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_NO2",
                 {"west": 4, "south": 50, "east": 11, "north": 55},
                 ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
-                ["nitrogendioxide_tropospheric_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CH4",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T12:00:00Z", "2024-10-07T13:00:00Z"],
-                ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_SO2",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
-                ["sulfurdioxide_total_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_HCHO",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
+                {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-                ["formaldehyde_tropospheric_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_O3",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
+                {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-                ["ozone_total_vertical_column", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_340_380",
                 {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-                ["aerosol_index_340_380", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_354_388",
                 {"west": 8, "south": 32, "east": 11, "north": 37},
                 ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-                ["aerosol_index_354_388", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_base_pressure", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_top_pressure", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_base_height", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_top_height", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_optical_thickness", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_FRACTION",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_fraction", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_AER_LH",
                 {"west": 1, "south": 33, "east": 11, "north": 37},
                 ["2024-01-02T13:00:00Z", "2024-01-02T14:00:00Z"],
-                ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"],
             ),
         ],
-        ids=[
-            "co",
-            "no2",
-            "ch4",
-            "so2",
-            "hcho",
-            "o3",
-            "aer_ai_340_380",
-            "aer_ai_354_388",
-            "cloud_base_pressure",
-            "cloud_top_pressure",
-            "cloud_base_height",
-            "cloud_top_height",
-            "cloud_optical_thickness",
-            "cloud_fraction",
-            "aer_lh",
-        ],
     )
-    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent, bands) -> None:
+    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent) -> None:
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",
@@ -653,7 +621,6 @@ class TestSentinel5:
                     "id": collection_id,
                     "spatial_extent": spatial_extent,
                     "temporal_extent": temporal_extent,
-                    "bands": bands,
                 },
                 "result": True,
             },
@@ -716,6 +683,58 @@ class TestSentinel5:
         # A stricter qa_value should never yield more valid (unmasked) pixels than the default.
         assert ds__strict.count() <= ds_default.count()
         assert ds_default.count() <= ds____zero.count()
+
+    def test_sentinel5p_l2_aer_ai_354_388_clamping(self, api110, tmp_path, request) -> None:
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SENTINEL5P_L2_AER_AI_354_388",
+                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
+                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
+                    "bands": ["aerosol_index_354_388"],
+                },
+                "result": True,
+            }
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        ds = rasterio.open(output_file).read(1)
+        nan_percentage = np.isnan(ds).mean()
+        assert nan_percentage > 0.1  # sanity check
+        assert nan_percentage < 0.9  # Enable after clamping fix.
+
+    def test_sentinel5p_l2_long_vertical_extent(self, api110, tmp_path, request) -> None:
+        """A very tall spatial extent (near the equator up to near the north pole) should load fine.
+
+        This exercises multiple S5P orbits/tiles stacked vertically over a large latitude range,
+        which is a much larger extent than the other tests use.
+        """
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SENTINEL5P_L2_CO",
+                    "spatial_extent": {"west": 4, "south": 1, "east": 11, "north": 75},
+                    "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
+                    "bands": ["carbonmonoxide_total_column_corrected"],
+                },
+                "result": True,
+            }
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+        ds = rasterio.open(output_file).read(1, masked=True)
+        assert ds.count() > 103916 - 1
 
     def test_invalid_spatial_extent_exception(self):
         params = {

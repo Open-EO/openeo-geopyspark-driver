@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Optional, Sequence
-
+from shapely.geometry import Point, Polygon
 import numpy as np
 from netCDF4 import Dataset, num2date
 
@@ -203,6 +203,65 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
 
 
 @typechecked
+def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
+    """Get bounding polygon from lat-lon arrays.
+
+    Args:
+        lat (Array of float): Pixel centers latitude.
+        lon (Array of float): Pixel centers longitude.
+
+    Returns:
+        polygon_lat (Array of float): Polygon latitude coordinates.
+        polygon_lon (Array of float): Polygon longitude coordinates.
+
+    """
+
+    def expand_edge(edge, neighbor):
+        return edge + (neighbor - edge) * 0.5  # only expand the edge by half the distance to the neighbor
+
+    # Bottom (row 0)
+    bottom_lat = expand_edge(lat[0, :], lat[1, :]).flatten()
+    bottom_lon = expand_edge(lon[0, :], lon[1, :]).flatten()
+    # Top (last row)
+    top_lat = expand_edge(lat[-1, :], lat[-2, :]).flatten()
+    top_lon = expand_edge(lon[-1, :], lon[-2, :]).flatten()
+    # Left (column 0)
+    left_lat = expand_edge(lat[:, 0], lat[:, 1]).flatten()
+    left_lon = expand_edge(lon[:, 0], lon[:, 1]).flatten()
+    # Right (last column)
+    right_lat = expand_edge(lat[:, -1], lat[:, -2]).flatten()
+    right_lon = expand_edge(lon[:, -1], lon[:, -2]).flatten()
+
+    polygon_lat = np.concatenate([top_lat, right_lat[-2::-1], bottom_lat[::-1][1:], left_lat[1:-1]])
+    polygon_lon = np.concatenate([top_lon, right_lon[-2::-1], bottom_lon[::-1][1:], left_lon[1:-1]])
+    polygon = Polygon(zip(polygon_lon, polygon_lat))
+    return polygon
+
+
+@typechecked
+def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: Polygon) -> np.ndarray:
+    """Mask coordinates (lat,lon) that are not inside the polygon.
+
+    Args:
+        lon (2d Array of float): Pixel centers longitude.
+        lat (2d Array of float): Pixel centers latitude.
+        polygon (shapely Polygon): Polygon to mask the coordinates.
+
+    Returns:
+        mask (Array of bool): Boolean mask for the coordinates inside the polygon.
+
+    """
+    # Create meshgrid of lon, lat
+    shape_data = lat.shape
+    # Flatten meshgrid for vectorized point-in-polygon test
+    points = np.column_stack((lon.ravel(), lat.ravel()))
+    # Use list comprehension for shapely point-in-polygon
+    mask_flat = np.array([polygon.contains(Point(x, y)) for x, y in points])
+    mask = mask_flat.reshape(shape_data)
+    return mask
+
+
+@typechecked
 def load_data_from_file(
     file_path: Path,
     spatial_extent: Optional[Sequence],
@@ -304,6 +363,10 @@ def load_data_from_file(
         # Load lat and lon based on combined mask
         data["latitude"] = _get_2d_data_from_mask(file_lat, spatio_temporal_mask)
         data["longitude"] = _get_2d_data_from_mask(file_lon, spatio_temporal_mask)
+
+        # create a bounding polygon for the data based on lat-lon arrays
+        data["bounding_polygon"] = get_bounding_polygon(data["latitude"], data["longitude"])
+
         # trim qa_value mask to spatio-temporal mask
         data["qa_value_mask"] = _get_2d_data_from_mask(filter_mask, spatio_temporal_mask)
 
