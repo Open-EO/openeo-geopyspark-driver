@@ -57,7 +57,11 @@ if docker network inspect "k3d-${CLUSTER_NAME}" >/dev/null 2>&1; then
     docker network rm "k3d-${CLUSTER_NAME}" >/dev/null 2>&1 || true
 fi
 
-k3d cluster create "$CLUSTER_NAME" -p "30000-30001:30000-30001@server:0"
+if ! k3d cluster create "$CLUSTER_NAME" -p "30000-30001:30000-30001@server:0" --timeout 120s --no-rollback; then
+    echo "k3d cluster create failed or timed out. Logs from the k3s server node:" >&2
+    docker logs "k3d-${CLUSTER_NAME}-server-0" 2>&1 | tail -n 50 >&2 || true
+    exit 1
+fi
 
 # If this script itself runs inside a container that shares the host's
 # docker socket (e.g. a dev container started with
