@@ -57,7 +57,17 @@ if docker network inspect "k3d-${CLUSTER_NAME}" >/dev/null 2>&1; then
     docker network rm "k3d-${CLUSTER_NAME}" >/dev/null 2>&1 || true
 fi
 
-if ! k3d cluster create "$CLUSTER_NAME" -p "30000-30001:30000-30001@server:0" --timeout 120s --no-rollback; then
+# k3s's containerd defaults to the "overlayfs" snapshotter, which fails to
+# mount when it's already running on top of an overlay-based filesystem
+# (e.g. this dev container's own root fs, or Docker-in-Docker using the
+# "vfs"/"overlay2" storage driver) with:
+#   "overlayfs" snapshotter cannot be enabled ... try using "fuse-overlayfs" or "native"
+# Force the "native" snapshotter (plain copy, no overlay mounts) so cluster
+# creation works reliably in nested-container environments, at the cost of
+# some performance.
+if ! k3d cluster create "$CLUSTER_NAME" -p "30000-30001:30000-30001@server:0" \
+    --k3s-arg "--snapshotter=native@server:*" \
+    --timeout 120s --no-rollback; then
     echo "k3d cluster create failed or timed out. Logs from the k3s server node:" >&2
     docker logs "k3d-${CLUSTER_NAME}-server-0" 2>&1 | tail -n 50 >&2 || true
     exit 1
@@ -75,9 +85,23 @@ if [ -f /.dockerenv ] && [ -n "$SELF_CONTAINER_ID" ]; then
     docker network connect "k3d-${CLUSTER_NAME}" "$SELF_CONTAINER_ID" 2>/dev/null || true
     # Point kubectl at the serverlb container directly instead of the
     # host-published "0.0.0.0:<port>" address, which isn't reachable from
-    # inside this container's own network namespace.
+    # inside this container's own network namespace. Use its IP address
+    # rather than its container-name hostname: embedded docker DNS
+    # (127.0.0.11) is only wired up in /etc/resolv.conf for containers that
+    # were started with --network <user-defined-network>; a container
+    # that joins a second user-defined network later via
+    # `docker network connect` (our case here) keeps whatever
+    # /etc/resolv.conf it started with (e.g. the host's DNS servers, which
+    # have no idea about docker container names), so the hostname would
+    # fail to resolve.
+    # Use the k3s server node's own IP rather than the serverlb's: the
+    # API server's TLS certificate SANs only cover the server node's own
+    # addresses (plus localhost/service IPs), not the serverlb's, so
+    # connecting to the serverlb IP directly fails certificate
+    # verification ("certificate is valid for ..., not <serverlb-ip>").
+    SERVER_IP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"k3d-${CLUSTER_NAME}\").IPAddress}}" "k3d-${CLUSTER_NAME}-server-0")"
     KUBECONFIG_FILE="${KUBECONFIG:-$HOME/.kube/config}"
-    sed -i "s|server: https://0.0.0.0:[0-9]*|server: https://k3d-${CLUSTER_NAME}-serverlb:6443|" "$KUBECONFIG_FILE"
+    sed -i "s|server: https://0.0.0.0:[0-9]*|server: https://${SERVER_IP}:6443|" "$KUBECONFIG_FILE"
 fi
 
 kubectl cluster-info
