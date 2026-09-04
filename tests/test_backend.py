@@ -21,6 +21,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceId, DryRunDataTracer
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -1369,6 +1370,7 @@ class TestGpsBatchJobs:
             assert expected_warning in caplog.messages
         else:
             assert caplog.messages == []
+
 
 
 class TestGpsUdfRuntimes:
