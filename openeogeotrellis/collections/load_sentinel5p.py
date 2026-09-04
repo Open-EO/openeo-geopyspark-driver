@@ -64,6 +64,7 @@ from openeogeotrellis.collections.sentinel5p_functions import (
     load_data_from_file,
     parse_gas_from_filename,
     resample_data,
+    get_mask_from_polygon,
 )
 from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
 from openeogeotrellis.utils import typechecked
@@ -175,7 +176,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 @typechecked
 def read_product(
     product: tuple[Path | str, list[dict]],
-    band_names: list[str],
+    band_names: Optional[list[str]],
     tile_size: int,
     resolution: float,
     collection_id: Optional[str] = None,
@@ -272,6 +273,9 @@ def read_product(
     yy = np.linspace(ymax - resolution / 2, ymin + resolution / 2, n_y)
     grid_x, grid_y = np.meshgrid(xx, yy)
 
+    # create mask for valid data based on raw data's bounding box
+    bounds_mask = get_mask_from_polygon(grid_x, grid_y, raw_data["bounding_polygon"])
+
     source_lon = raw_data["longitude"].ravel()
     source_lat = raw_data["latitude"].ravel()
     source_coords = np.stack((source_lon, source_lat), axis=-1)
@@ -283,6 +287,7 @@ def read_product(
     # Resample quality mask with "nearest" (preserves boolean semantics) QA Always need to be nearest interpolation.
     qa_flat = raw_data["qa_value_mask"].ravel().astype(np.float64)
     qa_grid = interpolate(source_coords, qa_flat, target_coords, method="nearest").reshape(n_y, n_x).astype(bool)
+    qa_grid = np.where(bounds_mask, qa_grid, False)  # also mask out pixels outside the raw data's bounding polygon
 
     # Resample each band and apply quality mask
     band_grids = []
@@ -295,6 +300,7 @@ def read_product(
             .astype(np.float32)
         )
         grid = np.where(qa_grid, grid, np.nan)
+        grid = np.where(bounds_mask, grid, np.nan)  # also mask out pixels outside the raw data's bounding polygon
         band_grids.append(grid)
 
     if not band_grids:
@@ -398,7 +404,7 @@ def pyramid(
     projected_polygons_native_crs: JavaObject,
     from_date: Optional[str],
     to_date: Optional[str],
-    band_names: list[str],
+    band_names: Optional[list[str]],
     data_cube_parameters: JavaObject,
     native_cell_size,
     feature_flags: dict,
