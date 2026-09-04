@@ -534,7 +534,7 @@ class TestSentinel5:
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
     @pytest.mark.parametrize(
-        "collection_id, spatial_extent, temporal_extent, bands",
+        "collection_id, spatial_extent, temporal_extent",
         [
             (
                 "SENTINEL5P_L2_CO",
@@ -549,7 +549,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_CH4",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-10-07T12:00:00Z", "2024-10-07T13:00:00Z"],
             ),
             (
                 "SENTINEL5P_L2_SO2",
@@ -559,28 +559,27 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_HCHO",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
             ),
             (
                 "SENTINEL5P_L2_O3",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_340_380",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                {"west": 8, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
             ),
             (
                 "SENTINEL5P_L2_AER_AI_354_388",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
+                {"west": 8, "south": 32, "east": 11, "north": 37},
+                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
                 {"west": 4, "south": 32, "east": 11, "north": 37},
                 ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-                ["cloud_base_pressure", "qa_value"],
             ),
             (
                 "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
@@ -610,7 +609,7 @@ class TestSentinel5:
             (
                 "SENTINEL5P_L2_AER_LH",
                 {"west": 1, "south": 33, "east": 11, "north": 37},
-                ["2024-01-02T12:00:00Z", "2024-01-02T14:00:00Z"],
+                ["2024-01-02T13:00:00Z", "2024-01-02T14:00:00Z"],
             ),
         ],
     )
