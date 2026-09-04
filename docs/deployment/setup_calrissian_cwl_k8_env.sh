@@ -45,6 +45,18 @@ helm repo update yandex-s3
 if k3d cluster list "$CLUSTER_NAME" >/dev/null 2>&1; then
     k3d cluster delete "$CLUSTER_NAME"
 fi
+
+# `k3d cluster delete` sometimes leaves the cluster's docker network behind
+# (e.g. if it was removed/recreated out of band, or a previous run was
+# interrupted). Re-using such an orphaned network can leave it with stale
+# iptables forwarding rules, silently dropping traffic between the
+# serverlb and the k3s API server and making the cluster appear to hang.
+# Remove it so docker regenerates the network (and its iptables rules)
+# from scratch.
+if docker network inspect "k3d-${CLUSTER_NAME}" >/dev/null 2>&1; then
+    docker network rm "k3d-${CLUSTER_NAME}" >/dev/null 2>&1 || true
+fi
+
 k3d cluster create "$CLUSTER_NAME" -p "30000-30001:30000-30001@server:0"
 
 # If this script itself runs inside a container that shares the host's
