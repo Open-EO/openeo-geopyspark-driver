@@ -196,6 +196,25 @@ def get_minikube_ip() -> Optional[str]:
         return None
 
 
+def get_k3d_ip() -> Optional[str]:
+    """
+    Unlike minikube, k3d runs its node(s) in Docker containers and does not have its own
+    routable IP: NodePort services are reached through host ports published at cluster
+    creation time (e.g. `k3d cluster create ... -p "30000-30001:30000-30001@server:0"`),
+    which land on localhost. This checks that such a port is actually reachable there.
+    """
+    try:
+        # throw exception if k3d is not configured/running
+        subprocess.run(
+            ["k3d", "cluster", "list"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
+        )
+        with socket.create_connection(("localhost", 30000), timeout=2):
+            return "localhost"
+    except Exception as e:
+        _log.warning(f"Failed to get k3d IP: {e}")
+        return None
+
+
 def setup_environment(log_dir: Path = Path.cwd()):
     repository_root = Path(__file__).parent.parent.parent
     if os.path.exists(repository_root / "jars"):
@@ -215,7 +234,7 @@ def setup_environment(log_dir: Path = Path.cwd()):
     )
 
     # Configure access to local minio to ease testing with calrissian: (Documented here: docs/calrissian-cwl.md)
-    minikube_ip = get_minikube_ip()
+    minikube_ip = get_k3d_ip() or get_minikube_ip()
     if minikube_ip:
         os.environ.setdefault("SWIFT_URL", f"http://{minikube_ip}:30000/")
         os.environ.setdefault("AWS_ACCESS_KEY_ID", "minioadmin")
