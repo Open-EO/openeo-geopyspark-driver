@@ -883,6 +883,19 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
     )
 
 
+def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend_config_path):
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        open_telemetry_prometheus_port=19464,
+    )
+
+    assert app_dict["spec"]["executor"]["ports"] == [
+        {"containerPort": 19464, "name": "prom-executor", "protocol": "TCP"}
+    ]
+    assert "-Dotel.exporter.prometheus.port=19464" in app_dict["spec"]["executor"]["javaOptions"]
+
+
 def test_k8s_sparkapplication_dict_gdal_envars(backend_config_path):
     """
     Make sure GDAL environment variables are present for driver and executor

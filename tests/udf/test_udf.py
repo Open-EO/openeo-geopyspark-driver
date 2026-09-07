@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import re
 import tarfile
@@ -7,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import dirty_equals
+import openeo.udf
 import pyspark
 import pytest
 from openeo.udf import StructuredData, UdfData
@@ -18,17 +20,18 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.testing import gps_config_overrides
+import openeogeotrellis.udf as udf_module
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
+    UdfRuntimeSpecified,
+    UdfSpecified,
     assert_running_in_executor,
     build_python_udf_dependencies_archive,
+    collect_udfs,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
     python_udf_dependency_context_from_archive,
     run_udf_code,
-    collect_udfs,
-    UdfSpecified,
-    UdfRuntimeSpecified,
 )
 
 
@@ -85,6 +88,34 @@ def test_run_udf_code_in_executor_single_udf_data(spark_context):
     result = rdd.map(lambda x: run_udf_code(code=UDF_SQUARES, data=x)).collect()
     result = [[l.data for l in r.get_structured_data_list()] for r in result]
     assert result == [[[1, 4, 9, 16, 25]]]
+
+
+def test_run_udf_code_records_trace_metrics(monkeypatch):
+    data = UdfData(structured_data_list=[StructuredData([1])])
+    captured_attributes = {}
+
+    class DummySpan:
+        def set_attribute(self, key, value):
+            captured_attributes[key] = value
+
+    @contextlib.contextmanager
+    def fake_span():
+        yield DummySpan()
+
+    rss_values = iter([1000, 1256])
+
+    monkeypatch.setattr(udf_module, "_start_udf_execution_span", fake_span)
+    monkeypatch.setattr(udf_module, "_get_max_rss_bytes", lambda: next(rss_values))
+    monkeypatch.setattr(openeo.udf, "run_udf_code", lambda code, data: data)
+
+    result = run_udf_code(code="def apply_udf_data(data): return data", data=data, require_executor_context=False)
+
+    assert result is data
+    assert captured_attributes["openeo.udf.require_executor_context"] is False
+    assert captured_attributes["openeo.udf.max_rss_before_bytes"] == 1000
+    assert captured_attributes["openeo.udf.max_rss_after_bytes"] == 1256
+    assert captured_attributes["openeo.udf.max_rss_delta_bytes"] == 256
+    assert captured_attributes["openeo.udf.execution_time_ms"] >= 0
 
 
 class TestUdfCollection:
