@@ -234,16 +234,22 @@ def setup_environment(log_dir: Path = Path.cwd()):
     )
 
     # Configure access to local minio to ease testing with calrissian: (Documented here: docs/calrissian-cwl.md)
-    minikube_ip = get_k3d_ip() or get_minikube_ip()
-    if minikube_ip:
-        os.environ.setdefault("SWIFT_URL", f"http://{minikube_ip}:30000/")
-        os.environ.setdefault("AWS_ACCESS_KEY_ID", "minioadmin")
-        os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minioadmin")
-        os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
-        os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
+    cluster_ip = get_k3d_ip() or get_minikube_ip()
+    if cluster_ip:
+        # noinspection HttpUrlsUsage
+        cluster_swift_url = f"http://{cluster_ip}:30000/"
+        try:
+            with socket.create_connection((cluster_ip, 30000), timeout=2):
+                os.environ.setdefault("SWIFT_URL", cluster_swift_url)
+                os.environ.setdefault("AWS_ACCESS_KEY_ID", "minioadmin")
+                os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minioadmin")
+                os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
+                os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
 
-        # check if the bucket exists:
-        S3ClientBuilder.from_bucket("calrissian").head_bucket(Bucket="calrissian")
+                # check if the bucket exists:
+                S3ClientBuilder.from_bucket("calrissian").head_bucket(Bucket="calrissian")
+        except Exception as e:
+            _log.warning(e)
 
 
 def main():
