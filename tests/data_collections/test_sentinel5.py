@@ -547,15 +547,9 @@ class TestSentinel5:
             "SENTINEL5P_L2_SO2",
             "SENTINEL5P_L2_HCHO",
             "SENTINEL5P_L2_O3",
-            "SENTINEL5P_L2_AER_AI_340_380",
-            "SENTINEL5P_L2_AER_AI_354_388",
-            "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
-            "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
-            "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
-            "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
-            "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
-            "SENTINEL5P_L2_CLOUD_FRACTION",
             "SENTINEL5P_L2_AER_LH",
+            "SENTINEL5P_L2_AER_AI",
+            "SENTINEL5P_L2_CLOUD",
         ],
     )
     def test_sentinel5p_l2(self, api110, tmp_path, collection_id) -> None:
