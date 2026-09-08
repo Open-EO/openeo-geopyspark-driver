@@ -487,7 +487,7 @@ def get_spatial_extent_mask(
 
 
 @typechecked
-def fill_and_mask_data(band_data, spatio_temporal_mask):
+def fill_and_mask_data(band_data: np.ndarray, spatio_temporal_mask: np.ndarray):
     """Fill nan values based on data mask and spatio-temporal mask.
 
     Args:
@@ -500,6 +500,9 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
     """
     # fill nan values where data is not valid
     if hasattr(band_data, "filled"):
+        if np.issubdtype(band_data.dtype, np.integer):
+            print(f"converting to float to fill with nan. (Was {band_data.dtype})")
+            band_data = band_data.astype(float)
         band_data = band_data.filled(np.nan)
     # set data to nan based on the spatial-temporal extent.
     data = np.where(spatio_temporal_mask, band_data, np.nan)
@@ -508,7 +511,7 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
 
 
 @typechecked
-def _get_2d_data_from_mask(data, mask):
+def _get_2d_data_from_mask(data: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Extract 2-d arrays based on boolean mask."""
     if (mask.ndim != 2) or (data.ndim != 2):
         raise ValueError("Mask and data must be a 2-dimensional array.")

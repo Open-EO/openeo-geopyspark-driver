@@ -400,11 +400,13 @@ def assert_tif_file_is_healthy(tif_path):
     _log.info(f"{shape=}")
     assert shape[1] > 10
     assert shape[2] > 10
+    issues = []
     for b in range(shape[0]):
         band = tiff_arr[b, :, :]
         nan_percentage = np.isnan(band.values).mean()
         _log.info(f"{nan_percentage=}")
-        assert nan_percentage < 0.95, f"Too high NaN percentage: {nan_percentage}"
+        if nan_percentage >= 0.95:
+            issues.append(f"Too high NaN percentage: {nan_percentage}, for band {band.long_name[b]}")
 
     # - The offset of the main IFD should be < 300. It is 21236950 instead
     # - The offset of the IFD for overview of index 0 is 684, whereas it should be greater than the one of the main image, which is at byte 21236950
@@ -413,7 +415,10 @@ def assert_tif_file_is_healthy(tif_path):
     is_valid_cog, errors, _ = cog_validate(str(tif_path), quiet=True)
     if errors:
         print(f"COG validation errors for {tif_path}: {errors}")
-    assert is_valid_cog, str(errors)
+    # assert is_valid_cog, str(errors)
+    issues.extend(errors)
+    if issues:
+        raise AssertionError("\n".join(issues))
 
 
 # Directory (under /eodata) known to contain at least one real product file for each gas/product
