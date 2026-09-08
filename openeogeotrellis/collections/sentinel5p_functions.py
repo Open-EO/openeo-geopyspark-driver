@@ -37,21 +37,28 @@ all_gases: dict[str, dict[str, Any]] = {
         "longitude": "PRODUCT/longitude",
         "qa_value": "PRODUCT/qa_value",
     },
-    "gas_aer_ai": {
+    "gas_co": {
         "VARIABLE_LOC_IN_FILE": {
-            "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
-            "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
+            "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",
+            "carbonmonoxide_total_column_corrected": "PRODUCT/carbonmonoxide_total_column_corrected",
         },
-        "DEFAULT_BANDS": ["aerosol_index_354_388", "aerosol_index_340_380"],
-        "FILTER_VALUE": 0.8,
-    },
-    "gas_aer_lh": {
-        "VARIABLE_LOC_IN_FILE": {
-            "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
-            "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
-        },
-        "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height"],
+        "DEFAULT_BANDS": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected"],
         "FILTER_VALUE": 0.5,
+    },
+    "gas_no2": {
+        "VARIABLE_LOC_IN_FILE": {
+            "nitrogendioxide_tropospheric_column": "PRODUCT/nitrogendioxide_tropospheric_column",
+            "nitrogendioxide_tropospheric_column_precision": "PRODUCT/nitrogendioxide_tropospheric_column_precision",
+            "nitrogendioxide_stratospheric_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column",
+            "nitrogendioxide_total_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column",
+        },
+        "DEFAULT_BANDS": [
+            "nitrogendioxide_tropospheric_column",
+            "nitrogendioxide_tropospheric_column_precision",
+            "nitrogendioxide_stratospheric_column",
+            "nitrogendioxide_total_column",
+        ],
+        "FILTER_VALUE": 0.75,
     },
     "gas_ch4": {
         "VARIABLE_LOC_IN_FILE": {
@@ -60,6 +67,31 @@ all_gases: dict[str, dict[str, Any]] = {
         },
         "DEFAULT_BANDS": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected"],
         "FILTER_VALUE": 0.5,
+    },
+    "gas_so2": {
+        "VARIABLE_LOC_IN_FILE": {"sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column"},
+        "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column"],
+        "FILTER_VALUE": 0.5,
+    },
+    "gas_hcho": {
+        "VARIABLE_LOC_IN_FILE": {
+            "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column"
+        },
+        "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column"],
+        "FILTER_VALUE": 0.5,
+    },
+    "gas_o3": {
+        "VARIABLE_LOC_IN_FILE": {"ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column"},
+        "DEFAULT_BANDS": ["ozone_total_vertical_column"],
+        "FILTER_VALUE": 0.5,
+    },
+    "gas_aer_ai": {
+        "VARIABLE_LOC_IN_FILE": {
+            "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
+            "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
+        },
+        "DEFAULT_BANDS": ["aerosol_index_354_388", "aerosol_index_340_380"],
+        "FILTER_VALUE": 0.8,
     },
     "gas_cloud": {
         "VARIABLE_LOC_IN_FILE": {
@@ -80,44 +112,12 @@ all_gases: dict[str, dict[str, Any]] = {
         ],
         "FILTER_VALUE": 0.5,
     },
-    "gas_co": {
+    "gas_aer_lh": {
         "VARIABLE_LOC_IN_FILE": {
-            "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",
-            "carbonmonoxide_total_column_corrected": "PRODUCT/carbonmonoxide_total_column_corrected",
+            "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
+            "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
         },
-        "DEFAULT_BANDS": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected"],
-        "FILTER_VALUE": 0.5,
-    },
-    "gas_hcho": {
-        "VARIABLE_LOC_IN_FILE": {
-            "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column"
-        },
-        "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column"],
-        "FILTER_VALUE": 0.5,
-    },
-    "gas_no2": {
-        "VARIABLE_LOC_IN_FILE": {
-            "nitrogendioxide_tropospheric_column": "PRODUCT/nitrogendioxide_tropospheric_column",
-            "nitrogendioxide_tropospheric_column_precision": "PRODUCT/nitrogendioxide_tropospheric_column_precision",
-            "nitrogendioxide_stratospheric_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column",
-            "nitrogendioxide_total_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column",
-        },
-        "DEFAULT_BANDS": [
-            "nitrogendioxide_tropospheric_column",
-            "nitrogendioxide_tropospheric_column_precision",
-            "nitrogendioxide_stratospheric_column",
-            "nitrogendioxide_total_column",
-        ],
-        "FILTER_VALUE": 0.75,
-    },
-    "gas_o3": {
-        "VARIABLE_LOC_IN_FILE": {"ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column"},
-        "DEFAULT_BANDS": ["ozone_total_vertical_column"],
-        "FILTER_VALUE": 0.5,
-    },
-    "gas_so2": {
-        "VARIABLE_LOC_IN_FILE": {"sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column"},
-        "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column"],
+        "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height"],
         "FILTER_VALUE": 0.5,
     },
 }
