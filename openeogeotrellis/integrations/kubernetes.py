@@ -40,7 +40,6 @@ def kube_client(api_type):
 
     return api_instance
 
-
 def truncate_job_id_k8s(job_id: str) -> str:
     if job_id.startswith("j-"):
         job_id = job_id[2:]
