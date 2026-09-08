@@ -20,6 +20,7 @@ from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import S3ClientBuilder
 
 _log = logging.getLogger(__name__)
@@ -224,6 +225,13 @@ def setup_environment(log_dir: Path = Path.cwd()):
     os.environ["PYTEST_CONFIGURE"] = ""  # to enable is_ci_context
     os.environ["FLASK_DEBUG"] = "1"
 
+    # Submit batch jobs to a local Kubernetes cluster (k3d + spark-operator), matching production
+    # as closely as possible, instead of running them in-process.
+    os.environ.setdefault("KUBE", "true")
+    os.environ.setdefault("POD_NAMESPACE", "spark-jobs-dev")
+    os.environ.setdefault("OPENEO_K8S_IMAGE_PULL_POLICY", "IfNotPresent")
+    os.environ.setdefault("OPENEO_LOCAL_K8S_IMAGE", "openeo-local-k8s:flat")
+
     _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
     setup_local_spark(log_dir=log_dir)
@@ -231,6 +239,12 @@ def setup_environment(log_dir: Path = Path.cwd()):
     os.environ.setdefault(
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
         str(Path(__file__).parent / "local_backend_config.py"),
+    )
+    # The host-side path above (a local dev checkout) does not exist inside the driver/executor pods;
+    # give the batch job pods the path baked into the custom local-k8s image instead.
+    os.environ.setdefault(
+        "OPENEO_K8S_BACKEND_CONFIG",
+        "/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/local_backend_config.py",
     )
 
     # Configure access to local minio to ease testing with calrissian: (Documented here: docs/calrissian-cwl.md)
@@ -242,8 +256,53 @@ def setup_environment(log_dir: Path = Path.cwd()):
         os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
         os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
 
+        # Pods running inside the k3d cluster cannot reach the host-facing NodePort URL above
+        # (SWIFT_URL/AWS_S3_ENDPOINT), so give the batch job pods the in-cluster DNS name instead.
+        os.environ.setdefault(
+            "OPENEO_K8S_SWIFT_URL", "http://minio-service.calrissian-demo-project.svc.cluster.local:9000/"
+        )
+        os.environ.setdefault(
+            "OPENEO_K8S_AWS_S3_ENDPOINT", "minio-service.calrissian-demo-project.svc.cluster.local:9000"
+        )
+
         # check if the bucket exists:
         S3ClientBuilder.from_bucket("calrissian").head_bucket(Bucket="calrissian")
+
+
+def start_kube_job_tracker_thread(job_registry, interval_seconds: float = 15.0):
+    """
+    Periodically sync SparkApplication (k8s) status into `job_registry`, in a background thread of this
+    same process (mimicking what a separately-run `job_tracker_v2.py` process does in production, but
+    sharing the in-memory job registry instead of talking to a persistent one).
+    """
+    import threading
+    import time
+
+    from openeogeotrellis.integrations.kubernetes import kube_client
+    from openeogeotrellis.integrations.prometheus import Prometheus
+    from openeogeotrellis.job_tracker_v2 import JobTracker, K8sStatusGetter
+
+    # Build the JobTracker (and fully import the `kubernetes` package) synchronously in the calling thread
+    # before spawning the background loop, to avoid any import race between threads.
+    app_state_getter = K8sStatusGetter(kube_client(api_type="CustomObject"), Prometheus(get_backend_config().prometheus_api))
+    job_tracker = JobTracker(
+        app_state_getter=app_state_getter,
+        principal="",
+        keytab="",
+        elastic_job_registry=job_registry,
+    )
+
+    def _run():
+        while True:
+            try:
+                job_tracker.update_statuses()
+            except Exception:
+                _log.exception("Error while updating kube job statuses")
+            time.sleep(interval_seconds)
+
+    thread = threading.Thread(target=_run, name="kube-job-tracker", daemon=True)
+    thread.start()
+    return thread
 
 
 def main():
@@ -273,12 +332,34 @@ def main():
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
     from openeogeotrellis.job_registry import InMemoryJobRegistry
 
+    job_registry = InMemoryJobRegistry()
     backend_implementation = GeoPySparkBackendImplementation(
         use_zookeeper=False,
         use_job_registry=bool(get_backend_config().ejr_api),
-        elastic_job_registry=InMemoryJobRegistry(),
+        elastic_job_registry=job_registry,
     )
     app = build_app(backend_implementation=backend_implementation)
+
+    if ConfigParams().is_kube_deploy:
+        # In a real deployment, a separate `job_tracker_v2.py` process periodically syncs SparkApplication
+        # (k8s) status into the job registry. Since `InMemoryJobRegistry` only lives inside a single
+        # process, and gunicorn's arbiter process (running this `main()`) is NOT the same process that
+        # actually handles requests (that happens in a forked worker process, even with `workers=1`), we
+        # must start this background tracking thread lazily, from within the worker process itself (on its
+        # first handled request), instead of here in the arbiter -- otherwise the tracker would forever
+        # observe an empty/stale copy of the job registry that requests never actually touch.
+        import threading
+
+        _tracker_lock = threading.Lock()
+        _tracker_started = threading.Event()
+
+        @app.before_request
+        def _ensure_kube_job_tracker_started():
+            if not _tracker_started.is_set():
+                with _tracker_lock:
+                    if not _tracker_started.is_set():
+                        start_kube_job_tracker_thread(job_registry)
+                        _tracker_started.set()
 
     show_log_level(logging.getLogger("openeo"))
     show_log_level(logging.getLogger("openeo_driver"))

@@ -101,6 +101,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
     ensure_kubernetes_config,
+    k8s_job_pod_logs,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
@@ -1910,7 +1911,76 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         return self._batch_job_work_dir_root / job_id
 
+    def _run_job_locally(
+        self,
+        *,
+        job_id: str,
+        user_id: str,
+        job_process_graph: dict,
+        job_options: dict,
+        job_work_dir: Path,
+        api_version: str,
+        log: logging.LoggerAdapter,
+    ) -> None:
+        """
+        Run a batch job in-process (in a background thread), reusing the already running local
+        SparkContext. Intended for local dev/testing setups (e.g. `openeogeotrellis/deploy/local.py`)
+        where there is no YARN or Kubernetes cluster available to submit the job to.
+        """
+        import stat
+        import threading
 
+        from openeo.util import ensure_dir
+
+        from openeogeotrellis.deploy.batch_job import run_job as _run_job_in_process
+        from openeogeotrellis.utils import add_permissions
+
+        ensure_dir(job_work_dir)
+        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP)
+
+        output_file = job_work_dir / "out"
+        metadata_file = job_work_dir / JOB_METADATA_FILENAME
+        application_id = f"local-{job_id}"
+
+        with self._double_job_registry as dbl_registry:
+            dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+            dbl_registry.set_results_metadata_uri(
+                job_id=job_id,
+                user_id=user_id,
+                results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
+            )
+            dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.RUNNING)
+
+        def _run():
+            try:
+                log.info(f"Running batch job {job_id!r} locally in-process")
+                # Round-trip through JSON (like the YARN/Kubernetes runners do, which serialize the job
+                # specification to a file that gets parsed again in a separate process) to avoid the job
+                # evaluation mutating (e.g. caching live DataCube objects on) the process graph/job options
+                # dicts that are shared (by reference) with the job registry.
+                job_specification = json.loads(
+                    json.dumps({"process_graph": job_process_graph, "job_options": job_options})
+                )
+                _run_job_in_process(
+                    job_specification=job_specification,
+                    output_file=output_file,
+                    metadata_file=metadata_file,
+                    api_version=api_version,
+                    job_dir=job_work_dir,
+                    dependencies=[],
+                    user_id=user_id,
+                    max_soft_errors_ratio=0.0,
+                )
+            except Exception:
+                log.error(f"Local batch job {job_id!r} failed", exc_info=True)
+                with self._double_job_registry as dbl_registry:
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
+            else:
+                log.info(f"Local batch job {job_id!r} finished")
+                with self._double_job_registry as dbl_registry:
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED)
+
+        threading.Thread(target=_run, name=f"local-batch-job-{job_id}", daemon=True).start()
 
     def start_job(self, job_id: str, user: User):
         proxy_user = self.get_proxy_user(user)
@@ -1987,7 +2057,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
         log.debug(f"_start_job {job_options=}")
 
-        if "image-name" not in job_options:
+        # Note: a configured `processing_container_image` (e.g. for a local/dev backend) is meant to take
+        # precedence over the generic process-graph-based image auto-detection below, since that detection
+        # falls back to a "best" default image that may not even exist in a custom/local setup.
+        if "image-name" not in job_options and not get_backend_config().processing_container_image:
             image_name = self._determine_container_image_from_process_graph(
                 process_graph=job_process_graph, api_version=api_version
             )
@@ -2067,7 +2140,21 @@ class GpsBatchJobs(backend.BatchJobs):
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
 
-        if isKube:
+        if not isKube and smart_bool(os.environ.get("OPENEO_LOCAL_BATCH_JOB_RUNNER", "false")):
+            # Local dev/testing mode (e.g. `openeogeotrellis/deploy/local.py`): run the batch job
+            # in-process (reusing the already running local SparkContext) in a background thread,
+            # instead of submitting to YARN or Kubernetes.
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
+            self._run_job_locally(
+                job_id=job_id,
+                user_id=user_id,
+                job_process_graph=job_process_graph,
+                job_options=job_options,
+                job_work_dir=job_work_dir,
+                api_version=api_version,
+                log=log,
+            )
+        elif isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
             # TODO: eliminate these local imports
@@ -2151,10 +2238,16 @@ class GpsBatchJobs(backend.BatchJobs):
             spark_app_id = k8s_job_name()
 
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
-            running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
+            # Note: `running_image` is only looked up lazily (via the current pod) when neither the job option nor
+            # the backend config provide an image name, because that lookup requires the backend itself to be
+            # running as a pod in the cluster (e.g. it is not available when running the backend locally).
+            def _get_running_image():
+                return api_instance_core.read_namespaced_pod(
+                    name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")
+                ).spec.containers[0].image
 
             image_name = self._udf_runtimes.udf_runtime_image_repository.resolve_image_alias(
-                options.image_name or get_backend_config().processing_container_image or running_image
+                options.image_name or get_backend_config().processing_container_image or _get_running_image()
             )
             log.info(f"Using {image_name=}")
 
@@ -2201,11 +2294,23 @@ class GpsBatchJobs(backend.BatchJobs):
                 aws_https=os.environ.get("AWS_HTTPS","FALSE"),
                 swift_access_key_id=os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID")),
                 swift_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY")),
-                aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
+                # Pods running inside the Kubernetes cluster network might not be able to reach the same
+                # S3/Swift endpoint URL as the backend process itself (e.g. a host-facing `localhost:<nodeport>`
+                # URL used by the backend is not reachable from within the cluster). `OPENEO_K8S_AWS_S3_ENDPOINT`/
+                # `OPENEO_K8S_SWIFT_URL` allow specifying a separate, pod-facing endpoint (e.g. an in-cluster
+                # DNS name); when unset, they fall back to the regular (host-facing) env vars.
+                aws_endpoint=os.environ.get("OPENEO_K8S_AWS_S3_ENDPOINT", os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com")),
                 aws_region=os.environ.get("AWS_REGION","RegionOne"),
-                swift_url=os.environ.get("SWIFT_URL"),
+                swift_url=os.environ.get("OPENEO_K8S_SWIFT_URL", os.environ.get("SWIFT_URL")),
                 image_name=image_name,
-                openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
+                image_pull_policy=os.environ.get("OPENEO_K8S_IMAGE_PULL_POLICY", "Always"),
+                # The backend config path on the host running this process may not exist inside the
+                # driver/executor pods (e.g. a local dev checkout path). `OPENEO_K8S_BACKEND_CONFIG` allows
+                # specifying a separate, in-pod path (e.g. baked into a custom image); falls back to the
+                # regular (host-facing) env var otherwise.
+                openeo_backend_config=os.environ.get(
+                    "OPENEO_K8S_BACKEND_CONFIG", os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, "")
+                ),
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
@@ -2214,7 +2319,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 logging_threshold=options.log_level,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
-                access_token=user.internal_auth_data["access_token"],
+                # Basic-auth users don't have an OIDC access token; fall back to empty string in that case.
+                access_token=(user.internal_auth_data or {}).get("access_token", ""),
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
                 udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
@@ -2684,9 +2790,22 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
-        return elasticsearch_logs(
-            job_id=job_id, create_time=job_info.created, offset=offset, level=level
+        log_entries = list(
+            elasticsearch_logs(job_id=job_id, create_time=job_info.created, offset=offset, level=level)
         )
+        if not log_entries and ConfigParams().is_kube_deploy:
+            # Fallback for local/dev k8s setups that have no Elasticsearch log shipping infrastructure in
+            # place: read the driver pod's own stdout/stderr logs straight from the Kubernetes API instead.
+            with self._double_job_registry as registry:
+                raw_job_info = registry.get_job(job_id=job_id, user_id=user_id)
+            application_id = raw_job_info.get("application_id")
+            if application_id:
+                namespace = ConfigParams().pod_namespace
+                log_entries = [
+                    {"id": str(i), "level": "info", "message": line}
+                    for i, line in enumerate(k8s_job_pod_logs(application_id, namespace))
+                ]
+        return log_entries
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:

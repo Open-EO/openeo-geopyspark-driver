@@ -23,7 +23,7 @@ spec:
 {%- endif %}
 {%- endif %}
   image: {{ image_name }}
-  imagePullPolicy: Always
+  imagePullPolicy: {{ image_pull_policy }}
   timeToLiveSeconds: 172800
   mainApplicationFile: local:///opt/openeo/bin/openeo_batch.py
 {%- endblock %}
@@ -471,14 +471,13 @@ spec:
       - 'local:///opt/geotrellis-dependencies-static.jar'
     files:
       {%- block deps_layercatalog %}
-        {%- if layer_catalog_init_image != "DISABLED" %}
-      {# layercatalog.json is provided at runtime by the init container, so it must not be listed here.
-         At least one entry is required to keep the files: structure valid, so os-release is used as a
-         guaranteed-present placeholder (it is available on any Linux container image). #}
+      {# layercatalog.json is read directly by the driver's own Python process (see OPENEO_CATALOG_FILES),
+         so it does not need to be distributed via Spark's files: mechanism. Moreover, listing a local://
+         file here that is already present on the driver at that exact path makes spark-submit copy the
+         file onto itself, which corrupts/deletes it. At least one entry is required to keep the files:
+         structure valid, so os-release is used as a guaranteed-present placeholder (it is available on
+         any Linux container image). #}
       - 'local:///etc/os-release'
-        {%- else %}
-      - 'local:///opt/layercatalog.json'
-        {%- endif %}
       {%- endblock %}
       {%- for line in py_files %}
       - {{ line -}}
