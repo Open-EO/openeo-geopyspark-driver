@@ -826,7 +826,11 @@ class CalrissianJobLauncher:
         :return: output of the CWL workflow as a string.
         """
         # Input staging
-        if cwl_source.get_source():
+        if (
+            cwl_source.get_source()
+            and not cwl_source.get_source().lower().startswith("http://")
+            and not cwl_source.get_source().lower().startswith("https://")
+        ):
             # This allows to keep relative paths working.
             cwl_path = cwl_source.get_source()
         else:
