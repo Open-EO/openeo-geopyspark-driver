@@ -36,7 +36,7 @@ from openeo.udf import UdfData
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none, str_truncate
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
-from openeo_driver.datastructs import ResolutionMergeArgs, StacAsset
+from openeo_driver.datastructs import ResolutionMergeArgs, StacAsset, SaveResultHints
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, \
@@ -1996,11 +1996,18 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
-        result = self.write_assets(filename, format, format_options)
+        result = self.write_assets(filename=filename, format=format, format_options=format_options)
         assets = [asset for item in result.values() for asset in item["assets"].values()]
         return assets[0]["href"]
 
-    def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict[str, StacAsset]:
+    def write_assets(
+        self,
+        filename: Union[str, pathlib.Path],
+        *,
+        format: str,
+        format_options: Optional[dict] = None,
+        save_result_hints: Optional[SaveResultHints] = None,
+    ) -> Dict[str, StacAsset]:
         """
         Save cube to disk, returns the resulting items, which can have multiple assets.
 
