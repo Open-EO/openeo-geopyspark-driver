@@ -1018,6 +1018,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         "job_options": {
             "stac-version": stac_version,
             "remove-exported-assets": remove_original,
+            "export-workspace-enable-merge": False,
         },
     }
 
@@ -1224,7 +1225,10 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
+        },
         "process_graph": process_graph,
     }
 
@@ -1394,6 +1398,7 @@ def test_filepath_per_band(
     try:
         process = {
             "process_graph": process_graph,
+            "job_options": {"export-workspace-enable-merge": False},
         }
         run_job(
             process,
@@ -2357,7 +2362,10 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
+        },
         "process_graph": process_graph,
     }
 
@@ -2574,7 +2582,8 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
-            "stac-version": stac_version
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
         },
     }
 
