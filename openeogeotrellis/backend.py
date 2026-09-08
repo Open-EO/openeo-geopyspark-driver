@@ -101,7 +101,6 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
     ensure_kubernetes_config,
-    k8s_job_pod_logs,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
@@ -2790,22 +2789,9 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
-        log_entries = list(
-            elasticsearch_logs(job_id=job_id, create_time=job_info.created, offset=offset, level=level)
+        return elasticsearch_logs(
+            job_id=job_id, create_time=job_info.created, offset=offset, level=level
         )
-        if not log_entries and ConfigParams().is_kube_deploy:
-            # Fallback for local/dev k8s setups that have no Elasticsearch log shipping infrastructure in
-            # place: read the driver pod's own stdout/stderr logs straight from the Kubernetes API instead.
-            with self._double_job_registry as registry:
-                raw_job_info = registry.get_job(job_id=job_id, user_id=user_id)
-            application_id = raw_job_info.get("application_id")
-            if application_id:
-                namespace = ConfigParams().pod_namespace
-                log_entries = [
-                    {"id": str(i), "level": "info", "message": line}
-                    for i, line in enumerate(k8s_job_pod_logs(application_id, namespace))
-                ]
-        return log_entries
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:

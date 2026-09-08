@@ -6,7 +6,6 @@ import logging
 import os
 import pkg_resources
 import time
-from typing import Iterable, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -41,23 +40,6 @@ def kube_client(api_type):
 
     return api_instance
 
-
-def k8s_job_pod_logs(application_id: str, namespace: str, max_lines: Optional[int] = 2000) -> Iterable[str]:
-    """
-    Fetch the raw stdout/stderr log lines of a submitted SparkApplication's driver pod straight from the
-    Kubernetes API. This is mainly meant as a fallback for local/dev setups that have no Elasticsearch (or
-    other) log shipping infrastructure in place, where the pod's own logs are the only thing available.
-    """
-    import kubernetes.client.exceptions
-
-    core_api = kube_client("Core")
-    pod_name = f"{application_id}-driver"
-    try:
-        raw_logs = core_api.read_namespaced_pod_log(name=pod_name, namespace=namespace, tail_lines=max_lines)
-    except kubernetes.client.exceptions.ApiException as e:
-        _log.warning(f"Could not fetch pod logs for {pod_name!r} in namespace {namespace!r}: {e}")
-        return []
-    return raw_logs.splitlines()
 
 def truncate_job_id_k8s(job_id: str) -> str:
     if job_id.startswith("j-"):

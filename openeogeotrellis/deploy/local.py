@@ -13,6 +13,12 @@ from glob import glob
 from pathlib import Path
 from typing import Optional
 
+# Note: `openeogeotrellis.config.config` (imported indirectly below) reads some env vars (e.g.
+# `LOGGING_ES_HOSTS`) as plain module-level/class-attribute defaults, evaluated at import time. Setting
+# them here, before any `openeogeotrellis` import, ensures `setup_environment()`'s defaults (further
+# below) actually take effect instead of arriving too late.
+os.environ.setdefault("LOGGING_ES_HOSTS", "http://localhost:9200")
+
 import openeo_driver.config.load
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import LOG_HANDLER_STDERR_JSON, get_logging_config, setup_logging, show_log_level
@@ -231,6 +237,7 @@ def setup_environment(log_dir: Path = Path.cwd()):
     os.environ.setdefault("POD_NAMESPACE", "spark-jobs-dev")
     os.environ.setdefault("OPENEO_K8S_IMAGE_PULL_POLICY", "IfNotPresent")
     os.environ.setdefault("OPENEO_LOCAL_K8S_IMAGE", "openeo-local-k8s:flat")
+    # Note: `LOGGING_ES_HOSTS` is set even earlier, at the top of this module (see comment there).
 
     _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
