@@ -50,13 +50,17 @@ all_gases: dict[str, dict[str, Any]] = {
             "nitrogendioxide_tropospheric_column": "PRODUCT/nitrogendioxide_tropospheric_column",
             "nitrogendioxide_tropospheric_column_precision": "PRODUCT/nitrogendioxide_tropospheric_column_precision",
             "nitrogendioxide_stratospheric_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column",
+            "nitrogendioxide_stratospheric_column_precision": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column_precision",
             "nitrogendioxide_total_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column",
+            "nitrogendioxide_total_column_precision": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column_precision",
         },
         "DEFAULT_BANDS": [
             "nitrogendioxide_tropospheric_column",
             "nitrogendioxide_tropospheric_column_precision",
             "nitrogendioxide_stratospheric_column",
+            "nitrogendioxide_stratospheric_column_precision",
             "nitrogendioxide_total_column",
+            "nitrogendioxide_total_column_precision",
         ],
         "FILTER_VALUE": 0.75,
     },
@@ -75,7 +79,7 @@ all_gases: dict[str, dict[str, Any]] = {
     },
     "gas_hcho": {
         "VARIABLE_LOC_IN_FILE": {
-            "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column"
+            "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column",
         },
         "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column"],
         "FILTER_VALUE": 0.5,
@@ -114,8 +118,8 @@ all_gases: dict[str, dict[str, Any]] = {
     },
     "gas_aer_lh": {
         "VARIABLE_LOC_IN_FILE": {
-            "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
             "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
+            "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
         },
         "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height"],
         "FILTER_VALUE": 0.5,
