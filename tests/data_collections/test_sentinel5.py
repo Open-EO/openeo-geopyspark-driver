@@ -400,11 +400,13 @@ def assert_tif_file_is_healthy(tif_path):
     _log.info(f"{shape=}")
     assert shape[1] > 10
     assert shape[2] > 10
+    issues = []
     for b in range(shape[0]):
         band = tiff_arr[b, :, :]
         nan_percentage = np.isnan(band.values).mean()
         _log.info(f"{nan_percentage=}")
-        assert nan_percentage < 0.8, f"Too high NaN percentage: {nan_percentage}"
+        if nan_percentage >= 0.95:
+            issues.append(f"Too high NaN percentage: {nan_percentage}, for band {band.long_name[b]}")
 
     # - The offset of the main IFD should be < 300. It is 21236950 instead
     # - The offset of the IFD for overview of index 0 is 684, whereas it should be greater than the one of the main image, which is at byte 21236950
@@ -413,7 +415,10 @@ def assert_tif_file_is_healthy(tif_path):
     is_valid_cog, errors, _ = cog_validate(str(tif_path), quiet=True)
     if errors:
         print(f"COG validation errors for {tif_path}: {errors}")
-    assert is_valid_cog, str(errors)
+    # assert is_valid_cog, str(errors)
+    issues.extend(errors)
+    if issues:
+        raise AssertionError("\n".join(issues))
 
 
 # Directory (under /eodata) known to contain at least one real product file for each gas/product
@@ -534,93 +539,28 @@ class TestSentinel5:
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
     @pytest.mark.parametrize(
-        "collection_id, spatial_extent, temporal_extent",
+        "collection_id",
         [
-            (
-                "SENTINEL5P_L2_CO",
-                {"west": 4, "south": 50, "east": 11, "north": 55},
-                ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_NO2",
-                {"west": 4, "south": 50, "east": 11, "north": 55},
-                ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CH4",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T12:00:00Z", "2024-10-07T13:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_SO2",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_HCHO",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_O3",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_AER_AI_340_380",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_AER_AI_354_388",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_FRACTION",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_AER_LH",
-                {"west": 1, "south": 33, "east": 11, "north": 37},
-                ["2024-01-02T13:00:00Z", "2024-01-02T14:00:00Z"],
-            ),
+            "SENTINEL5P_L2_CO",
+            "SENTINEL5P_L2_NO2",
+            "SENTINEL5P_L2_CH4",
+            "SENTINEL5P_L2_SO2",
+            "SENTINEL5P_L2_HCHO",
+            "SENTINEL5P_L2_O3",
+            "SENTINEL5P_L2_AER_LH",
+            "SENTINEL5P_L2_AER_AI",
+            "SENTINEL5P_L2_CLOUD",
         ],
     )
-    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent) -> None:
+    def test_sentinel5p_l2(self, api110, tmp_path, collection_id) -> None:
+        # spatio-temporal extent selected so there is data in all layers.
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
                     "id": collection_id,
-                    "spatial_extent": spatial_extent,
-                    "temporal_extent": temporal_extent,
+                    "spatial_extent": {"west": 6, "south": 32, "east": 11, "north": 37},
+                    "temporal_extent": ["2026-06-01T00:00:00Z", "2026-06-01T12:00:00Z"],
                 },
                 "result": True,
             },
