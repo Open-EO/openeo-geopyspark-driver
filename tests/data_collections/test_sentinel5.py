@@ -584,17 +584,17 @@ class TestSentinel5:
             print(ds.bounds)
             assert ds.bounds.right == 11.0
 
-    def test_sentinel5p_l2_qa_value_featureflag(self, api110, tmp_path) -> None:
-        """A stricter `qa_value` featureflag masks out more pixels than the CO default (0.5).
+    def test_sentinel5p_l2_qa_value_threshold_featureflag(self, api110, tmp_path) -> None:
+        """A stricter `qa_value_threshold` featureflag masks out more pixels than the CO default (0.5).
 
-        Runs the same `load_collection` process graph twice (default vs. a strict `qa_value`
+        Runs the same `load_collection` process graph twice (default vs. a strict `qa_value_threshold`
         override) through the full backend, so the resulting GeoTIFFs can be compared directly.
         """
         collection_id = "SENTINEL5P_L2_CO"
 
         # collection_id = "SENTINEL5P_L2_NO2" # was also tested with this.
 
-        def run_and_save(qa_value: Optional[float]) -> Path:
+        def run_and_save(qa_value_threshold: Optional[float]) -> Path:
             arguments: dict[str, Any] = {
                 "id": collection_id,
                 "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
@@ -608,8 +608,8 @@ class TestSentinel5:
                 arguments["bands"] = ["nitrogendioxide_tropospheric_column"]
             else:
                 raise Exception(f"Unknown collection id: {collection_id}")
-            if qa_value is not None:
-                arguments["featureflags"] = {"qa_value": qa_value}
+            if qa_value_threshold is not None:
+                arguments["featureflags"] = {"qa_value_threshold": qa_value_threshold}
             graph = {
                 "loadcollection1": {
                     "process_id": "load_collection",
@@ -618,7 +618,7 @@ class TestSentinel5:
                 },
             }
             response = api110.check_result(graph)
-            output_file = tmp_path / f"test_{collection_id}_qa{qa_value}.tif"
+            output_file = tmp_path / f"test_{collection_id}_qa{qa_value_threshold}.tif"
             with output_file.open(mode="wb") as f:
                 f.write(response.data)
             return output_file
@@ -627,7 +627,7 @@ class TestSentinel5:
         ds_default = rasterio.open(run_and_save(None)).read(1, masked=True)
         ds__strict = rasterio.open(run_and_save(0.99)).read(1, masked=True)
 
-        # A stricter qa_value should never yield more valid (unmasked) pixels than the default.
+        # A stricter qa_value_threshold should never yield more valid (unmasked) pixels than the default.
         assert ds__strict.count() <= ds_default.count()
         assert ds_default.count() <= ds____zero.count()
 
