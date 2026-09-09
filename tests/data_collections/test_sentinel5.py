@@ -105,7 +105,14 @@ def _co_bands() -> dict[str, Any]:
 def _no2_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(1e-5, 5e-5, (20, 10))
     assert isinstance(nd, np.ndarray)
-    return {"nitrogendioxide_tropospheric_column": nd.astype(np.float32)}
+    return {
+        "nitrogendioxide_tropospheric_column": nd.astype(np.float32),
+        "nitrogendioxide_tropospheric_column_precision": (nd * 0.1).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column": (nd * 0.2).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column_precision": (nd * 0.02).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column": (nd * 1.2).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column_precision": (nd * 0.12).astype(np.float32),
+    }
 
 
 @typechecked
@@ -179,15 +186,15 @@ def _aer_lh_bands():
 
 
 SYNTHETIC_PRODUCT_SPECS = {
-    "co": ("CO_____", _co_bands, 0.75, 1),
-    "no2": ("NO2____", _no2_bands, 0.8, 1),
-    "ch4": ("CH4____", _ch4_bands, 0.6, 1),
+    "co": ("CO_____", _co_bands, 0.75, 2),
+    "no2": ("NO2____", _no2_bands, 0.8, 6),
+    "ch4": ("CH4____", _ch4_bands, 0.6, 2),
     "so2": ("SO2____", _so2_bands, 0.6, 1),
     "hcho": ("HCHO___", _hcho_bands, 0.6, 1),
     "o3": ("O3_____", _o3_bands, 0.6, 1),
-    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 1),
-    "cloud": ("CLOUD__", _cloud_bands, 0.5, 1),
-    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 1),
+    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 2),
+    "cloud": ("CLOUD__", _cloud_bands, 0.5, 6),
+    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 2),
 }
 
 
@@ -259,7 +266,7 @@ def test_read_product_default_bands(synthetic_co_file):
     )
     assert len(result) > 0
     _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default band"
+    assert tile.cells.shape[0] == 2
 
 
 def test_read_product_no_data_outside_extent(synthetic_co_file):
@@ -629,7 +636,7 @@ class TestSentinel5:
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "id": "SENTINEL5P_L2_AER_AI_354_388",
+                    "id": "SENTINEL5P_L2_AER_AI",
                     "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
                     "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
                     "bands": ["aerosol_index_354_388"],

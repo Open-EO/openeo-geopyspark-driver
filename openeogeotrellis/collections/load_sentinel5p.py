@@ -292,8 +292,6 @@ def read_product(
     # Resample each band and apply quality mask
     band_grids = []
     for band in bands_to_load:
-        if band not in raw_data:
-            continue
         grid = (
             interpolate(source_coords, raw_data[band].ravel(), target_coords, method="nearest")
             .reshape(n_y, n_x)
