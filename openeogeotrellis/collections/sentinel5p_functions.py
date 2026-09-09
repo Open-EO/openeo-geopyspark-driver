@@ -29,6 +29,7 @@ COMMON_VARIABLES_IN_FILE = {
     "qa_value": "PRODUCT/qa_value",
 }
 
+# Update `all_gases` with: openeo-cdse-infra/sentinel5p_PUM_to_layercatalog/PUM_to_layercatalog.py
 all_gases: dict[str, dict[str, Any]] = {
     "COMMON_VARIABLES_IN_FILE": {
         "time": "PRODUCT/time",
@@ -370,7 +371,7 @@ def load_data_from_file(
                 # get band data based on combined mask
                 data[band] = fill_and_mask_data(band_data, spatio_temporal_mask)
             except KeyError as e:
-                raise KeyError(f"Band {band} not found in the NetCDF file.") from e
+                raise KeyError(f"Band {band} not found in the NetCDF file: {file_path.name}") from e
 
         # Load lat and lon based on combined mask
         data["latitude"] = _get_2d_data_from_mask(file_lat, spatio_temporal_mask)
