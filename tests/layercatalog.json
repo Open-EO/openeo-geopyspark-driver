@@ -2195,21 +2195,18 @@
   },
   {
     "id": "SENTINEL5P_L2_CO",
-    "title": "Sentinel-5P TROPOMI CO L2",
-    "description": "Sentinel-5P TROPOMI Level-2 carbon monoxide (CO) total column product.",
+    "title": "Sentinel-5P TROPOMI Carbon Monoxide L2",
+    "description": "Product User Manual of S5P L2 Carbon Monoxide product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_8cada11082dbfd5ea78cb0d1f7dfc9cd4c58025905c8651a404fa90d6e98d03f/SRON-S5P-LEV2-MA-002%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Carbon%20Monoxide%202025-2.9.1.pdf) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"]
+        "values": ["qa_value", "carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected"]
       }
     },
     "_vito": {
@@ -2217,36 +2214,51 @@
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-co-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CO____"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "carbonmonoxide_total_column", "description": "CO total column", "unit": "mol m-2"},
-        {"name": "carbonmonoxide_total_column_corrected", "description": "Bias-corrected CO total column", "unit": "mol m-2"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (best quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags variable, see page 40. The recommendation is to ignore data with a qa_value less than 0.5."
+        },
+        {
+          "name": "carbonmonoxide_total_column",
+          "description": "Vertically integrated CO column density",
+          "unit": "mol m-2"
+        },
+        {
+          "name": "carbonmonoxide_total_column_corrected",
+          "description": "Vertically integrated CO column density, with a \u201cdestriping\u201d algorithm applied to it. This variable is expected to be empty in near real-time processing.",
+          "unit": "mol m-2"
+        }
       ]
     }
   },
   {
     "id": "SENTINEL5P_L2_NO2",
-    "title": "Sentinel-5P TROPOMI NO2 L2",
-    "description": "Sentinel-5P TROPOMI Level-2 nitrogen dioxide (NO2) tropospheric column product.",
+    "title": "Sentinel-5P TROPOMI Nitrogendioxide L2",
+    "description": "Product User Manual of S5P L2 Nitrogendioxide product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_9a684b9fae014dbd44f68f924be68b04ef2a8740ab3a4a756a2b18393c06a80b/S5P-KNMI-L2-0021-MA%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Nitrogendioxide%202025-4.5.0.pdf) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["nitrogendioxide_tropospheric_column", "qa_value"]
+        "values": [
+          "qa_value",
+          "nitrogendioxide_tropospheric_column",
+          "nitrogendioxide_tropospheric_column_precision",
+          "nitrogendioxide_stratospheric_column",
+          "nitrogendioxide_stratospheric_column_precision",
+          "nitrogendioxide_total_column",
+          "nitrogendioxide_total_column_precision"
+        ]
       }
     },
     "_vito": {
@@ -2254,35 +2266,63 @@
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-no2-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__NO2___"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "nitrogendioxide_tropospheric_column", "description": "NO2 tropospheric column", "unit": "mol m-2"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (best quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags variable, see page 51. For NO2 it is generally recommend to use only data with qa_value greater than or equal to 0.75. For special applications that include cloud covered measurements all data with qa_value greater than or equal to 0.5 may be considered. Details can be found in section 8.6"
+        },
+        {
+          "name": "nitrogendioxide_tropospheric_column",
+          "description": "Tropospheric vertical column of NO2 , Nv (NO2 ).",
+          "unit": "mol m-2"
+        },
+        {
+          "name": "nitrogendioxide_tropospheric_column_precision",
+          "description": "Precision of the tropospheric vertical column of NO2 , including a contribution from the uncertainty in the a-priori profile shape.",
+          "unit": "mol m-2"
+        },
+        {
+          "name": "nitrogendioxide_stratospheric_column",
+          "description": "Stratospheric vertical column of NO2 , Nvstrat (NO2 ). Note that this is a TM5-MP model forecast quantity, and there is no associated stratospheric averaging kernel.",
+          "unit": "mol m-2"
+        },
+        {
+          "name": "nitrogendioxide_stratospheric_column_precision",
+          "description": "Precision of the stratospheric vertical column of NO2 .",
+          "unit": "mol m-2"
+        },
+        {
+          "name": "nitrogendioxide_total_column",
+          "description": "Total vertical column of NO2 , defined by the ratio of the stripe-corrected slant column density of NO2 and the total air mass factor: Nv (NO2 ) = Ns (NO2 )/M .",
+          "unit": "mol m-2"
+        },
+        {
+          "name": "nitrogendioxide_total_column_precision",
+          "description": "Precision of the total vertical column of NO2 given in the variable nitrogendioxide_-total_column, including a contribution from the uncertainty in the a-priori profile shape.",
+          "unit": "mol m-2"
+        }
       ]
     }
   },
   {
     "id": "SENTINEL5P_L2_CH4",
-    "title": "Sentinel-5P TROPOMI CH4 L2",
-    "description": "Sentinel-5P TROPOMI Level-2 methane (CH4) total column mixing ratio product.",
+    "title": "Sentinel-5P TROPOMI Methane L2",
+    "description": "Product User Manual of S5P L2 Methane product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_046c3abe4195dd4adb791aef506b27270ed4a9080ae56ead0282f38c503a44e7/SRON-S5P-LEV2-MA-001%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Methane%202025-2.9.1.pdf) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"]
+        "values": ["qa_value", "methane_mixing_ratio", "methane_mixing_ratio_bias_corrected"]
       }
     },
     "_vito": {
@@ -2290,253 +2330,239 @@
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-ch4-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CH4___"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "methane_mixing_ratio", "description": "CH4 column-averaged dry-air mixing ratio", "unit": "ppb"},
-        {"name": "methane_mixing_ratio_bias_corrected", "description": "Bias-corrected CH4 column-averaged dry-air mixing ratio", "unit": "ppb"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (best quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags variable, see page 40. The recommendation is to ignore data with a qa_value less than 0.5."
+        },
+        {
+          "name": "methane_mixing_ratio",
+          "description": "Retrieved column-averaged dry-air mole fraction of atmospheric methane, in literature referred to as \u201cXCH4 \u201d.",
+          "unit": "ppb"
+        },
+        {
+          "name": "methane_mixing_ratio_bias_corrected",
+          "description": "Corrected column-averaged dry-air mole fraction of CH4 .",
+          "unit": "ppb"
+        }
       ]
     }
   },
   {
     "id": "SENTINEL5P_L2_SO2",
-    "title": "Sentinel-5P TROPOMI SO2 L2",
-    "description": "Sentinel-5P TROPOMI Level-2 sulfur dioxide (SO2) total vertical column product.",
+    "title": "Sentinel-5P TROPOMI Sulphur Dioxide SO2 L2",
+    "description": "Product User Manual of S5P L2 Sulphur Dioxide SO2 product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_9c2a17cc51b3f091c8a3128747750648a8ad11921ec3d0d6ea0ea6bad93310b4/S5P-L2-DLR-PUM-400E%20-%20Sentinel-5P%20Level%202%20Product%20Use%20Manua%20Sulphur%20Dioxide%202025-02.08.00.pdf) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["sulfurdioxide_total_vertical_column", "qa_value"]
-      }
+      "bands": {"type": "bands", "values": ["qa_value", "sulfurdioxide_total_vertical_column"]}
     },
     "_vito": {
       "data_source": {
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-so2-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__SO2___"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "sulfurdioxide_total_vertical_column", "description": "SO2 total vertical column", "unit": "mol m-2"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (full quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags elsewhere in the product."
+        },
+        {
+          "name": "sulfurdioxide_total_vertical_column",
+          "description": "Vertical column density of the sulphur dioxide SO2 product for the polluted scenario (anthro-pogenic SO2 in the PBL).",
+          "unit": "mol m-2"
+        }
       ]
     }
   },
   {
     "id": "SENTINEL5P_L2_HCHO",
-    "title": "Sentinel-5P TROPOMI HCHO L2",
-    "description": "Sentinel-5P TROPOMI Level-2 formaldehyde (HCHO) tropospheric vertical column product.",
+    "title": "Sentinel-5P TROPOMI Formaldehyde HCHO L2",
+    "description": "Product User Manual of S5P L2 Formaldehyde HCHO product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_4ce6dceafd78f62d79250e52598189c5fc423a324765deac880b00cf35d9188e/S5P-L2-DLR-PUM-400F%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Formaldehyde%20HCHO%202025-02.08.00.pdf?cb=9c0f6f1bbfe05ecb4946e8bb447288b1) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["formaldehyde_tropospheric_vertical_column", "qa_value"]
-      }
+      "bands": {"type": "bands", "values": ["qa_value", "formaldehyde_tropospheric_vertical_column"]}
     },
     "_vito": {
       "data_source": {
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-hcho-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__HCHO__"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "formaldehyde_tropospheric_vertical_column", "description": "HCHO tropospheric vertical column", "unit": "mol m-2"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (full quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags elsewhere in the product."
+        },
+        {
+          "name": "formaldehyde_tropospheric_vertical_column",
+          "description": "Vertical column density of tropospheric formaldehyde HCHO product.",
+          "unit": "mol m-2"
+        }
       ]
     }
   },
   {
     "id": "SENTINEL5P_L2_O3",
-    "title": "Sentinel-5P TROPOMI O3 L2",
-    "description": "Sentinel-5P TROPOMI Level-2 ozone (O3) total vertical column product.",
+    "title": "Sentinel-5P TROPOMI O3 Total Column L2",
+    "description": "Product User Manual of S5P L2 O3 Total Column product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_2178f60e3abd07bc964e4e21275b5874baa8c039e1048859906f4064b79f79cd/S5P-L2-DLR-PUM-400A%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Ozone%20Total%20Column%202025%20-%2002.08.00.pdf?cb=3744dfb7870ef7ef96a5c74e1c595bf9) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["ozone_total_vertical_column", "qa_value"]
-      }
+      "bands": {"type": "bands", "values": ["qa_value", "ozone_total_vertical_column"]}
     },
     "_vito": {
       "data_source": {
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-o3-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__O3____"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "ozone_total_vertical_column", "description": "O3 total vertical column", "unit": "mol m-2"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_AER_AI_340_380",
-    "title": "Sentinel-5P TROPOMI UV Aerosol Index (340/380 nm) L2",
-    "description": "Sentinel-5P TROPOMI Level-2 Ultraviolet Aerosol Index (UVAI, also known as Absorbing Aerosol Index) product, computed from the 340 nm and 380 nm bands.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["aerosol_index_340_380", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-ai-offl"
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (full quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags elsewhere in the product."
         },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "aerosol_index_340_380", "description": "UV Aerosol Index (340/380 nm)"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_AER_AI_354_388",
-    "title": "Sentinel-5P TROPOMI UV Aerosol Index (354/388 nm) L2",
-    "description": "Sentinel-5P TROPOMI Level-2 Ultraviolet Aerosol Index (UVAI, also known as Absorbing Aerosol Index) product, computed from the 354 nm and 388 nm bands.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["aerosol_index_354_388", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-ai-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "aerosol_index_354_388", "description": "UV Aerosol Index (354/388 nm)"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "ozone_total_vertical_column",
+          "description": "Main output data of O3 Total column product calculated with DOAS algorithm for near real time processing, while for offline and reprocessing the O3 is calculated with GODfit algorithm.",
+          "unit": "mol m-2"
+        }
       ]
     }
   },
   {
     "id": "SENTINEL5P_L2_AER_LH",
     "title": "Sentinel-5P TROPOMI Aerosol Layer Height L2",
-    "description": "Sentinel-5P TROPOMI Level-2 aerosol layer height product: the height at the center of an elevated aerosol layer (e.g. dust, smoke, volcanic ash) relative to the geoid, retrieved from oxygen A-band measurements.",
+    "description": "Product User Manual of S5P L2 Aerosol Layer Height product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_c7640c265b5d887fbb8cde8bfee3d1738403ce8030c0be27b3025aa10e693184/S5P-KNMI-L2-0022-MA%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Aerosol%20Layer%20Height%202025-2.9.1.pdf) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["aerosol_mid_height", "aerosol_mid_pressure", "qa_value"]
-      }
+      "bands": {"type": "bands", "values": ["qa_value", "aerosol_mid_pressure", "aerosol_mid_height"]}
     },
     "_vito": {
       "data_source": {
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-lh-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__AER_LH"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "aerosol_mid_height", "description": "Height at center of aerosol layer relative to the geoid", "unit": "m"},
-        {"name": "aerosol_mid_pressure", "description": "Air pressure at center of aerosol layer", "unit": "Pa"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (best quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags variable, see page 38. The recommendation is to ignore data with a qa_value less than 0.5."
+        },
+        {
+          "name": "aerosol_mid_pressure",
+          "description": "Mid pressure of an aerosol layer with an assumed geometrical thickness of 250 m and a constant aerosol volume extinction coefficient and single scattering albedo. Mid pressure is equal to top pressure plus bottom pressure divided by two, where the top and bottom pressures are converted from layer heights using hydrostatic equilibrium. This pressure is limited to the surface pressure, regardless of the exact retrieval result.",
+          "unit": "Pa"
+        },
+        {
+          "name": "aerosol_mid_height",
+          "description": "The aerosol layer mid pressure ( pmid ) is converted into an aerosol layer mid altitude (zmid ) using an appropriate temperature profile, i.e. the temperature profile used in the retrieval. The value is given relative to the geoid.",
+          "unit": "m"
+        }
       ]
     }
   },
   {
-    "id": "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
-    "title": "Sentinel-5P TROPOMI Cloud Base Pressure L2",
-    "description": "Sentinel-5P TROPOMI Level-2 cloud base pressure product.",
+    "id": "SENTINEL5P_L2_AER_AI",
+    "title": "Sentinel-5P TROPOMI UV Aerosol Index L2",
+    "description": "Product User Manual of S5P L2 UV Aerosol Index product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_51c503439a847cfed4671160562244634237525e76d8a89a057e3892ab17c9b1/S5P-KNMI-L2-0026-MA%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Aerosol%20Index%202025-2.9.1.pdf) for details.",
     "experimental": true,
     "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
+      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
+      "t": {"type": "temporal"},
+      "bands": {"type": "bands", "values": ["qa_value", "aerosol_index_354_388", "aerosol_index_340_380"]}
     },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "load_stac_feature_flags": {
+          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-aer-ai-offl"
+        }
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (best quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags variable, see page 36. The recommendation is to ignore data with a qa_value less than 0.5."
+        },
+        {
+          "name": "aerosol_index_354_388",
+          "description": "The main output of the Aerosol Index retrieval algorithm (at wavelengths 354/388, i.e. the OMI pair)."
+        },
+        {
+          "name": "aerosol_index_340_380",
+          "description": "The main output of the Aerosol Index retrieval algorithm (at wavelengths 340/380, i.e. the TOMS pair)."
+        }
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL5P_L2_CLOUD",
+    "title": "Sentinel-5P TROPOMI Cloud Properties L2",
+    "description": "Product User Manual of S5P L2 Cloud product.\n\nSee the [Product User Manual](https://sentiwiki.copernicus.eu/__attachments/a_6e12c24593eacb8d3a49f8faab3dfa9f0bb0ca18a475d50a5226b4f4812cfb2f/S5P-L2-DLR-PUM-400I%20-%20Sentinel-5P%20Level%202%20Product%20User%20Manual%20Cloud%202025-02.08.00.pdf) for details.",
+    "experimental": true,
+    "license": "proprietary",
+    "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [["2018-04-30", null]]}},
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
       "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["cloud_base_pressure", "qa_value"]
+        "values": [
+          "qa_value",
+          "cloud_fraction",
+          "cloud_top_pressure",
+          "cloud_base_pressure",
+          "cloud_top_height",
+          "cloud_base_height",
+          "cloud_optical_thickness"
+        ]
       }
     },
     "_vito": {
@@ -2544,195 +2570,44 @@
         "type": "file-s5p",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
-        },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
+        }
       },
       "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
-        {"name": "cloud_base_pressure", "description": "Cloud base pressure", "unit": "Pa"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
-    "title": "Sentinel-5P TROPOMI Cloud Top Pressure L2",
-    "description": "Sentinel-5P TROPOMI Level-2 cloud top pressure product.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["cloud_top_pressure", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        {
+          "name": "qa_value",
+          "description": "A continuous quality descriptor, varying between 0 (no data) and 1 (full quality data). The value will change based on observation conditions and retrieval flags. Detailed quality flags are provided in the processing_quality_flags elsewhere in the product."
         },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "cloud_top_pressure", "description": "Cloud top pressure", "unit": "Pa"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
-    "title": "Sentinel-5P TROPOMI Cloud Base Height L2",
-    "description": "Sentinel-5P TROPOMI Level-2 cloud base height product.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["cloud_base_height", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        {
+          "name": "cloud_fraction",
+          "description": "Retrieved effective radiometric cloud fraction using the OCRA/ROCINN CAL model."
         },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "cloud_base_height", "description": "Cloud base height", "unit": "m"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
-    "title": "Sentinel-5P TROPOMI Cloud Top Height L2",
-    "description": "Sentinel-5P TROPOMI Level-2 cloud top height product.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["cloud_top_height", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        {
+          "name": "cloud_top_pressure",
+          "description": "Retrieved atmospheric pressure at the level of cloud top using the OCRA/ROCINN CAL model.",
+          "unit": "Pa"
         },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "cloud_top_height", "description": "Cloud top height", "unit": "m"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
-    "title": "Sentinel-5P TROPOMI Cloud Optical Thickness L2",
-    "description": "Sentinel-5P TROPOMI Level-2 cloud optical thickness product.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["cloud_optical_thickness", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        {
+          "name": "cloud_base_pressure",
+          "description": "Cloud base pressure calculated using the OCRA/ROCINN CAL model.",
+          "unit": "Pa"
         },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "cloud_optical_thickness", "description": "Cloud optical thickness"},
-        {"name": "qa_value", "description": "Quality value"}
-      ]
-    }
-  },
-  {
-    "id": "SENTINEL5P_L2_CLOUD_FRACTION",
-    "title": "Sentinel-5P TROPOMI Cloud Fraction L2",
-    "description": "Sentinel-5P TROPOMI Level-2 cloud fraction product.",
-    "experimental": true,
-    "license": "proprietary",
-    "extent": {
-      "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2018-04-30", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "extent": [-180, 180], "reference_system": 4326, "step": 0.01},
-      "y": {"type": "spatial", "axis": "y", "extent": [-90, 90], "reference_system": 4326, "step": 0.01},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["cloud_fraction", "qa_value"]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "file-s5p",
-        "load_stac_feature_flags": {
-          "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-cloud-offl"
+        {
+          "name": "cloud_top_height",
+          "description": "Retrieved vertical distance of the cloud top above the surface w.r.t. the geoid/MSL using the OCRA/ROCINN CAL model.",
+          "unit": "m"
         },
-        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CLOUD_"
-      },
-      "management_info": {"enrichment_mode": "legacy_at_build_time"}
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "cloud_fraction", "description": "Cloud fraction"},
-        {"name": "qa_value", "description": "Quality value"}
+        {
+          "name": "cloud_base_height",
+          "description": "Cloud base height calculated w.r.t. the geoid/MSL using the OCRA/ROCINN CAL model.",
+          "unit": "m"
+        },
+        {
+          "name": "cloud_optical_thickness",
+          "description": "Cloud Optical Thickness using the OCRA/ROCINN CAL model."
+        }
       ]
     }
   },

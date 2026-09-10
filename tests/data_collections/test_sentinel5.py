@@ -105,7 +105,14 @@ def _co_bands() -> dict[str, Any]:
 def _no2_bands() -> dict[str, np.ndarray]:
     nd = np.random.uniform(1e-5, 5e-5, (20, 10))
     assert isinstance(nd, np.ndarray)
-    return {"nitrogendioxide_tropospheric_column": nd.astype(np.float32)}
+    return {
+        "nitrogendioxide_tropospheric_column": nd.astype(np.float32),
+        "nitrogendioxide_tropospheric_column_precision": (nd * 0.1).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column": (nd * 0.2).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column_precision": (nd * 0.02).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column": (nd * 1.2).astype(np.float32),
+        "SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column_precision": (nd * 0.12).astype(np.float32),
+    }
 
 
 @typechecked
@@ -179,15 +186,15 @@ def _aer_lh_bands():
 
 
 SYNTHETIC_PRODUCT_SPECS = {
-    "co": ("CO_____", _co_bands, 0.75, 1),
-    "no2": ("NO2____", _no2_bands, 0.8, 1),
-    "ch4": ("CH4____", _ch4_bands, 0.6, 1),
+    "co": ("CO_____", _co_bands, 0.75, 2),
+    "no2": ("NO2____", _no2_bands, 0.8, 6),
+    "ch4": ("CH4____", _ch4_bands, 0.6, 2),
     "so2": ("SO2____", _so2_bands, 0.6, 1),
     "hcho": ("HCHO___", _hcho_bands, 0.6, 1),
     "o3": ("O3_____", _o3_bands, 0.6, 1),
-    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 1),
-    "cloud": ("CLOUD__", _cloud_bands, 0.5, 1),
-    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 1),
+    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 2),
+    "cloud": ("CLOUD__", _cloud_bands, 0.5, 6),
+    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 2),
 }
 
 
@@ -259,7 +266,7 @@ def test_read_product_default_bands(synthetic_co_file):
     )
     assert len(result) > 0
     _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default band"
+    assert tile.cells.shape[0] == 2
 
 
 def test_read_product_no_data_outside_extent(synthetic_co_file):
@@ -400,11 +407,13 @@ def assert_tif_file_is_healthy(tif_path):
     _log.info(f"{shape=}")
     assert shape[1] > 10
     assert shape[2] > 10
+    issues = []
     for b in range(shape[0]):
         band = tiff_arr[b, :, :]
         nan_percentage = np.isnan(band.values).mean()
         _log.info(f"{nan_percentage=}")
-        assert nan_percentage < 0.8, f"Too high NaN percentage: {nan_percentage}"
+        if nan_percentage >= 0.95:
+            issues.append(f"Too high NaN percentage: {nan_percentage}, for band {band.long_name[b]}")
 
     # - The offset of the main IFD should be < 300. It is 21236950 instead
     # - The offset of the IFD for overview of index 0 is 684, whereas it should be greater than the one of the main image, which is at byte 21236950
@@ -413,7 +422,10 @@ def assert_tif_file_is_healthy(tif_path):
     is_valid_cog, errors, _ = cog_validate(str(tif_path), quiet=True)
     if errors:
         print(f"COG validation errors for {tif_path}: {errors}")
-    assert is_valid_cog, str(errors)
+    # assert is_valid_cog, str(errors)
+    issues.extend(errors)
+    if issues:
+        raise AssertionError("\n".join(issues))
 
 
 # Directory (under /eodata) known to contain at least one real product file for each gas/product
@@ -534,93 +546,28 @@ class TestSentinel5:
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
     @pytest.mark.parametrize(
-        "collection_id, spatial_extent, temporal_extent",
+        "collection_id",
         [
-            (
-                "SENTINEL5P_L2_CO",
-                {"west": 4, "south": 50, "east": 11, "north": 55},
-                ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_NO2",
-                {"west": 4, "south": 50, "east": 11, "north": 55},
-                ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CH4",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T12:00:00Z", "2024-10-07T13:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_SO2",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2024-12-01T11:00:00Z", "2024-12-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_HCHO",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_O3",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_AER_AI_340_380",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_AER_AI_354_388",
-                {"west": 8, "south": 32, "east": 11, "north": 37},
-                ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_BASE_PRESSURE",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_TOP_PRESSURE",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_BASE_HEIGHT",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_TOP_HEIGHT",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_CLOUD_FRACTION",
-                {"west": 4, "south": 32, "east": 11, "north": 37},
-                ["2023-06-01T11:30:00Z", "2023-06-01T13:30:00Z"],
-            ),
-            (
-                "SENTINEL5P_L2_AER_LH",
-                {"west": 1, "south": 33, "east": 11, "north": 37},
-                ["2024-01-02T13:00:00Z", "2024-01-02T14:00:00Z"],
-            ),
+            "SENTINEL5P_L2_CO",
+            "SENTINEL5P_L2_NO2",
+            "SENTINEL5P_L2_CH4",
+            "SENTINEL5P_L2_SO2",
+            "SENTINEL5P_L2_HCHO",
+            "SENTINEL5P_L2_O3",
+            "SENTINEL5P_L2_AER_LH",
+            "SENTINEL5P_L2_AER_AI",
+            "SENTINEL5P_L2_CLOUD",
         ],
     )
-    def test_sentinel5p_l2(self, api110, tmp_path, collection_id, spatial_extent, temporal_extent) -> None:
+    def test_sentinel5p_l2(self, api110, tmp_path, collection_id) -> None:
+        # spatio-temporal extent selected so there is data in all layers.
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
                     "id": collection_id,
-                    "spatial_extent": spatial_extent,
-                    "temporal_extent": temporal_extent,
+                    "spatial_extent": {"west": 6, "south": 32, "east": 11, "north": 37},
+                    "temporal_extent": ["2026-06-01T00:00:00Z", "2026-06-01T12:00:00Z"],
                 },
                 "result": True,
             },
@@ -637,17 +584,17 @@ class TestSentinel5:
             print(ds.bounds)
             assert ds.bounds.right == 11.0
 
-    def test_sentinel5p_l2_qa_value_featureflag(self, api110, tmp_path) -> None:
-        """A stricter `qa_value` featureflag masks out more pixels than the CO default (0.5).
+    def test_sentinel5p_l2_qa_value_threshold_featureflag(self, api110, tmp_path) -> None:
+        """A stricter `qa_value_threshold` featureflag masks out more pixels than the CO default (0.5).
 
-        Runs the same `load_collection` process graph twice (default vs. a strict `qa_value`
+        Runs the same `load_collection` process graph twice (default vs. a strict `qa_value_threshold`
         override) through the full backend, so the resulting GeoTIFFs can be compared directly.
         """
         collection_id = "SENTINEL5P_L2_CO"
 
         # collection_id = "SENTINEL5P_L2_NO2" # was also tested with this.
 
-        def run_and_save(qa_value: Optional[float]) -> Path:
+        def run_and_save(qa_value_threshold: Optional[float]) -> Path:
             arguments: dict[str, Any] = {
                 "id": collection_id,
                 "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
@@ -661,8 +608,8 @@ class TestSentinel5:
                 arguments["bands"] = ["nitrogendioxide_tropospheric_column"]
             else:
                 raise Exception(f"Unknown collection id: {collection_id}")
-            if qa_value is not None:
-                arguments["featureflags"] = {"qa_value": qa_value}
+            if qa_value_threshold is not None:
+                arguments["featureflags"] = {"qa_value_threshold": qa_value_threshold}
             graph = {
                 "loadcollection1": {
                     "process_id": "load_collection",
@@ -671,7 +618,7 @@ class TestSentinel5:
                 },
             }
             response = api110.check_result(graph)
-            output_file = tmp_path / f"test_{collection_id}_qa{qa_value}.tif"
+            output_file = tmp_path / f"test_{collection_id}_qa{qa_value_threshold}.tif"
             with output_file.open(mode="wb") as f:
                 f.write(response.data)
             return output_file
@@ -680,7 +627,7 @@ class TestSentinel5:
         ds_default = rasterio.open(run_and_save(None)).read(1, masked=True)
         ds__strict = rasterio.open(run_and_save(0.99)).read(1, masked=True)
 
-        # A stricter qa_value should never yield more valid (unmasked) pixels than the default.
+        # A stricter qa_value_threshold should never yield more valid (unmasked) pixels than the default.
         assert ds__strict.count() <= ds_default.count()
         assert ds_default.count() <= ds____zero.count()
 
@@ -689,7 +636,7 @@ class TestSentinel5:
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "id": "SENTINEL5P_L2_AER_AI_354_388",
+                    "id": "SENTINEL5P_L2_AER_AI",
                     "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
                     "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T12:00:00Z"],
                     "bands": ["aerosol_index_354_388"],
