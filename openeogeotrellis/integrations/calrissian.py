@@ -827,7 +827,7 @@ class CalrissianJobLauncher:
         """
         # Input staging
         source = cwl_source.get_source()
-        if source and str(source).lower().startswith("http://") and str(source).lower().startswith("https://"):
+        if source and (str(source).lower().startswith("http://") or str(source).lower().startswith("https://")):
             # This allows to keep relative paths working.
             cwl_path = source
         else:
