@@ -43,7 +43,7 @@ all_gases: dict[str, dict[str, Any]] = {
             "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",
             "carbonmonoxide_total_column_corrected": "PRODUCT/carbonmonoxide_total_column_corrected",
         },
-        "DEFAULT_BANDS": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected"],
+        "DEFAULT_BANDS": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_no2": {
@@ -62,6 +62,7 @@ all_gases: dict[str, dict[str, Any]] = {
             "nitrogendioxide_stratospheric_column_precision",
             "nitrogendioxide_total_column",
             "nitrogendioxide_total_column_precision",
+            "qa_value",
         ],
         "FILTER_VALUE": 0.75,
     },
@@ -70,24 +71,24 @@ all_gases: dict[str, dict[str, Any]] = {
             "methane_mixing_ratio": "PRODUCT/methane_mixing_ratio",
             "methane_mixing_ratio_bias_corrected": "PRODUCT/methane_mixing_ratio_bias_corrected",
         },
-        "DEFAULT_BANDS": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected"],
+        "DEFAULT_BANDS": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_so2": {
         "VARIABLE_LOC_IN_FILE": {"sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column"},
-        "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column"],
+        "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_hcho": {
         "VARIABLE_LOC_IN_FILE": {
             "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column",
         },
-        "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column"],
+        "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_o3": {
         "VARIABLE_LOC_IN_FILE": {"ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column"},
-        "DEFAULT_BANDS": ["ozone_total_vertical_column"],
+        "DEFAULT_BANDS": ["ozone_total_vertical_column", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_aer_ai": {
@@ -95,7 +96,7 @@ all_gases: dict[str, dict[str, Any]] = {
             "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
             "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
         },
-        "DEFAULT_BANDS": ["aerosol_index_354_388", "aerosol_index_340_380"],
+        "DEFAULT_BANDS": ["aerosol_index_354_388", "aerosol_index_340_380", "qa_value"],
         "FILTER_VALUE": 0.8,
     },
     "gas_cloud": {
@@ -114,6 +115,7 @@ all_gases: dict[str, dict[str, Any]] = {
             "cloud_top_height",
             "cloud_base_height",
             "cloud_optical_thickness",
+            "qa_value",
         ],
         "FILTER_VALUE": 0.5,
     },
@@ -122,29 +124,11 @@ all_gases: dict[str, dict[str, Any]] = {
             "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
             "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
         },
-        "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height"],
+        "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
-
-# Several openEO collection IDs share the same underlying gas/product file type
-# (all "CLOUD" sub-products, and the two "AER_AI" wavelength-pair variants), so
-# `parse_gas_from_filename` alone cannot distinguish which single band a given
-# collection should default to. This maps those openEO collection IDs to the
-# band they should load when no explicit `bands` filter is given, overriding
-# the (otherwise ambiguous) gas-level "DEFAULT_BANDS" above.
-COLLECTION_ID_DEFAULT_BAND: dict[str, str] = {
-    "SENTINEL5P_L2_CLOUD_FRACTION": "cloud_fraction",
-    "SENTINEL5P_L2_CLOUD_TOP_PRESSURE": "cloud_top_pressure",
-    "SENTINEL5P_L2_CLOUD_BASE_PRESSURE": "cloud_base_pressure",
-    "SENTINEL5P_L2_CLOUD_TOP_HEIGHT": "cloud_top_height",
-    "SENTINEL5P_L2_CLOUD_BASE_HEIGHT": "cloud_base_height",
-    "SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS": "cloud_optical_thickness",
-    "SENTINEL5P_L2_AER_AI_340_380": "aerosol_index_340_380",
-    "SENTINEL5P_L2_AER_AI_354_388": "aerosol_index_354_388",
-}
-
 
 @typechecked
 def parse_gas_from_filename(filename: str) -> str:
@@ -197,15 +181,6 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
     default_bands = gas_vars["DEFAULT_BANDS"]
     if not isinstance(default_bands, list):
         raise ValueError(f"DEFAULT_BANDS should be dictionary, but was '{default_bands}'")
-
-    collection_default_band = COLLECTION_ID_DEFAULT_BAND.get(collection_id) if collection_id else None
-    if collection_default_band is not None:
-        if collection_default_band not in variable_loc:
-            raise ValueError(
-                f"Default band '{collection_default_band}' for collection '{collection_id}' "
-                f"is not a known variable for gas type '{gas_type}'"
-            )
-        default_bands = [collection_default_band]
 
     filter_value = gas_vars["FILTER_VALUE"]
     if not isinstance(filter_value, float):
