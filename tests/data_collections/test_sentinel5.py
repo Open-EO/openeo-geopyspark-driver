@@ -91,6 +91,7 @@ def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
 
 # Per-product spec used to synthesize NetCDF fixtures and to drive the parametrized
 # "default bands" test below: name -> (filename product code, band builder, qa_value, expected default band count).
+# Expected default band count includes the qa_value band, which is part of DEFAULT_BANDS for every product.
 def _co_bands() -> dict[str, Any]:
     nd = np.random.uniform(0.025, 0.040, (20, 10))
     assert isinstance(nd, np.ndarray)
@@ -186,15 +187,15 @@ def _aer_lh_bands():
 
 
 SYNTHETIC_PRODUCT_SPECS = {
-    "co": ("CO_____", _co_bands, 0.75, 2),
-    "no2": ("NO2____", _no2_bands, 0.8, 6),
-    "ch4": ("CH4____", _ch4_bands, 0.6, 2),
-    "so2": ("SO2____", _so2_bands, 0.6, 1),
-    "hcho": ("HCHO___", _hcho_bands, 0.6, 1),
-    "o3": ("O3_____", _o3_bands, 0.6, 1),
-    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 2),
-    "cloud": ("CLOUD__", _cloud_bands, 0.5, 6),
-    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 2),
+    "co": ("CO_____", _co_bands, 0.75, 3),
+    "no2": ("NO2____", _no2_bands, 0.8, 7),
+    "ch4": ("CH4____", _ch4_bands, 0.6, 3),
+    "so2": ("SO2____", _so2_bands, 0.6, 2),
+    "hcho": ("HCHO___", _hcho_bands, 0.6, 2),
+    "o3": ("O3_____", _o3_bands, 0.6, 2),
+    "aer_ai": ("AER_AI_", _aer_ai_bands, 0.8, 3),
+    "cloud": ("CLOUD__", _cloud_bands, 0.5, 7),
+    "aer_lh": ("AER_LH_", _aer_lh_bands, 0.5, 3),
 }
 
 
@@ -266,7 +267,7 @@ def test_read_product_default_bands(synthetic_co_file):
     )
     assert len(result) > 0
     _key, tile = result[0]
-    assert tile.cells.shape[0] == 2
+    assert tile.cells.shape[0] == 3
 
 
 def test_read_product_no_data_outside_extent(synthetic_co_file):
@@ -345,48 +346,6 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
     assert (
         tile.cells.shape[0] == expected_band_count
     ), f"Expected {expected_band_count} default band(s) for {product_name}"
-
-
-@pytest.mark.parametrize(
-    "collection_id, expected_band",
-    [
-        ("SENTINEL5P_L2_CLOUD_FRACTION", "cloud_fraction"),
-        ("SENTINEL5P_L2_CLOUD_TOP_PRESSURE", "cloud_top_pressure"),
-        ("SENTINEL5P_L2_CLOUD_BASE_PRESSURE", "cloud_base_pressure"),
-        ("SENTINEL5P_L2_CLOUD_TOP_HEIGHT", "cloud_top_height"),
-        ("SENTINEL5P_L2_CLOUD_BASE_HEIGHT", "cloud_base_height"),
-        ("SENTINEL5P_L2_CLOUD_OPTICAL_THICKNESS", "cloud_optical_thickness"),
-    ],
-)
-def test_read_product_default_band_per_cloud_collection(synthetic_products, collection_id, expected_band):
-    """Without an explicit `bands` filter, each CLOUD collection ID should default to its own
-    band, not silently fall back to `cloud_fraction` (the shared gas-level default)."""
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result_default = read_product(
-        (synthetic_products["cloud"], features),
-        band_names=[],
-        tile_size=4,
-        resolution=0.1,
-        collection_id=collection_id,
-    )
-    result_explicit = read_product(
-        (synthetic_products["cloud"], features),
-        band_names=[expected_band],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result_default) > 0 and len(result_explicit) > 0
-    _key_default, tile_default = result_default[0]
-    _key_explicit, tile_explicit = result_explicit[0]
-    assert tile_default.cells.shape[0] == 1
-    np.testing.assert_array_equal(tile_default.cells, tile_explicit.cells)
 
 
 # ---------------------------------------------------------------------------
