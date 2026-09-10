@@ -29,68 +29,75 @@ COMMON_VARIABLES_IN_FILE = {
     "qa_value": "PRODUCT/qa_value",
 }
 
+# Update `all_gases` with: openeo-cdse-infra/sentinel5p_PUM_to_layercatalog/PUM_to_layercatalog.py
 all_gases: dict[str, dict[str, Any]] = {
-    # CO gas variables
+    "COMMON_VARIABLES_IN_FILE": {
+        "time": "PRODUCT/time",
+        "delta_time": "PRODUCT/delta_time",
+        "latitude": "PRODUCT/latitude",
+        "longitude": "PRODUCT/longitude",
+        "qa_value": "PRODUCT/qa_value",
+    },
     "gas_co": {
         "VARIABLE_LOC_IN_FILE": {
-            "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",  # raw data
+            "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",
             "carbonmonoxide_total_column_corrected": "PRODUCT/carbonmonoxide_total_column_corrected",
         },
-        "DEFAULT_BANDS": ["carbonmonoxide_total_column_corrected"],
-        "FILTER_VALUE": 0.5,  # default filter value for CO as per documentation
+        "DEFAULT_BANDS": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected"],
+        "FILTER_VALUE": 0.5,
     },
-    # NO2 gas variables
     "gas_no2": {
         "VARIABLE_LOC_IN_FILE": {
-            "nitrogendioxide_tropospheric_column": "PRODUCT/nitrogendioxide_tropospheric_column",  # raw data
+            "nitrogendioxide_tropospheric_column": "PRODUCT/nitrogendioxide_tropospheric_column",
+            "nitrogendioxide_tropospheric_column_precision": "PRODUCT/nitrogendioxide_tropospheric_column_precision",
+            "nitrogendioxide_stratospheric_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column",
+            "nitrogendioxide_stratospheric_column_precision": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_stratospheric_column_precision",
+            "nitrogendioxide_total_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column",
+            "nitrogendioxide_total_column_precision": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column_precision",
         },
-        "DEFAULT_BANDS": ["nitrogendioxide_tropospheric_column"],
-        "FILTER_VALUE": 0.75,  # default filter value for NO2 as per documentation
+        "DEFAULT_BANDS": [
+            "nitrogendioxide_tropospheric_column",
+            "nitrogendioxide_tropospheric_column_precision",
+            "nitrogendioxide_stratospheric_column",
+            "nitrogendioxide_stratospheric_column_precision",
+            "nitrogendioxide_total_column",
+            "nitrogendioxide_total_column_precision",
+        ],
+        "FILTER_VALUE": 0.75,
     },
-    # CH4 gas variables
     "gas_ch4": {
         "VARIABLE_LOC_IN_FILE": {
             "methane_mixing_ratio": "PRODUCT/methane_mixing_ratio",
             "methane_mixing_ratio_bias_corrected": "PRODUCT/methane_mixing_ratio_bias_corrected",
         },
-        "DEFAULT_BANDS": ["methane_mixing_ratio_bias_corrected"],
-        "FILTER_VALUE": 0.5,  # default filter value for CH4 as per documentation
+        "DEFAULT_BANDS": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected"],
+        "FILTER_VALUE": 0.5,
     },
-    # SO2 gas variables
     "gas_so2": {
-        "VARIABLE_LOC_IN_FILE": {
-            "sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column",
-        },
+        "VARIABLE_LOC_IN_FILE": {"sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column"},
         "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column"],
-        "FILTER_VALUE": 0.5,  # default filter value for SO2 as per documentation
+        "FILTER_VALUE": 0.5,
     },
-    # HCHO gas variables
     "gas_hcho": {
         "VARIABLE_LOC_IN_FILE": {
             "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column",
         },
         "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column"],
-        "FILTER_VALUE": 0.5,  # default filter value for HCHO as per documentation
+        "FILTER_VALUE": 0.5,
     },
-    # O3 gas variables
     "gas_o3": {
-        "VARIABLE_LOC_IN_FILE": {
-            "ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column",
-        },
+        "VARIABLE_LOC_IN_FILE": {"ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column"},
         "DEFAULT_BANDS": ["ozone_total_vertical_column"],
-        "FILTER_VALUE": 0.5,  # default filter value for O3 as per documentation
+        "FILTER_VALUE": 0.5,
     },
-    # AER_AI (UV Aerosol Index) gas variables: both the 340/380 nm and the
-    # 354/388 nm wavelength pairs are present in the same PRODUCT group.
     "gas_aer_ai": {
         "VARIABLE_LOC_IN_FILE": {
-            "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
             "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
+            "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
         },
-        "DEFAULT_BANDS": ["aerosol_index_340_380"],
-        "FILTER_VALUE": 0.8,  # default filter value for AER_AI as per documentation
+        "DEFAULT_BANDS": ["aerosol_index_354_388", "aerosol_index_340_380"],
+        "FILTER_VALUE": 0.8,
     },
-    # CLOUD gas/product variables
     "gas_cloud": {
         "VARIABLE_LOC_IN_FILE": {
             "cloud_fraction": "PRODUCT/cloud_fraction",
@@ -100,17 +107,23 @@ all_gases: dict[str, dict[str, Any]] = {
             "cloud_base_height": "PRODUCT/cloud_base_height",
             "cloud_optical_thickness": "PRODUCT/cloud_optical_thickness",
         },
-        "DEFAULT_BANDS": ["cloud_fraction"],
-        "FILTER_VALUE": 0.5,  # default filter value for CLOUD as per documentation
+        "DEFAULT_BANDS": [
+            "cloud_fraction",
+            "cloud_top_pressure",
+            "cloud_base_pressure",
+            "cloud_top_height",
+            "cloud_base_height",
+            "cloud_optical_thickness",
+        ],
+        "FILTER_VALUE": 0.5,
     },
-    # AER_LH (Aerosol Layer Height) gas/product variables
     "gas_aer_lh": {
         "VARIABLE_LOC_IN_FILE": {
             "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
             "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
         },
-        "DEFAULT_BANDS": ["aerosol_mid_height"],
-        "FILTER_VALUE": 0.5,  # default filter value for AER_LH as per documentation
+        "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height"],
+        "FILTER_VALUE": 0.5,
     },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
@@ -358,7 +371,7 @@ def load_data_from_file(
                 # get band data based on combined mask
                 data[band] = fill_and_mask_data(band_data, spatio_temporal_mask)
             except KeyError as e:
-                raise KeyError(f"Band {band} not found in the NetCDF file.") from e
+                raise KeyError(f"Band {band} not found in the NetCDF file: {file_path.name}") from e
 
         # Load lat and lon based on combined mask
         data["latitude"] = _get_2d_data_from_mask(file_lat, spatio_temporal_mask)
@@ -487,7 +500,7 @@ def get_spatial_extent_mask(
 
 
 @typechecked
-def fill_and_mask_data(band_data, spatio_temporal_mask):
+def fill_and_mask_data(band_data: np.ndarray, spatio_temporal_mask: np.ndarray):
     """Fill nan values based on data mask and spatio-temporal mask.
 
     Args:
@@ -500,6 +513,9 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
     """
     # fill nan values where data is not valid
     if hasattr(band_data, "filled"):
+        if np.issubdtype(band_data.dtype, np.integer):
+            print(f"converting to float to fill with nan. (Was {band_data.dtype})")
+            band_data = band_data.astype(float)
         band_data = band_data.filled(np.nan)
     # set data to nan based on the spatial-temporal extent.
     data = np.where(spatio_temporal_mask, band_data, np.nan)
@@ -508,7 +524,7 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
 
 
 @typechecked
-def _get_2d_data_from_mask(data, mask):
+def _get_2d_data_from_mask(data: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Extract 2-d arrays based on boolean mask."""
     if (mask.ndim != 2) or (data.ndim != 2):
         raise ValueError("Mask and data must be a 2-dimensional array.")
