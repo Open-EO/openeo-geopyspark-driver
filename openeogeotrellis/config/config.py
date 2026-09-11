@@ -349,6 +349,11 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)
 
+    """
+    Expiration time in seconds for presigned URLs used for internal UDF dependency access.
+    """
+    udf_dependency_presigned_url_expiration: int = 24 * 3600
+
     # FreeIPA server to use (for user lookup/creation)
     freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)
     freeipa_default_credentials_info: Optional[dict] = None
