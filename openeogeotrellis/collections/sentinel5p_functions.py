@@ -43,7 +43,6 @@ all_gases: dict[str, dict[str, Any]] = {
             "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",
             "carbonmonoxide_total_column_corrected": "PRODUCT/carbonmonoxide_total_column_corrected",
         },
-        "DEFAULT_BANDS": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_no2": {
@@ -55,15 +54,6 @@ all_gases: dict[str, dict[str, Any]] = {
             "nitrogendioxide_total_column": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column",
             "nitrogendioxide_total_column_precision": "PRODUCT/SUPPORT_DATA/DETAILED_RESULTS/nitrogendioxide_total_column_precision",
         },
-        "DEFAULT_BANDS": [
-            "nitrogendioxide_tropospheric_column",
-            "nitrogendioxide_tropospheric_column_precision",
-            "nitrogendioxide_stratospheric_column",
-            "nitrogendioxide_stratospheric_column_precision",
-            "nitrogendioxide_total_column",
-            "nitrogendioxide_total_column_precision",
-            "qa_value",
-        ],
         "FILTER_VALUE": 0.75,
     },
     "gas_ch4": {
@@ -71,24 +61,20 @@ all_gases: dict[str, dict[str, Any]] = {
             "methane_mixing_ratio": "PRODUCT/methane_mixing_ratio",
             "methane_mixing_ratio_bias_corrected": "PRODUCT/methane_mixing_ratio_bias_corrected",
         },
-        "DEFAULT_BANDS": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_so2": {
         "VARIABLE_LOC_IN_FILE": {"sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column"},
-        "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_hcho": {
         "VARIABLE_LOC_IN_FILE": {
             "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column",
         },
-        "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_o3": {
         "VARIABLE_LOC_IN_FILE": {"ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column"},
-        "DEFAULT_BANDS": ["ozone_total_vertical_column", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
     "gas_aer_ai": {
@@ -96,7 +82,6 @@ all_gases: dict[str, dict[str, Any]] = {
             "aerosol_index_354_388": "PRODUCT/aerosol_index_354_388",
             "aerosol_index_340_380": "PRODUCT/aerosol_index_340_380",
         },
-        "DEFAULT_BANDS": ["aerosol_index_354_388", "aerosol_index_340_380", "qa_value"],
         "FILTER_VALUE": 0.8,
     },
     "gas_cloud": {
@@ -108,15 +93,6 @@ all_gases: dict[str, dict[str, Any]] = {
             "cloud_base_height": "PRODUCT/cloud_base_height",
             "cloud_optical_thickness": "PRODUCT/cloud_optical_thickness",
         },
-        "DEFAULT_BANDS": [
-            "cloud_fraction",
-            "cloud_top_pressure",
-            "cloud_base_pressure",
-            "cloud_top_height",
-            "cloud_base_height",
-            "cloud_optical_thickness",
-            "qa_value",
-        ],
         "FILTER_VALUE": 0.5,
     },
     "gas_aer_lh": {
@@ -124,7 +100,6 @@ all_gases: dict[str, dict[str, Any]] = {
             "aerosol_mid_height": "PRODUCT/aerosol_mid_height",
             "aerosol_mid_pressure": "PRODUCT/aerosol_mid_pressure",
         },
-        "DEFAULT_BANDS": ["aerosol_mid_pressure", "aerosol_mid_height", "qa_value"],
         "FILTER_VALUE": 0.5,
     },
 }
@@ -178,9 +153,7 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
     if not isinstance(variable_loc, dict):
         raise TypeError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
 
-    default_bands = gas_vars["DEFAULT_BANDS"]
-    if not isinstance(default_bands, list):
-        raise ValueError(f"DEFAULT_BANDS should be dictionary, but was '{default_bands}'")
+    default_bands = list(variable_loc.keys()) + ["qa_value"]
 
     filter_value = gas_vars["FILTER_VALUE"]
     if not isinstance(filter_value, float):
