@@ -681,7 +681,7 @@ def run_job(
                     result_items_metadata=result_items_metadata,
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
-                    enable_merge=job_options.get("export-workspace-enable-merge", False),
+                    enable_merge=job_options.get("export-workspace-enable-merge", True),
                     omit_derived_from_links=omit_derived_from_links,
                     attach_derived_from_document=stac11_mode,
                 )
@@ -692,7 +692,7 @@ def run_job(
                     result_assets_metadata=result_assets_metadata,
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
-                    enable_merge=job_options.get("export-workspace-enable-merge", False),
+                    enable_merge=job_options.get("export-workspace-enable-merge", True),
                     omit_derived_from_links=omit_derived_from_links,
                 )
     finally:
