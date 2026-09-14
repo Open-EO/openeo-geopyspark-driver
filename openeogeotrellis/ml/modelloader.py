@@ -3,6 +3,7 @@ import os
 import shutil
 import stat
 import tempfile
+import time
 from pathlib import Path
 from typing import List, Tuple
 from urllib.parse import urlparse
@@ -143,6 +144,12 @@ class ModelLoader:
             unpacked_model_path = str(tmp_path).replace(".tar.gz", "")
             ModelLoader._upload_to_s3(unpacked_model_path, model_dir_path, tmp_dir)
 
+            # S3 is eventually consistent: give the uploaded objects a chance to become
+            # visible before attempting to read them back (avoids spurious
+            # "Input path does not exist" errors right after upload).
+            bucket, key = model_dir_path.split("/", 1)
+            ModelLoader._wait_for_s3_object(bucket, f"{key}/randomforest.model/metadata/_SUCCESS")
+
             # Load model
             s3_path = f"s3a://{model_dir_path}/randomforest.model/"
             logger.info(f"Loading ml_model using filename: {s3_path}")
@@ -229,6 +236,24 @@ class ModelLoader:
                 relative_path = os.path.relpath(local_file, base_dir)
                 s3_key = f"{key}/{relative_path}"
                 s3.upload_file(local_file, bucket, s3_key)
+
+    @staticmethod
+    def _wait_for_s3_object(bucket: str, key: str, timeout: float = 20.0, interval: float = 1.0) -> None:
+        """Poll S3 until an object becomes visible, to work around eventual-consistency
+        delays between uploading a model to S3 and reading it back (e.g. via Spark's
+        s3a connector), which can otherwise raise spurious "path does not exist" errors.
+        """
+        s3 = S3ClientBuilder.from_bucket(bucket)
+        deadline = time.time() + timeout
+        while True:
+            try:
+                s3.head_object(Bucket=bucket, Key=key)
+                return
+            except s3.exceptions.ClientError:
+                if time.time() >= deadline:
+                    logger.warning(f"Timed out after {timeout}s waiting for s3://{bucket}/{key} to become visible")
+                    return
+                time.sleep(interval)
 
     @staticmethod
     def _is_valid_url(url: str) -> bool:
