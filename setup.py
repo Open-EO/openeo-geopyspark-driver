@@ -79,6 +79,7 @@ setup(
         "openeo_driver>=0.141.0a2.dev",
         "openeo_driver>=0.140.0a7.dev",
         "opentelemetry-api>=1.0.0",
+        "prometheus-client>=0.20.0",
         'pyspark>=4.0.0; python_version>"3.8"',
         'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',

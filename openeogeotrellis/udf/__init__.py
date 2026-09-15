@@ -34,36 +34,43 @@ UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
 
 
 class _NoOpMetric:
-    def set_attribute(self, key: str, value: typing.Any):
+    def set(self, value: float, **kwargs):
         pass
 
-    def set(self, value: float, attributes: Optional[dict] = None):
-        pass
 
-    def record(self, value: float, attributes: Optional[dict] = None):
+try:
+    from prometheus_client import Gauge, start_http_server
+except ImportError:
+    Gauge = None
+    start_http_server = None
+
+
+if Gauge is not None:
+    _log.warning("Prometheus metrics are enabled. This is intended for development and debugging purposes only, and may have a performance impact. Disable by setting OPENEO_OTEL_PROMETHEUS_METRICS_PORT=0")
+    _udf_execution_time_ms = Gauge(
+        "openeo_udf_execution_time_ms",
+        "Time spent executing a UDF in milliseconds.",
+    )
+    _udf_max_rss_delta_bytes = Gauge(
+        "openeo_udf_max_rss_delta_bytes",
+        "RSS delta for a UDF execution in bytes.",
+    )
+
+    _PROMETHEUS_METRICS_PORT = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT", "9465"))
+    try:
+        _log.debug(f"Starting Prometheus metrics server on port {_PROMETHEUS_METRICS_PORT}")
+        start_http_server(_PROMETHEUS_METRICS_PORT)
+    except OSError:
+        _log.warning(f"Failed to start Prometheus metrics server on port {_PROMETHEUS_METRICS_PORT}")
         pass
+else:
+    _udf_execution_time_ms = _NoOpMetric()
+    _udf_max_rss_delta_bytes = _NoOpMetric()
 
 
 @contextlib.contextmanager
-def _start_udf_execution_span():
-    try:
-        from opentelemetry import metrics
-    except ImportError:
-        yield _NoOpMetric()
-        return
-
-    meter = metrics.get_meter(__name__)
-    gauge_factory = getattr(meter, "create_gauge", None)
-    if gauge_factory is None:
-        yield _NoOpMetric()
-        return
-
-    gauge = gauge_factory(
-        name="openeo.udf.execution_time_ms",
-        unit="ms",
-        description="Time spent executing a UDF.",
-    )
-    yield gauge
+def _start_udf_execution_gauge():
+    yield _udf_execution_time_ms
 
 
 def _max_rss_to_bytes(max_rss: int) -> int:
@@ -77,26 +84,16 @@ def _get_max_rss_bytes() -> int:
     return _max_rss_to_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 
-def _record_udf_execution_trace_metrics(
-    span,
+def _record_udf_execution_gauge_metrics(
+    gauge,
     *,
     duration_ms: float,
     rss_before_bytes: int,
     rss_after_bytes: int,
     require_executor_context: bool = True,
 ):
-    if hasattr(span, "set_attribute"):
-        span.set_attribute("openeo.udf.execution_time_ms", duration_ms)
-        span.set_attribute("openeo.udf.max_rss_before_bytes", rss_before_bytes)
-        span.set_attribute("openeo.udf.max_rss_after_bytes", rss_after_bytes)
-        span.set_attribute("openeo.udf.max_rss_delta_bytes", rss_after_bytes - rss_before_bytes)
-        span.set_attribute("openeo.udf.require_executor_context", require_executor_context)
-
-    attributes = {"openeo.udf.require_executor_context": require_executor_context}
-    if hasattr(span, "set"):
-        span.set(duration_ms, attributes)
-    elif hasattr(span, "record"):
-        span.record(duration_ms, attributes=attributes)
+    gauge.set(duration_ms)
+    _udf_max_rss_delta_bytes.set(rss_after_bytes - rss_before_bytes)
 
 
 class UdfDependencyHandlingFailure(OpenEOApiException):
@@ -135,14 +132,14 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
                 )
 
     with context:
-        with _start_udf_execution_span() as span:
+        with _start_udf_execution_gauge() as gauge:
             rss_before_bytes = _get_max_rss_bytes()
             t0 = time.perf_counter()
             try:
                 return openeo.udf.run_udf_code(code=code, data=data)
             finally:
-                _record_udf_execution_trace_metrics(
-                    span=span,
+                _record_udf_execution_gauge_metrics(
+                    gauge=gauge,
                     duration_ms=(time.perf_counter() - t0) * 1000.0,
                     rss_before_bytes=rss_before_bytes,
                     rss_after_bytes=_get_max_rss_bytes(),
