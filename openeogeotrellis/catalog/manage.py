@@ -893,7 +893,7 @@ class LayerCatalogManagerCliApp:
 
             log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
         except ImportError:
-            log_handlers = []
+            log_handlers = None
         logging.basicConfig(
             level=logging.DEBUG if args.verbose else logging.INFO,
             handlers=log_handlers,

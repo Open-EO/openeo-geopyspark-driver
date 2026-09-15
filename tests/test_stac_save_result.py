@@ -18,7 +18,7 @@ def test_stac_save_result():
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir()
 
-    stac_root = "https://raw.githubusercontent.com/Open-EO/openeo-geopyspark-driver/refs/heads/master/docker/local_batch_job/example_stac_catalog/collection.json"
+    stac_root = str(repository_root / "docker/local_batch_job/example_stac_catalog/collection.json")
     sr = StacSaveResult(stac_root)
     ret = sr.write_assets(tmp_dir)
     Collection.from_file(sr.stac_root_local).validate_all()

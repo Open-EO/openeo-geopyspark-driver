@@ -86,10 +86,11 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters, query
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
+from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.credit_check import ExecutionDetails
+from openeogeotrellis.integrations.credit_check_registry import get_batch_execution_details
 from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -575,6 +576,11 @@ Example usage:
                             "description": "Specifies band-level metadata for each band (band-(key-value)).",
                             "default": None,
                         },
+                        "retain_nodata_tiles": {
+                            "type": "boolean",
+                            "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
+                        },
                     },
                 },
                 "PNG": {
@@ -624,6 +630,11 @@ Example usage:
                             "type": "string",
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
+                        },
+                        "retain_nodata_tiles": {
+                            "type": "boolean",
+                            "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
                         },
                     },
                 },
@@ -1004,12 +1015,11 @@ Example usage:
             CwLSource.from_any(cwl),
         )
 
-        load_stac_dummy_url = "dummy"
         dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
         if dry_run_tracer:
             # TODO: use something else than `dry_run_tracer.load_stac`
             #       to avoid risk on conflict with "regular" load_stac code flows?
-            return dry_run_tracer.load_stac(url=load_stac_dummy_url, arguments={})
+            return dry_run_tracer.load_stac(url=DUMMY_STAC_URL, arguments={})
 
         direct_s3_mode = False
         if direct_s3_mode:
@@ -1017,7 +1027,7 @@ Example usage:
         else:
             load_stac_kwargs = {}
 
-        source_id = DataSource.load_stac(load_stac_dummy_url, properties={}, bands=[], env=env).get_source_id()
+        source_id = DataSource.load_stac(DUMMY_STAC_URL, properties={}, bands=[], env=env).get_source_id()
         load_params = _extract_load_parameters(env, source_id=source_id)
 
         env = env.push(
@@ -1627,248 +1637,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return job_metadata
 
-    def poll_job_dependencies(
-        self,
-        job_info: dict,
-        sentinel_hub_client_alias: str,
-        vault_token: Optional[str] = None,
-        requests_session: requests.Session = None,
-    ):
-        requests_session = requests_session or requests.Session()
-
-        job_id, user_id = job_info['job_id'], job_info['user_id']
-
-        def batch_request_details(batch_process_dependency: dict) -> Dict[str, Tuple[str, Callable[[], None]]]:
-            """returns an ID -> (status, retrier) for each batch request ID in the dependency"""
-            collection_id = batch_process_dependency['collection_id']
-
-            metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
-            temporal_step = metadata.get("cube:dimensions", "t", "step")
-            layer_source_info = metadata.get("_vito", "data_source", default={})
-
-            endpoint = layer_source_info['endpoint']
-            bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
-
-            logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id,
-                                                                                           'user_id': user_id})
-
-            if sentinel_hub_client_alias == 'default':
-                sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
-            else:
-                sentinel_hub_client_id, sentinel_hub_client_secret = (
-                    self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
-
-            batch_processing_service = (
-                SentinelHubBatchProcessing.get_batch_processing_service(
-                    endpoint=endpoint,
-                    bucket_name=bucket_name,
-                    sentinel_hub_client_id=sentinel_hub_client_id,
-                    sentinel_hub_client_secret=sentinel_hub_client_secret,
-                    sentinel_hub_client_alias=sentinel_hub_client_alias,
-                    jvm=self._jvm,
-                )
-            )
-
-            batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
-                                 [batch_process_dependency['batch_request_id']])
-
-            def retrier(request_id: str) -> Callable[[], None]:
-                def retry():
-                    assert request_id is not None, "retry is for PARTIAL statuses but a 'None' request_id is DONE"
-
-                    logger.warning(f"retrying Sentinel Hub batch process {request_id} for batch job {job_id}",
-                                   extra={'job_id': job_id, 'user_id': user_id})
-                    batch_processing_service.restart_partially_failed_batch_process(request_id)
-
-                return retry
-
-            # TODO: prevent requests for duplicate (recycled) batch request IDs
-            return {request_id: (batch_processing_service.get_batch_process(request_id), temporal_step,
-                                 retrier(request_id)) for request_id in batch_request_ids if request_id is not None}
-
-        def job_results_status(job_results_dependency: dict) -> (str, Optional[str]):
-            """returns URL and (possibly empty) status for this job results dependency"""
-            url = job_results_dependency['partial_job_results_url']
-
-            dependency_job_info = load_stac.extract_own_job_info(url, user_id, batch_jobs=self)
-            if dependency_job_info:
-                partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
-            else:
-                with requests_session.get(url, timeout=20) as resp:
-                    resp.raise_for_status()
-                    stac_object = resp.json()
-                partial_job_status = stac_object.get('openeo:status')
-
-            return url, partial_job_status
-
-        def fail_job():
-            with self._double_job_registry as registry:
-                registry.set_dependency_status(
-                    job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.ERROR
-                )
-                registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
-
-            job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
-
-        dependencies = job_info.get('dependencies') or []
-
-        # check 1: SHub batch processes
-        batch_process_dependencies = (dependency for dependency in dependencies
-                                      if 'batch_request_ids' in dependency or 'batch_request_id' in dependency)
-        batch_processes = reduce(partial(dict_merge_recursive, overwrite=True),
-                                 (batch_request_details(dependency) for dependency in batch_process_dependencies), {})
-        batch_process_statuses = {batch_request_id: details.status()
-                                  for batch_request_id, (details, _, _) in batch_processes.items()}
-
-        logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
-                     .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
-
-        batch_processes_done = False
-
-        if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
-            batch_process_errors = {batch_request_id: details.errorMessage() or "<no error details>"
-                                    for batch_request_id, (details, _, _) in batch_processes.items()
-                                    if details.status() == "FAILED"}
-
-            logger.error(f"Failing batch job because one or more Sentinel Hub batch processes failed: "
-                         f"{batch_process_errors}", extra={'job_id': job_id, 'user_id': user_id})
-
-            return fail_job()
-        elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: check batch job results dependencies
-            batch_processes_done = True
-        elif all(
-            status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
-        ):  # all done but some partially failed
-            if (
-                job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
-            ):  # haven't retried yet: retry
-                with self._double_job_registry as registry:
-                    registry.set_dependency_status(
-                        job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING_RETRY
-                    )
-
-                retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
-
-                for retry in retries:
-                    retry()
-                # the assumption is that a successful /restartpartial request means that processing has
-                # effectively restarted and a different status (PROCESSING) is published; otherwise the next poll might
-                # still see the previous status (PARTIAL), consider it the new status and immediately mark it as
-                # unrecoverable.
-            else:  # still some PARTIALs after one retry: not recoverable
-                logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
-                             f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
-
-                return fail_job()
-        else:  # still some in progress and none FAILED yet: check batch job results dependencies
-            pass
-
-        # check 2: OpenEO batch job results
-        job_results_dependencies = (dependency for dependency in dependencies if 'partial_job_results_url' in dependency)
-        job_results_statuses = {url: status for url, status in
-                                (job_results_status(dependency) for dependency in job_results_dependencies)}
-
-        logger.debug("OpenEO batch job results statuses for batch job {j}: {ss}"
-                     .format(j=job_id, ss=job_results_statuses), extra={'job_id': job_id, 'user_id': user_id})
-
-        if any(status in [PARTIAL_JOB_STATUS.ERROR,
-                          PARTIAL_JOB_STATUS.CANCELED] for status in job_results_statuses.values()):
-            job_results_failures = {url: status for url, status in job_results_statuses.items()
-                                    if status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]}
-
-            logger.error(f"Failing batch job because one or more OpenEO batch jobs failed: "
-                         f"{job_results_failures}", extra={'job_id': job_id, 'user_id': user_id})
-
-            return fail_job()
-        elif batch_processes_done and all(status in [None, PARTIAL_JOB_STATUS.FINISHED] for status in job_results_statuses.values()):  # resume batch job with available data
-            assembled_location_cache = {}
-
-            for dependency in batch_process_dependencies:
-                collecting_folder = dependency.get('collecting_folder')
-
-                if collecting_folder:  # the collection is at least partially cached
-                    assembled_location = assembled_location_cache.get(collecting_folder)
-
-                    if assembled_location is None:
-                        caching_service = self._jvm.org.openeo.geotrellissentinelhub.CachingService()
-
-                        results_location = dependency.get('results_location')
-
-                        if results_location is not None:
-                            uri_parts = urlparse(results_location)
-                            bucket_name = uri_parts.hostname
-                            subfolder = uri_parts.path[1:]
-                        else:
-                            bucket_name = sentinel_hub.OG_BATCH_RESULTS_BUCKET
-                            subfolder = dependency['subfolder']
-
-                        caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
-
-                        # assembled_folder must be readable from batch job driver (load_collection)
-                        assembled_folder = f"/tmp_epod/openeo_assembled/{generate_unique_id()}"
-                        os.mkdir(assembled_folder)
-                        os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
-
-                        caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder, bucket_name,
-                                                                 subfolder)
-
-                        assembled_location = f"file://{assembled_folder}/"
-                        assembled_location_cache[collecting_folder] = assembled_location
-
-                        logger.debug("saved new assembled location {a} for near future use (key {k!r})"
-                                     .format(a=assembled_location, k=collecting_folder), extra={'job_id': job_id,
-                                                                                                'user_id': user_id})
-
-                        try:
-                            # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job
-                            #  can't be recovered by fiddling with its dependency_status.
-                            shutil.rmtree(collecting_folder)
-                        except Exception as e:
-                            logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
-                                           extra={'job_id': job_id, 'user_id': user_id})
-                    else:
-                        logger.debug("recycling saved assembled location {a} (key {k!r})".format(
-                            a=assembled_location, k=collecting_folder), extra={'job_id': job_id, 'user_id': user_id})
-
-                    dependency['assembled_location'] = assembled_location
-                else:  # no caching involved, the collection is fully defined by these batch process results
-                    pass
-
-            with self._double_job_registry as registry:
-                def processing_units_spent(value_estimate: Decimal, temporal_step: Optional[str]) -> Decimal:
-                    seconds_per_day = 24 * 3600
-                    temporal_interval_in_days: Optional[float] = (
-                        None if temporal_step is None else Timedelta(temporal_step).total_seconds() / seconds_per_day)
-
-                    default_temporal_interval = 3
-                    estimate_to_pu_ratio = 3
-                    estimate_secure_factor = 2
-                    temporal_interval = Decimal(temporal_interval_in_days or default_temporal_interval)
-                    return (value_estimate * estimate_secure_factor / estimate_to_pu_ratio * default_temporal_interval
-                            / temporal_interval)
-
-                batch_process_processing_units = sum(processing_units_spent(details.value_estimate() or Decimal("0.0"),
-                                                                            temporal_step)
-                                                     for details, temporal_step, _ in batch_processes.values())
-
-                logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units} PU",
-                             extra={'job_id': job_id, 'user_id': user_id})
-
-                registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
-                registry.set_dependency_status(
-                    job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AVAILABLE
-                )
-
-                if batch_process_processing_units:
-                    registry.set_dependency_usage(
-                        job_id=job_id, user_id=user_id, dependency_usage=batch_process_processing_units
-                    )
-
-            self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
-        else:  # still some running: continue polling
-            pass
-
     def get_user_jobs(
         self,
         user_id: str,
@@ -1923,7 +1691,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
                    dependencies: Union[list, None] = None,proxy_user=None):
-        from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
         log = logging.LoggerAdapter(logger, extra={'job_id': job_id, 'user_id': user_id})
@@ -1968,7 +1735,8 @@ class GpsBatchJobs(backend.BatchJobs):
         options.validate()
 
         # Job-options are validated at this point
-        execution_details: ExecutionDetails = get_backend_config().credit_check.get_batch_execution_details(job_info)
+        execution_details: ExecutionDetails = get_batch_execution_details(job_info)
+        etl_organization_id_str: str = str(job_options.get("etl_organization_id", ""))
 
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
@@ -1983,6 +1751,8 @@ class GpsBatchJobs(backend.BatchJobs):
             if image_name:
                 log.info(f'No job_options["image-name"] specified, setting fallback {image_name!r}')
                 job_options["image-name"] = image_name
+                # Writes must happen on options_object since job_options is already parsed
+                options.image_name = image_name
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -1993,7 +1763,6 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                supports_async_tasks=get_backend_config().supports_async_tasks,
                 process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
@@ -2010,15 +1779,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_dependencies(
                         job_id=job_id, user_id=user_id, dependencies=job_dependencies
-                    )
-
-                    async_task.schedule_await_job_dependencies(
-                        batch_job_id=job_id,
-                        user_id=user_id,
-                        sentinel_hub_client_alias=sentinel_hub_client_alias,
-                        vault_token=None
-                        if sentinel_hub_client_alias == "default"
-                        else get_vault_token(sentinel_hub_client_alias),
                     )
                     dbl_registry.set_dependency_status(
                         job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING
@@ -2228,7 +1988,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 layer_catalog_init_image=os.environ.get("LAYER_CATALOG_INIT_IMAGE", "DISABLED"),
                 layer_catalog_init_dir=os.environ.get("LAYER_CATALOG_INIT_DIR", "/opt/layercatalogs"),
                 layer_catalog_init_pull_policy=os.environ.get("LAYER_CATALOG_INIT_IMAGE_PULL_POLICY", "IfNotPresent"),
+                initdata_dir=os.environ.get("INITDATA_DIR", ""),
                 credit_plan=execution_details.plan,
+                etl_organization_id_str=etl_organization_id_str,
             )
 
             with self._double_job_registry as dbl_registry:
@@ -2345,7 +2107,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
-        supports_async_tasks: bool,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
@@ -2405,7 +2166,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 properties_criteria = source_id.arguments[1]
 
                 dependency = SentinelHubDependencies.schedule_for_load_collection(
-                    supports_async_tasks=supports_async_tasks,
                     collection_id=collection_id,
                     properties_criteria=properties_criteria,
                     constraints=constraints,
@@ -2427,7 +2187,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
                     logger_adapter=logger_adapter,
                     requests_session=self._requests_session,
-                    supports_async_tasks=supports_async_tasks,
                 )
             if dependency:
                 job_dependencies.append(dependency)

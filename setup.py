@@ -68,8 +68,6 @@ setup(
             "scripts/submit_batch_job_log4j2.xml",
             "scripts/batch_job_log4j2.xml",
             "scripts/job_tracker-entrypoint.sh",
-            "scripts/async_task-entrypoint.sh",
-            "scripts/async_task_log4j2.xml",
             "scripts/zookeeper_set.py",
             "scripts/job_cleaner.py",
         ]),
@@ -78,6 +76,7 @@ setup(
     install_requires=[
         # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
         "openeo>=0.48.0.a4.dev",
+        "openeo_driver>=0.141.0a2.dev",
         "openeo_driver>=0.140.0a7.dev",
         "opentelemetry-api>=1.0.0",
         'pyspark>=4.0.0; python_version>"3.8"',
@@ -114,7 +113,6 @@ setup(
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1; python_version<"3.9"',
         'jep_openeo_numpy==4.1.2; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
-        'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",

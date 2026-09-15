@@ -1,0 +1,19 @@
+{
+  "observations_file": {
+    "basename": "output.json",
+    "class": "File",
+    "location": "file:///calrissian/output-data/output.json",
+    "path": "/calrissian/output-data/output.json",
+    "size": 666
+  },
+  "total_records": 42,
+  "gbif_doi": "10.15468/dl.abc123",
+  "empty_output": null,
+  "logs": {
+    "basename": "logs.txt",
+    "class": "File",
+    "location": "file:///calrissian/output-data/logs.txt",
+    "path": "/calrissian/output-data/logs.txt",
+    "size": 123
+  }
+}

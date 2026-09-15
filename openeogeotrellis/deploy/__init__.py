@@ -146,4 +146,6 @@ def build_gps_backend_deploy_metadata(packages: List[str], jar_paths: Iterable[P
     """Build version metadata dict describing python packages and jar files"""
     metadata = build_backend_deploy_metadata(packages=packages)
     metadata["versions"].update(get_jar_versions(paths=jar_paths))
+    if openeo_layer_catalog_version := os.environ.get("OPENEO_LAYER_CATALOG_VERSION"):
+        metadata["versions"]["openeo_layer_catalog_version"] = openeo_layer_catalog_version
     return metadata

@@ -78,7 +78,7 @@ def create_lite_backend_implementation():
             batch_jobs = GpsBatchJobs(
                 catalog=catalog,
                 udf_runtimes=udf_runtimes,
-                jvm=None,  # No JVM in lite pods; start_job/poll_job_dependencies will not be called here
+                jvm=None,  # No JVM in lite pods; start_job will not be called here
                 vault=vault,
                 elastic_job_registry=elastic_job_registry,
                 requests_session=requests_session,

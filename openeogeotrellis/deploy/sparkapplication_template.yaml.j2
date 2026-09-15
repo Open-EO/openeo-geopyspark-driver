@@ -112,7 +112,7 @@ spec:
   volumes:
 {%- block volume_layercatalog %}
   {%- if layer_catalog_init_image != "DISABLED" %}
-    - name: layercatalogs
+    - name: "{{ 'initdata' if initdata_dir else 'layercatalogs' }}"
       emptyDir: {}
   {%- endif %}
 {%- endblock %}
@@ -178,8 +178,8 @@ spec:
           - name: TARGET_DIR
             value: {{ layer_catalog_init_dir }}
         volumeMounts:
-          - name: "layercatalogs"
-            mountPath: {{ layer_catalog_init_dir }}
+          - name: "{{ 'initdata' if initdata_dir else 'layercatalogs' }}"
+            mountPath: "{{ initdata_dir if initdata_dir else layer_catalog_init_dir }}"
         {%- block init_container_layer_catalog_resources %}
         resources:
           requests:
@@ -318,8 +318,8 @@ spec:
 {%- endif %}
 {%- block volume_mount_layercatalog %}
 {%- if layer_catalog_init_image != "DISABLED" %}
-      - name: "layercatalogs"
-        mountPath: {{ layer_catalog_init_dir }}
+      - name: "{{ 'initdata' if initdata_dir else 'layercatalogs' }}"
+        mountPath: "{{ initdata_dir if initdata_dir else layer_catalog_init_dir }}"
 {%- endif %}
 {%- endblock %}
 {%- endblock %}

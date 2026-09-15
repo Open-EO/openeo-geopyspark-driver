@@ -22,6 +22,7 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "--max-cores",
     "1000",
     "--force-docker-pull",
+    "--eval-timeout=600",
 )
 if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
     DEFAULT_CALRISSIAN_BASE_ARGUMENTS += ("--leave-container", "--leave-tmpdir", "--debug")
