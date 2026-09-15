@@ -891,7 +891,8 @@ def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend
     )
 
     assert app_dict["spec"]["executor"]["ports"] == [
-        {"containerPort": 19464, "name": "prom-executor", "protocol": "TCP"}
+        {"containerPort": 19464, "name": "prom-executor", "protocol": "TCP"},
+        {"containerPort": 9465, "name": "prom-executor", "protocol": "TCP"},
     ]
     assert "-Dotel.exporter.prometheus.port=19464" in app_dict["spec"]["executor"]["javaOptions"]
 

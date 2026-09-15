@@ -45,8 +45,25 @@ except ImportError:
     start_http_server = None
 
 
-if Gauge is not None:
-    _log.warning("Prometheus metrics are enabled. This is intended for development and debugging purposes only, and may have a performance impact. Disable by setting OPENEO_OTEL_PROMETHEUS_METRICS_PORT=0")
+_PROMETHEUS_METRICS_PORT = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT", "9465"))
+_udf_execution_time_ms = _NoOpMetric()
+_udf_max_rss_delta_bytes = _NoOpMetric()
+_metrics_initialized = False
+
+
+def _initialize_prometheus_metrics():
+    global _metrics_initialized, _udf_execution_time_ms, _udf_max_rss_delta_bytes
+
+    if _metrics_initialized or Gauge is None:
+        return
+
+    if _PROMETHEUS_METRICS_PORT <= 0:
+        _metrics_initialized = True
+        return
+
+    _log.warning(
+        "Prometheus metrics are enabled. This is intended for development and debugging purposes only, and may have a performance impact. Disable by setting OPENEO_OTEL_PROMETHEUS_METRICS_PORT=0"
+    )
     _udf_execution_time_ms = Gauge(
         "openeo_udf_execution_time_ms",
         "Time spent executing a UDF in milliseconds.",
@@ -56,20 +73,19 @@ if Gauge is not None:
         "RSS delta for a UDF execution in bytes.",
     )
 
-    _PROMETHEUS_METRICS_PORT = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT", "9465"))
     try:
         _log.debug(f"Starting Prometheus metrics server on port {_PROMETHEUS_METRICS_PORT}")
         start_http_server(_PROMETHEUS_METRICS_PORT)
     except OSError:
         _log.warning(f"Failed to start Prometheus metrics server on port {_PROMETHEUS_METRICS_PORT}")
         pass
-else:
-    _udf_execution_time_ms = _NoOpMetric()
-    _udf_max_rss_delta_bytes = _NoOpMetric()
+
+    _metrics_initialized = True
 
 
 @contextlib.contextmanager
 def _start_udf_execution_gauge():
+    _initialize_prometheus_metrics()
     yield _udf_execution_time_ms
 
 
@@ -92,6 +108,7 @@ def _record_udf_execution_gauge_metrics(
     rss_after_bytes: int,
     require_executor_context: bool = True,
 ):
+    _initialize_prometheus_metrics()
     gauge.set(duration_ms)
     _udf_max_rss_delta_bytes.set(rss_after_bytes - rss_before_bytes)
 

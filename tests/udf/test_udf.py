@@ -90,38 +90,57 @@ def test_run_udf_code_in_executor_single_udf_data(spark_context):
     assert result == [[[1, 4, 9, 16, 25]]]
 
 
-def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
-    data = UdfData(structured_data_list=[StructuredData([1])])
-    captured_attributes = {}
-    captured_measurements = []
+def test_metrics_are_initialized_lazily(monkeypatch):
+    started_ports = []
 
     class DummyGauge:
-        def set_attribute(self, key, value):
-            captured_attributes[key] = value
+        def __init__(self, *args, **kwargs):
+            pass
 
-        def set(self, value, attributes=None):
-            captured_measurements.append((value, attributes))
+    monkeypatch.setattr(udf_module, "Gauge", DummyGauge)
+    monkeypatch.setattr(udf_module, "start_http_server", lambda port: started_ports.append(port))
+    monkeypatch.setattr(udf_module, "_metrics_initialized", False)
+    monkeypatch.setattr(udf_module, "_udf_execution_time_ms", udf_module._NoOpMetric())
+    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", udf_module._NoOpMetric())
+    monkeypatch.setattr(udf_module, "_PROMETHEUS_METRICS_PORT", 9465)
+
+    assert started_ports == []
+    udf_module._initialize_prometheus_metrics()
+    assert started_ports == [9465]
+
+
+def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
+    data = UdfData(structured_data_list=[StructuredData([1])])
+    captured_duration_measurements = []
+    captured_rss_delta_measurements = []
+
+    class DummyGauge:
+        def set(self, value, **kwargs):
+            captured_duration_measurements.append((value, kwargs))
+
+    gauge = DummyGauge()
+
+    class DummyRssGauge:
+        def set(self, value, **kwargs):
+            captured_rss_delta_measurements.append((value, kwargs))
 
     @contextlib.contextmanager
-    def fake_span():
-        yield DummyGauge()
+    def fake_gauge():
+        yield gauge
 
     rss_values = iter([1000, 1256])
 
-    monkeypatch.setattr(udf_module, "_start_udf_execution_span", fake_span)
+    monkeypatch.setattr(udf_module, "_start_udf_execution_gauge", fake_gauge)
+    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", DummyRssGauge())
     monkeypatch.setattr(udf_module, "_get_max_rss_bytes", lambda: next(rss_values))
     monkeypatch.setattr(openeo.udf, "run_udf_code", lambda code, data: data)
 
     result = run_udf_code(code="def apply_udf_data(data): return data", data=data, require_executor_context=False)
 
     assert result is data
-    assert captured_attributes["openeo.udf.require_executor_context"] is False
-    assert captured_attributes["openeo.udf.max_rss_before_bytes"] == 1000
-    assert captured_attributes["openeo.udf.max_rss_after_bytes"] == 1256
-    assert captured_attributes["openeo.udf.max_rss_delta_bytes"] == 256
-    assert captured_measurements
-    assert captured_measurements[0][0] >= 0
-    assert captured_measurements[0][1] == {"openeo.udf.require_executor_context": False}
+    assert captured_duration_measurements
+    assert captured_duration_measurements[0][0] >= 0
+    assert captured_rss_delta_measurements == [(256, {})]
 
 
 class TestUdfCollection:
