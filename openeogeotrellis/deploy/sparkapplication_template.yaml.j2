@@ -330,6 +330,9 @@ spec:
       - containerPort: {{ open_telemetry_prometheus_port | default(9464, true) }}
         name: prom-executor
         protocol: TCP
+      - containerPort: {{ open_telemetry_prometheus_port_python | default(9465, true) }}
+        name: prom-executor
+        protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300

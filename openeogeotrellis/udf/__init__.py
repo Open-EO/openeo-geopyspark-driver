@@ -34,12 +34,18 @@ UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
 
 
 class _NoOpMetric:
+    def set_attribute(self, key: str, value: typing.Any):
+        pass
+
     def set(self, value: float, attributes: Optional[dict] = None):
+        pass
+
+    def record(self, value: float, attributes: Optional[dict] = None):
         pass
 
 
 @contextlib.contextmanager
-def _start_udf_execution_gauge():
+def _start_udf_execution_span():
     try:
         from opentelemetry import metrics
     except ImportError:
@@ -71,22 +77,26 @@ def _get_max_rss_bytes() -> int:
     return _max_rss_to_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 
-def _record_udf_execution_gauge_metrics(
-    gauge,
+def _record_udf_execution_trace_metrics(
+    span,
     *,
     duration_ms: float,
     rss_before_bytes: int,
     rss_after_bytes: int,
     require_executor_context: bool = True,
 ):
-    attributes = {
-        "openeo.udf.require_executor_context": require_executor_context,
-        "openeo.udf.max_rss_before_bytes": rss_before_bytes,
-        "openeo.udf.max_rss_after_bytes": rss_after_bytes,
-        "openeo.udf.max_rss_delta_bytes": rss_after_bytes - rss_before_bytes,
-    }
-    if hasattr(gauge, "set"):
-        gauge.set(duration_ms, attributes)
+    if hasattr(span, "set_attribute"):
+        span.set_attribute("openeo.udf.execution_time_ms", duration_ms)
+        span.set_attribute("openeo.udf.max_rss_before_bytes", rss_before_bytes)
+        span.set_attribute("openeo.udf.max_rss_after_bytes", rss_after_bytes)
+        span.set_attribute("openeo.udf.max_rss_delta_bytes", rss_after_bytes - rss_before_bytes)
+        span.set_attribute("openeo.udf.require_executor_context", require_executor_context)
+
+    attributes = {"openeo.udf.require_executor_context": require_executor_context}
+    if hasattr(span, "set"):
+        span.set(duration_ms, attributes)
+    elif hasattr(span, "record"):
+        span.record(duration_ms, attributes=attributes)
 
 
 class UdfDependencyHandlingFailure(OpenEOApiException):
@@ -125,14 +135,14 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
                 )
 
     with context:
-        with _start_udf_execution_gauge() as gauge:
+        with _start_udf_execution_span() as span:
             rss_before_bytes = _get_max_rss_bytes()
             t0 = time.perf_counter()
             try:
                 return openeo.udf.run_udf_code(code=code, data=data)
             finally:
-                _record_udf_execution_gauge_metrics(
-                    gauge=gauge,
+                _record_udf_execution_trace_metrics(
+                    span=span,
                     duration_ms=(time.perf_counter() - t0) * 1000.0,
                     rss_before_bytes=rss_before_bytes,
                     rss_after_bytes=_get_max_rss_bytes(),
