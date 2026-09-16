@@ -642,6 +642,38 @@ class TestSentinel5:
         ds = rasterio.open(output_file).read(1, masked=True)
         assert ds.count() > 103916 - 1
 
+    def test_sentinel5p_l2_artifacts(self, api110, tmp_path, request) -> None:
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819
+        """
+        process_graph = {
+            "process_graph": {
+                "loadcollection1": {
+                    "process_id": "load_collection",
+                    "arguments": {
+                        "bands": ["aerosol_index_354_388"],
+                        "id": "SENTINEL5P_L2_AER_AI",
+                        "spatial_extent": {"east": 8, "north": 54, "south": 50, "west": 3},
+                        "temporal_extent": ["2023-06-29T13:00:00.000000Z", "2023-06-29T23:00:00.000000Z"],
+                    },
+                    "result": True,
+                }
+            },
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+        ds = rasterio.open(output_file).read(1, masked=True)
+        unique, counts = np.unique(ds.compressed(), return_counts=True)
+        most_common = sorted(zip(unique, counts), key=lambda x: x[1], reverse=True)[:5]
+        print(f"Most common values: {most_common}")
+        # assert a popular value does not go over 500 occurences:
+        assert all(count < 500 for _, count in most_common)
+
     def test_invalid_spatial_extent_exception(self):
         params = {
             "filename": self.filename,
