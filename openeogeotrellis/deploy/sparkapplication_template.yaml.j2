@@ -328,10 +328,10 @@ spec:
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     ports:
       - containerPort: {{ open_telemetry_prometheus_port | default(9464, true) }}
-        name: prom-executor
+        name: prom-executor-scala
         protocol: TCP
       - containerPort: {{ open_telemetry_prometheus_port_python | default(9465, true) }}
-        name: prom-executor
+        name: prom-executor-python
         protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
