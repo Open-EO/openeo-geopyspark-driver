@@ -11,6 +11,7 @@ import dirty_equals
 import openeo.udf
 import pyspark
 import pytest
+import requests
 from openeo.udf import StructuredData, UdfData
 from openeo_driver.ProcessGraphDeserializer import custom_process_from_process_graph
 from openeo_driver.processes import ProcessRegistry
@@ -134,6 +135,11 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", DummyRssGauge())
     monkeypatch.setattr(udf_module, "_get_max_rss_bytes", lambda: next(rss_values))
     monkeypatch.setattr(openeo.udf, "run_udf_code", lambda code, data: data)
+    # `_record_udf_execution_gauge_metrics` also calls `_initialize_prometheus_metrics()` directly
+    # (on top of `_start_udf_execution_gauge`, which is mocked away above with `fake_gauge`).
+    # Mark metrics as already initialized so that this direct call doesn't run the real
+    # initialization logic and clobber the mocked `_udf_max_rss_delta_bytes` with a real Gauge.
+    monkeypatch.setattr(udf_module, "_metrics_initialized", True)
 
     result = run_udf_code(code="def apply_udf_data(data): return data", data=data, require_executor_context=False)
 
@@ -141,6 +147,27 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     assert captured_duration_measurements
     assert captured_duration_measurements[0][0] >= 0
     assert captured_rss_delta_measurements == [(256, {})]
+
+
+def test_run_udf_code_exposes_prometheus_metrics_endpoint():
+    """
+    Running a UDF (without mocking the metrics machinery) should lazily start a real
+    Prometheus HTTP server, and the recorded execution metrics should be readable from
+    its `/metrics` endpoint.
+    """
+    if udf_module.Gauge is None:
+        pytest.skip("prometheus_client is not installed")
+    if udf_module._PROMETHEUS_METRICS_PORT <= 0:
+        pytest.skip("Prometheus metrics are disabled (_PROMETHEUS_METRICS_PORT <= 0)")
+
+    data = UdfData(structured_data_list=[StructuredData([1, 2, 3])])
+    run_udf_code(code=UDF_SQUARES, data=data, require_executor_context=False)
+
+    response = requests.get(f"http://localhost:{udf_module._PROMETHEUS_METRICS_PORT}/metrics", timeout=5)
+
+    assert response.status_code == 200
+    assert "openeo_udf_execution_time_ms" in response.text
+    assert "openeo_udf_max_rss_delta_bytes" in response.text
 
 
 class TestUdfCollection:
