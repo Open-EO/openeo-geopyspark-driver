@@ -1164,13 +1164,30 @@ class GeopysparkDataCube(DriverDataCube):
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = reproject_geometry(mask, src_crs=CRS.from_user_input(srs), dst_crs=layer_crs)
+        mask_crs = CRS.from_user_input(srs)
+        layer_extent = max_level.layer_metadata.extent
+        raster_footprint_in_mask_crs = reproject_geometry(
+            box(layer_extent.xmin, layer_extent.ymin, layer_extent.xmax, layer_extent.ymax),
+            src_crs=layer_crs,
+            dst_crs=mask_crs,
+        )
+        footprint_bounds = raster_footprint_in_mask_crs.bounds
+        footprint_buffer = max(
+            max(
+                footprint_bounds[2] - footprint_bounds[0],
+                footprint_bounds[3] - footprint_bounds[1],
+            ) * 1e-6,
+            1e-12,
+        )
+        clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
+        reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
+        rasterizer_options = gps.RasterizerOptions()
         return self.apply_to_levels(lambda rdd: rdd.mask(
             reprojected_polygon,
             partition_strategy=None,
-            options=gps.RasterizerOptions()
+            options=rasterizer_options
         ))
 
     @callsite
