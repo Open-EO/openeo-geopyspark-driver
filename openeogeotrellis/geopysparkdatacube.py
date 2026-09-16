@@ -1173,9 +1173,12 @@ class GeopysparkDataCube(DriverDataCube):
         )
         footprint_bounds = raster_footprint_in_mask_crs.bounds
         footprint_buffer = max(
-            footprint_bounds[2] - footprint_bounds[0],
-            footprint_bounds[3] - footprint_bounds[1],
-        ) * 1e-6
+            max(
+                footprint_bounds[2] - footprint_bounds[0],
+                footprint_bounds[3] - footprint_bounds[1],
+            ) * 1e-6,
+            1e-12,
+        )
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         # TODO should we warn when masking generates an empty collection?
