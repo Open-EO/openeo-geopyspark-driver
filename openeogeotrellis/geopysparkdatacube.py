@@ -1183,10 +1183,11 @@ class GeopysparkDataCube(DriverDataCube):
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
+        rasterizer_options = gps.RasterizerOptions()
         return self.apply_to_levels(lambda rdd: rdd.mask(
             reprojected_polygon,
             partition_strategy=None,
-            options=gps.RasterizerOptions()
+            options=rasterizer_options
         ))
 
     @callsite
