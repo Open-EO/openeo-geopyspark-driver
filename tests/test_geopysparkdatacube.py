@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 from pyproj import CRS
-from shapely.geometry import box
+from shapely.geometry import Point, box
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.testing import DummyCubeBuilder
@@ -91,3 +91,29 @@ class TestGeopysparkDataCube:
             partition_strategy=None,
             options=rasterizer_options,
         )
+
+    def test_mask_polygon_uses_minimum_buffer_for_degenerate_reprojected_footprint(self):
+        cube = object.__new__(GeopysparkDataCube)
+        cube.get_max_level = mock.Mock(
+            return_value=mock.Mock(
+                layer_metadata=mock.Mock(
+                    crs="EPSG:32631",
+                    extent=mock.Mock(xmin=640000, ymin=5675000, xmax=650000, ymax=5685000),
+                )
+            )
+        )
+        cube.apply_to_levels = mock.Mock(return_value="masked-cube")
+
+        mask = box(3.9, 49.9, 4.1, 50.1)
+        collapsed_footprint_in_mask_crs = Point(4.0, 50.0)
+        expected_clipped_mask = mask.intersection(collapsed_footprint_in_mask_crs.buffer(1e-12))
+        reprojected_polygon = box(644000, 5676000, 649000, 5684000)
+
+        with mock.patch("openeogeotrellis.geopysparkdatacube.reproject_geometry") as reproject_geometry, mock.patch(
+            "openeogeotrellis.geopysparkdatacube.gps.get_spark_context"
+        ):
+            reproject_geometry.side_effect = [collapsed_footprint_in_mask_crs, reprojected_polygon]
+
+            cube.mask_polygon(mask=mask, srs="EPSG:4326")
+
+        assert reproject_geometry.call_args_list[1].args[0].equals(expected_clipped_mask)
