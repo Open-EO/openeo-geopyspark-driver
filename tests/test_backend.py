@@ -4,6 +4,7 @@ import json
 import logging
 
 import os
+import re
 from typing import Union
 from unittest.mock import MagicMock
 
@@ -891,10 +892,15 @@ def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend
     )
 
     assert app_dict["spec"]["executor"]["ports"] == [
-        {"containerPort": 19464, "name": "prom-executor-scala", "protocol": "TCP"},
-        {"containerPort": 9465, "name": "prom-executor-python", "protocol": "TCP"},
+        {"containerPort": 19464, "name": "prom-scala", "protocol": "TCP"},
+        {"containerPort": 9465, "name": "prom-python", "protocol": "TCP"},
     ]
     assert "-Dotel.exporter.prometheus.port=19464" in app_dict["spec"]["executor"]["javaOptions"]
+
+    # Kubernetes requires port names to be a valid IANA_SVC_NAME (at most 15 characters)
+    for port in app_dict["spec"]["executor"]["ports"]:
+        assert len(port["name"]) <= 15
+        assert re.fullmatch("[a-z0-9]([a-z0-9-]*[a-z0-9])?", port["name"])
 
 
 def test_k8s_sparkapplication_dict_gdal_envars(backend_config_path):
