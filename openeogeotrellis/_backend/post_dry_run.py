@@ -19,6 +19,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.constants import DUMMY_STAC_URL, EVAL_ENV_KEY
 
 import openeogeotrellis.load_stac
+from openeogeotrellis.stac.projection import ProjectionMetadata
 from openeogeotrellis.util.geometry import BoundingBoxMerger
 from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.math import logarithmic_round
@@ -290,7 +291,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
     )
-    spatial_filtering_geometries = openeogeotrellis.load_stac._SpatialFilteringGeometries(
+    spatial_filtering_geometries = openeogeotrellis.load_stac.SpatialFilteringGeometries(
         # TODO: avoid duplication with "aggregate_spatial_geometries" from _extract_load_parameters
         geometries=constraint.get("aggregate_spatial", {}).get("geometries")
         or constraint.get("filter_spatial", {}).get("geometries")
@@ -312,8 +313,8 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # Collect set of (uqique) asset projection metadata items
     _log.info(f"Collecting projection metadata from {len(item_collection.items)} items")
     fix_proj_transform = feature_flags and feature_flags.get("fix_proj_transform", False)
-    projection_metadatas: Set[openeogeotrellis.load_stac._ProjectionMetadata] = {
-        openeogeotrellis.load_stac._ProjectionMetadata.from_asset(
+    projection_metadatas: Set[ProjectionMetadata] = {
+        ProjectionMetadata.from_asset(
             asset=asset, item=item, fix_proj_transform=fix_proj_transform
         )
         for item, band_assets in item_collection.iter_items_with_band_assets()
@@ -381,7 +382,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
 
 def _determine_best_grid_from_proj_metadata(
     # TODO: type annotation `collections.abc.Collection` would be more future proof, but we're still stuck at python 3.8 compability #1060
-    projection_metadatas: typing.Collection[openeogeotrellis.load_stac._ProjectionMetadata],
+    projection_metadatas: typing.Collection[ProjectionMetadata],
 ) -> Union[_GridInfo, None]:
     """
     Determine best CRS+resolution (e.g. most common)

@@ -16,7 +16,7 @@ def item_collection_from_stac_query(
     Construct pystac ItemCollection from given load_stac URL.
     Note that this, function returns `pystac's ItemCollection`_ type,
     unlike :func:`openeogeotrellis.load_stac.construct_item_collection`, which returns the local implementation
-    :func:`openeogeotrellis.load_stac.ItemCollection` serving a similar purpose.
+    :func:`openeogeotrellis.stac.item_collection.ItemCollection` serving a similar purpose.
     :func:`openeogeotrellis.load_stac.construct_item_collection` which is used internally by this function.
 
     .. _pystac ItemCollection: https://pystac.readthedocs.io/en/latest/api/pystac.html#pystac.ItemCollection
