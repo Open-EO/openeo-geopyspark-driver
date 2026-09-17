@@ -44,7 +44,7 @@ import tempfile
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 import geopyspark
 import numpy as np
@@ -156,6 +156,7 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
         VARIABLE_LOC_IN_FILE,
         filter_value,
     )
+    _save_mask_polygon_for_debugging(data["bounding_polygon"], file_path)
 
     # resample data
     if resample_params[0]:  # if resampling is required
@@ -171,7 +172,7 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     return final_data
 
 
-def _save_mask_polygon_for_debugging(polygon: shapely.geometry.base.BaseGeometry, creo_path: Path) -> None:
+def _save_mask_polygon_for_debugging(polygon: shapely.geometry.base.BaseGeometry, creo_path: Union[Path, str]) -> None:
     """Dump the spatial mask polygon (raw data's bounding polygon) to a GeoJSON file in the system temp folder.
 
     This is purely a debugging aid (see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819)
@@ -179,9 +180,10 @@ def _save_mask_polygon_for_debugging(polygon: shapely.geometry.base.BaseGeometry
     masking-related artifacts in the output.
     """
     try:
-        out_dir = Path(tempfile.gettempdir()) / "openeo_sentinel5p_mask_polygons"
+        creo_path = Path(creo_path)
+        out_dir = Path(tempfile.gettempdir()) / "openeo"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{Path(creo_path).stem}_mask_polygon.geojson"
+        out_path = out_dir / f"{creo_path.name}.geojson"
         out_path.write_text(json.dumps(shapely.geometry.mapping(polygon)))
         logger.info(f"Saved Sentinel-5P mask polygon for debugging to {out_path}")
     except Exception:

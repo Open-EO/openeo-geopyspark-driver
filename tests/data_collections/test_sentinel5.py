@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 import rasterio
 import xarray
+from shapely.geometry.multipolygon import MultiPolygon
 
 from openeogeotrellis.utils import typechecked
 
@@ -789,7 +790,7 @@ class TestSentinel5:
             equal_nan=True,
         )
 
-    def test_data_loading_with_complex_bounding_box(self):
+    def test_data_loading_with_complex_bounding_box_01(self):
         nc_file_path = Path(
             "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
         )
@@ -801,7 +802,27 @@ class TestSentinel5:
             "filter_value": 0.0,
         }
         data = load_level2_data(params)
-        print("Inspect results manually")
+        bp = data["bounding_polygon"]
+        assert isinstance(bp, MultiPolygon)
+        assert bp.is_valid
+
+    def test_data_loading_with_complex_bounding_box_02(self):
+        """
+        This product has bad anti-meridian wrapping. The polygon probably needs to be split.
+        """
+        nc_file_path = Path(
+            "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2023/06/29/S5P_OFFL_L2__AER_AI_20230629T125244_20230629T143414_29583_03_020500_20230701T023445.nc"
+        )
+        assert nc_file_path.exists()
+        params = {
+            "filename": str(nc_file_path),
+            "spatial_extent": {"west": -180, "south": -90, "east": 180, "north": 90},
+            "bands": ["aerosol_index_354_388", "bounding_polygon"],
+        }
+        data = load_level2_data(params)
+        bp = data["bounding_polygon"]
+        assert isinstance(bp, MultiPolygon)
+        assert bp.is_valid
 
     def test_data_loading_no2(self):
         """Test if it loads all bands, data and shape of bands."""

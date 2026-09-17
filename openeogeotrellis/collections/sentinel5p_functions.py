@@ -169,7 +169,6 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
 def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
     assert lat.ndim == 2 and lon.ndim == 2
     assert lat.shape == lon.shape
-    # print(lat.shape)  # (4172, 215)
     latitude_threshold = 85
     # return get_bounding_polygon_specific(lat, lon)
 
@@ -220,6 +219,7 @@ def get_bounding_polygon_specific(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     polygon_lat = np.concatenate([top_lat, right_lat[-2::-1], bottom_lat[::-1][1:], left_lat[1:-1]])
     polygon_lon = np.concatenate([top_lon, right_lon[-2::-1], bottom_lon[::-1][1:], left_lon[1:-1]])
     polygon = Polygon(zip(polygon_lon, polygon_lat))
+    # assert polygon.is_valid
     return polygon
 
 
@@ -285,6 +285,11 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
+    import logging
+
+    logging.warning(
+        f"load_data_from_file(file_path={file_path},\nspatial_extent={spatial_extent},\ntemporal_extent={temporal_extent},\nbands={bands},\nvariable_loc_in_file={variable_loc_in_file},\nfilter_value={filter_value})"
+    )
     # Open the NetCDF file
     with Dataset(file_path, "r") as f:
         # Check if there is valid data based on spatial temporal extents and filter value
@@ -338,6 +343,9 @@ def load_data_from_file(
         data = {}
         for band in bands:
             try:
+                if band == "bounding_polygon":
+                    # Allow to keep it as debug information
+                    continue
                 var_path = variable_loc_in_file[band]
                 band_data = f[var_path][0]  # 0 is for time dimension
                 # get band data based on combined mask
@@ -644,7 +652,9 @@ def apply_quality_filter(
     filtered_data = {}
     quality_mask = data[quality_band]
     for key, val in data.items():
-        if key in bands:
+        if key == "bounding_polygon":
+            filtered_data[key] = val  # copy unchanged
+        elif key in bands:
             filtered_data[key] = np.where(quality_mask, val, np.nan)
         elif (key not in bands) & (key != quality_band):
             filtered_data[key] = val  # copy metadata
