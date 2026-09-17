@@ -328,6 +328,14 @@ class KubernetesMock:
         )
         return app
 
+    def delete_namespaced_custom_object(self, name: str, **kwargs) -> dict:
+        if name in self.corrupt_app_ids:
+            raise kubernetes.client.exceptions.ApiException(status=500, reason="Internal Server Error")
+        if name not in self.apps:
+            raise kubernetes.client.exceptions.ApiException(status=404, reason="Not Found")
+        del self.apps[name]
+        return {"status": "Success"}
+
 
 @pytest.fixture
 def yarn_mock() -> YarnMock:
@@ -1382,6 +1390,168 @@ class TestK8sJobTracker:
 
         json.dumps(elastic_job_registry.db[job_id], allow_nan=False)
 
+        assert caplog.record_tuples == []
+
+    def _run_until_final_status(
+        self, job_tracker, elastic_job_registry, k8s_mock, time_machine, *, final_state: str
+    ) -> str:
+        """Helper: bring a job all the way to a final state and sync statuses. Returns the app id."""
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+
+        job_id = "job-123"
+        elastic_job_registry.create_job(job_id=job_id, user_id="john", process=DUMMY_PROCESS_1)
+
+        time_machine.coordinates.shift(70)
+        app_id = k8s_job_name()
+        kube_app = k8s_mock.submit(app_id=app_id)
+        elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
+        kube_app.set_submitted()
+        kube_app.set_running()
+        job_tracker.update_statuses()
+
+        time_machine.coordinates.shift(70)
+        kube_app.set_state(final_state)
+        kube_app.set_finish_time()
+        json_write(
+            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
+            data={"usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125}}},
+        )
+        job_tracker.update_statuses()
+        return app_id
+
+    def test_cleanup_k8s_app_on_finished(self, job_tracker, elastic_job_registry, caplog, time_machine, k8s_mock):
+        """By default a successfully finished app is immediately cleaned up from the cluster."""
+        caplog.set_level(logging.WARNING)
+
+        app_id = self._run_until_final_status(
+            job_tracker,
+            elastic_job_registry,
+            k8s_mock,
+            time_machine,
+            final_state=K8S_SPARK_APP_STATE.COMPLETED,
+        )
+
+        # App is gone from the cluster ...
+        assert app_id not in k8s_mock.apps
+        # ... but status and usage were persisted first.
+        assert elastic_job_registry.db["job-123"] == DictSubSet(
+            {
+                "status": "finished",
+                "started": "2022-12-14T12:01:10Z",
+                "finished": "2022-12-14T12:02:20Z",
+                "usage": DictSubSet({"input_pixel": {"unit": "mega-pixel", "value": 1.125}}),
+                "costs": 129.95,
+            }
+        )
+        assert caplog.record_tuples == []
+
+    @pytest.mark.parametrize("cleanup_statuses", [[], ["error"]])
+    def test_cleanup_k8s_app_skipped_for_other_statuses(
+        self, job_tracker, elastic_job_registry, caplog, time_machine, k8s_mock, cleanup_statuses
+    ):
+        """Cleanup is skipped when the job status is not in `job_tracker_cleanup_openeo_statuses`."""
+        caplog.set_level(logging.WARNING)
+
+        with gps_config_overrides(job_tracker_cleanup_openeo_statuses=cleanup_statuses):
+            app_id = self._run_until_final_status(
+                job_tracker,
+                elastic_job_registry,
+                k8s_mock,
+                time_machine,
+                final_state=K8S_SPARK_APP_STATE.COMPLETED,
+            )
+
+        assert app_id in k8s_mock.apps
+        assert elastic_job_registry.db["job-123"] == DictSubSet(status="finished")
+        assert caplog.record_tuples == []
+
+    def test_cleanup_k8s_app_on_error_when_configured(
+        self, job_tracker, elastic_job_registry, caplog, time_machine, k8s_mock
+    ):
+        """Failed apps are retained by default, but can be cleaned up through config."""
+        caplog.set_level(logging.WARNING)
+
+        # Default config: failed app is retained (e.g. to allow post-mortem inspection).
+        app_id = self._run_until_final_status(
+            job_tracker,
+            elastic_job_registry,
+            k8s_mock,
+            time_machine,
+            final_state=K8S_SPARK_APP_STATE.FAILED,
+        )
+        assert app_id in k8s_mock.apps
+        assert elastic_job_registry.db["job-123"] == DictSubSet(status="error")
+
+        # Opt in to cleaning up failed apps too.
+        elastic_job_registry.db.clear()
+        with gps_config_overrides(job_tracker_cleanup_openeo_statuses=["finished", "error"]):
+            app_id = self._run_until_final_status(
+                job_tracker,
+                elastic_job_registry,
+                k8s_mock,
+                time_machine,
+                final_state=K8S_SPARK_APP_STATE.FAILED,
+            )
+        assert app_id not in k8s_mock.apps
+        assert elastic_job_registry.db["job-123"] == DictSubSet(status="error")
+
+    def test_cleanup_k8s_app_failure_does_not_break_status_sync(
+        self, job_tracker, elastic_job_registry, caplog, time_machine, k8s_mock
+    ):
+        """An unexpected failure while cleaning up must not invalidate the successful status update."""
+        caplog.set_level(logging.INFO)
+
+        with mock.patch.object(
+            k8s_mock,
+            "delete_namespaced_custom_object",
+            side_effect=kubernetes.client.exceptions.ApiException(status=500, reason="Internal Server Error"),
+        ):
+            app_id = self._run_until_final_status(
+                job_tracker,
+                elastic_job_registry,
+                k8s_mock,
+                time_machine,
+                final_state=K8S_SPARK_APP_STATE.COMPLETED,
+            )
+
+        # Status and usage are still properly recorded ...
+        assert elastic_job_registry.db["job-123"] == DictSubSet(
+            {
+                "status": "finished",
+                "finished": "2022-12-14T12:02:20Z",
+                "costs": 129.95,
+            }
+        )
+        # ... the app is just left behind, with a warning.
+        assert app_id in k8s_mock.apps
+        warnings = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any(f"Failed to clean up app {app_id}" in m for m in warnings)
+
+        # And it is not counted as a failed sync.
+        stats = _extract_update_statuses_stats(caplog)[-1]
+        assert stats["app cleanup failed"] == 1
+        assert "app cleanup" not in stats
+        assert "failed sync" not in stats
+
+    def test_cleanup_k8s_app_already_gone(self, job_tracker, elastic_job_registry, caplog, time_machine, k8s_mock):
+        """An app that is already gone (e.g. through the Spark operator TTL) is not an error."""
+        caplog.set_level(logging.WARNING)
+
+        def delete_and_forget(name: str, **kwargs):
+            k8s_mock.apps.pop(name, None)
+            raise kubernetes.client.exceptions.ApiException(status=404, reason="Not Found")
+
+        with mock.patch.object(k8s_mock, "delete_namespaced_custom_object", side_effect=delete_and_forget):
+            app_id = self._run_until_final_status(
+                job_tracker,
+                elastic_job_registry,
+                k8s_mock,
+                time_machine,
+                final_state=K8S_SPARK_APP_STATE.COMPLETED,
+            )
+
+        assert app_id not in k8s_mock.apps
+        assert elastic_job_registry.db["job-123"] == DictSubSet(status="finished")
         assert caplog.record_tuples == []
 
 
