@@ -45,7 +45,8 @@ except ImportError:
     start_http_server = None
 
 
-_PROMETHEUS_METRICS_PORT = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT", "9465"))
+_PROMETHEUS_METRICS_PORT = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT_PYTHON", "9465"))
+_PROMETHEUS_METRICS_ENABLED = os.environ.get("OPENEO_OTEL_ENABLED", "False").lower() in ["true", "t", "1"]
 _udf_execution_time_ms = _NoOpMetric()
 _udf_max_rss_delta_bytes = _NoOpMetric()
 _metrics_initialized = False
@@ -57,12 +58,13 @@ def _initialize_prometheus_metrics():
     if _metrics_initialized or Gauge is None:
         return
 
-    if _PROMETHEUS_METRICS_PORT <= 0:
+
+    if _PROMETHEUS_METRICS_PORT <= 0 or not _PROMETHEUS_METRICS_ENABLED:
         _metrics_initialized = True
         return
 
     _log.warning(
-        "Prometheus metrics are enabled. This is intended for development and debugging purposes only, and may have a performance impact. Disable by setting OPENEO_OTEL_PROMETHEUS_METRICS_PORT=0"
+        "Prometheus metrics are enabled. This is intended for development and debugging purposes only, and may have a small performance impact."
     )
     _udf_execution_time_ms = Gauge(
         "openeo_udf_execution_time_ms",
