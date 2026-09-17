@@ -104,6 +104,7 @@ def test_metrics_are_initialized_lazily(monkeypatch):
     monkeypatch.setattr(udf_module, "_udf_execution_time_ms", udf_module._NoOpMetric())
     monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", udf_module._NoOpMetric())
     monkeypatch.setattr(udf_module, "_PROMETHEUS_METRICS_PORT", 9465)
+    monkeypatch.setattr(udf_module, "_PROMETHEUS_METRICS_ENABLED", True)
 
     assert started_ports == []
     udf_module._initialize_prometheus_metrics()
@@ -149,7 +150,7 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     assert captured_rss_delta_measurements == [(256, {})]
 
 
-def test_run_udf_code_exposes_prometheus_metrics_endpoint():
+def test_run_udf_code_exposes_prometheus_metrics_endpoint(monkeypatch):
     """
     Running a UDF (without mocking the metrics machinery) should lazily start a real
     Prometheus HTTP server, and the recorded execution metrics should be readable from
@@ -159,6 +160,10 @@ def test_run_udf_code_exposes_prometheus_metrics_endpoint():
         pytest.skip("prometheus_client is not installed")
     if udf_module._PROMETHEUS_METRICS_PORT <= 0:
         pytest.skip("Prometheus metrics are disabled (_PROMETHEUS_METRICS_PORT <= 0)")
+
+    # Metrics are only started when explicitly enabled (e.g. via `OPENEO_OTEL_ENABLED`).
+    monkeypatch.setattr(udf_module, "_PROMETHEUS_METRICS_ENABLED", True)
+    monkeypatch.setattr(udf_module, "_metrics_initialized", False)
 
     data = UdfData(structured_data_list=[StructuredData([1, 2, 3])])
     run_udf_code(code=UDF_SQUARES, data=data, require_executor_context=False)
