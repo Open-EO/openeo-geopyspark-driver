@@ -271,6 +271,8 @@ spec:
         value: "TRUE"
       - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
         value: "{{fuse_mount_batchjob_s3_bucket}}"
+      - name: OPENEO_OTEL_ENABLED
+        value: "{{ open_telemetry_enabled }}"
       - name: OPENEO_EJR_API
         value: {{ openeo_ejr_api }}
       - name: OPENEO_EJR_BACKEND_ID
