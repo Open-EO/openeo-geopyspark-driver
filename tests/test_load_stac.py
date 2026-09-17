@@ -30,38 +30,38 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
-    STAC_API_PER_PAGE_LIMIT_DEFAULT,
-    STAC_API_RETRY_TOTAL,
-    AdaptingPropertyFilter,
-    ItemCollection,
-    ItemDeduplicator,
     NoDataAvailableException,
-    PropertyFilter,
-    _get_pixel_value_scaling_mode,
-    _get_pixel_value_scale_and_offset,
-    _get_raster_scale_and_offset,
-    _get_proj_metadata,
-    _is_band_asset,
-    _is_sentinel2_reflectance_asset,
-    _is_supported_raster_mime_type,
-    _prepare_context,
-    _proj_code_to_epsg,
-    _ProjectionMetadata,
-    _ResolutionTracker,
-    _SpatialExtent,
-    _SpatialFilteringGeometries,
-    _spatiotemporal_extent_from_load_params,
-    _SpatioTemporalExtent,
+    SpatialFilteringGeometries,
+    SpatioTemporalExtent,
     _StacMetadataParser,
-    _supports_item_search,
-    _TemporalExtent,
+    TemporalExtent,
+    _prepare_context,
+    _spatiotemporal_extent_from_load_params,
     construct_item_collection,
     extract_own_job_info,
+    get_pixel_value_scaling_mode,
     load_stac,
-    PixelValueScalingMode,
-    _deduplicator_from_feature_flags,
-    _pystac_item_from_dict_lenient,
 )
+from openeogeotrellis.stac.item_collection import (
+    STAC_API_PER_PAGE_LIMIT_DEFAULT,
+    ItemCollection,
+    _is_band_asset,
+    _is_supported_raster_mime_type,
+    _pystac_item_from_dict_lenient,
+    _supports_item_search,
+)
+from openeogeotrellis.stac.property_filter import AdaptingPropertyFilter, PropertyFilter
+from openeogeotrellis.stac.item_deduplicator import ItemDeduplicator, _deduplicator_from_feature_flags
+from openeogeotrellis.stac.extents import _SpatialExtent
+from openeogeotrellis.stac.opensearch_features import (
+    PixelValueScalingMode,
+    ResolutionTracker,
+    _get_pixel_value_scale_and_offset,
+    _get_raster_scale_and_offset,
+    _is_sentinel2_reflectance_asset,
+)
+from openeogeotrellis.stac.projection import ProjectionMetadata, _proj_code_to_epsg, get_proj_metadata
+from openeogeotrellis.stac.stac_object_fetching import STAC_API_RETRY_TOTAL
 from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
 
@@ -899,18 +899,18 @@ def test_proj_code_to_epsg():
 
 class TestProjectionMetadata:
     def test_code_from_epsg(self):
-        metadata = _ProjectionMetadata(epsg=32631)
+        metadata = ProjectionMetadata(epsg=32631)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
 
     def test_epsg_from_code(self):
-        metadata = _ProjectionMetadata(code="EPSG:32631")
+        metadata = ProjectionMetadata(code="EPSG:32631")
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
 
     def test_bbox_from_shape_and_transform(self):
         # https://github.com/soxofaan/projection/blob/22ada42310b58c00d74f68250fd65c8ba6f178b3/examples/assets.json
-        metadata = _ProjectionMetadata(
+        metadata = ProjectionMetadata(
             code="EPSG:32659",
             shape=[5558, 9559],
             transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
@@ -918,7 +918,7 @@ class TestProjectionMetadata:
         assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
 
     def test_resolution_empty(self):
-        pm = _ProjectionMetadata()
+        pm = ProjectionMetadata()
 
         with pytest.raises(ValueError, match="Unable to calculate cell size"):
             pm.resolution()
@@ -926,30 +926,30 @@ class TestProjectionMetadata:
         assert pm.resolution(fail_on_miss=False) is None
 
     def test_resolution_from_bbox_and_shape(self):
-        assert _ProjectionMetadata(
+        assert ProjectionMetadata(
             bbox=(100, 200, 300, 500),
             shape=(30, 50),
         ).resolution() == (4, 10)
 
-        assert _ProjectionMetadata(
+        assert ProjectionMetadata(
             bbox=(1000, 2000, 5000, 8000),
             shape=(100, 200),
         ).resolution() == (20.0, 60.0)
 
     def test_resolution_from_transform(self):
-        assert _ProjectionMetadata(
+        assert ProjectionMetadata(
             transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
         ).resolution() == (0.5, 0.5)
 
     def test_resolution_fail_from_item(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item(id="item-no-proj-metadata"))
-        metadata = _ProjectionMetadata.from_item(item)
+        metadata = ProjectionMetadata.from_item(item)
         with pytest.raises(ValueError, match="Unable to calculate cell size.*item 'item-no-proj-metadata'"):
             _ = metadata.resolution(fail_on_miss=True)
 
     def test_resolution_fail_from_asset(self):
         asset = pystac.Asset(href="https://stac.test/asset.tif")
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         with pytest.raises(
             ValueError, match="Unable to calculate cell size.*asset with href='https://stac.test/asset.tif'"
         ):
@@ -958,7 +958,7 @@ class TestProjectionMetadata:
         # add item link
         item = pystac.Item.from_dict(StacDummyBuilder.item(id="item-no-proj-metadata"))
         asset.set_owner(item)
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         with pytest.raises(
             ValueError,
             match="Unable to calculate cell size.*asset with href='https://stac.test/asset.tif'.*item 'item-no-proj-metadata'",
@@ -967,7 +967,7 @@ class TestProjectionMetadata:
 
     def test_from_item_minimal(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
-        metadata = _ProjectionMetadata.from_item(item)
+        metadata = ProjectionMetadata.from_item(item)
         assert metadata.code is None
         assert metadata.epsg is None
         assert metadata.bbox is None
@@ -983,7 +983,7 @@ class TestProjectionMetadata:
                 }
             )
         )
-        metadata = _ProjectionMetadata.from_item(item)
+        metadata = ProjectionMetadata.from_item(item)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1200, 3400, 5600, 7800)
@@ -998,7 +998,7 @@ class TestProjectionMetadata:
                 "proj:shape": [100, 200],
             },
         )
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1200, 3400, 5600, 7800)
@@ -1020,7 +1020,7 @@ class TestProjectionMetadata:
                 }
             )
         )
-        metadata = _ProjectionMetadata.from_asset(asset, item=item)
+        metadata = ProjectionMetadata.from_asset(asset, item=item)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1111, 2222, 3333, 4444)
@@ -1044,7 +1044,7 @@ class TestProjectionMetadata:
                 )
             )
         )
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1111, 2222, 3333, 4444)
@@ -1071,12 +1071,12 @@ class TestProjectionMetadata:
         ],
     )
     def test_coverage_for_simple(self, extent, shape, expected):
-        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
+        metadata = ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
 
     def test_coverage_for_snap_option(self):
-        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
+        metadata = ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
         extent = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
 
         # Do snapping (default)
@@ -1119,27 +1119,27 @@ class TestProjectionMetadata:
     )
     def test_coverage_for_lonlat_in_utm(self, extent, shape, expected):
         # SENTINEL2_L2A-alike projection metadata
-        metadata = _ProjectionMetadata(epsg=32631, bbox=[600000, 5590200, 709800, 5700000], shape=shape)
+        metadata = ProjectionMetadata(epsg=32631, bbox=[600000, 5590200, 709800, 5700000], shape=shape)
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
 
     def test_hashing_for_set(self):
         metadatas = {
-            _ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4]),
-            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+            ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4]),
+            ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
         }
         assert metadatas == {
-            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+            ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
         }
 
     def test_hashing_for_dict(self):
         data = {}
-        data[_ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4])] = "red"
-        data[_ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4))] = "green"
-        data[_ProjectionMetadata(epsg=4326, shape=[100, 100], bbox=[1, 2, 3, 4])] = "blue"
+        data[ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4])] = "red"
+        data[ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4))] = "green"
+        data[ProjectionMetadata(epsg=4326, shape=[100, 100], bbox=[1, 2, 3, 4])] = "blue"
         assert data == {
-            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
-            _ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
+            ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
+            ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
         }
 
 
@@ -1147,7 +1147,7 @@ class TestProjectionMetadata:
 def test_get_proj_metadata_minimal():
     asset = pystac.Asset(href="https://example.com/asset.tif")
     item = pystac.Item.from_dict(StacDummyBuilder.item())
-    assert _get_proj_metadata(asset, item=item) == (None, None, None)
+    assert get_proj_metadata(asset, item=item) == (None, None, None)
 
 
 @pytest.mark.parametrize(
@@ -1201,11 +1201,11 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
     """ """
     asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
     item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
-    assert _get_proj_metadata(asset, item=item) == expected
+    assert get_proj_metadata(asset, item=item) == expected
 
 
 class TestFixGdalOrderedTransform:
-    """Tests for _ProjectionMetadata._fix_gdal_ordered_transform"""
+    """Tests for ProjectionMetadata._fix_gdal_ordered_transform"""
 
     @pytest.mark.parametrize(
         "transform",
@@ -1218,7 +1218,7 @@ class TestFixGdalOrderedTransform:
     )
     def test_already_valid_rasterio_order(self, transform):
         """Valid rasterio/affine order should not be changed."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+        assert ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
 
     @pytest.mark.parametrize(
         "transform",
@@ -1235,7 +1235,7 @@ class TestFixGdalOrderedTransform:
     )
     def test_valid_rasterio_order_including_yx_transpose(self, transform):
         """Valid rasterio/affine order should not be changed."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform, also_check_yx_transposed=True) == transform
+        assert ProjectionMetadata._fix_gdal_ordered_transform(transform, also_check_yx_transposed=True) == transform
 
     @pytest.mark.parametrize(
         ["given", "expected"],
@@ -1248,7 +1248,7 @@ class TestFixGdalOrderedTransform:
     )
     def test_fix_gdal_order(self, given, expected):
         """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(given) == expected
+        assert ProjectionMetadata._fix_gdal_ordered_transform(given) == expected
 
     @pytest.mark.parametrize(
         ["given", "expected"],
@@ -1267,18 +1267,18 @@ class TestFixGdalOrderedTransform:
     )
     def test_fix_gdal_order_including_yx_transpose(self, given, expected):
         """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(given, also_check_yx_transposed=True) == expected
+        assert ProjectionMetadata._fix_gdal_ordered_transform(given, also_check_yx_transposed=True) == expected
 
     def test_fix_gdal_order_9_elements(self):
         """GDAL order with 9 elements (full 3x3 matrix) should preserve trailing elements."""
         gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025, 0.0, 0.0, 1.0]
         expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0, 0.0, 0.0, 1.0]
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+        assert ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
 
     def test_short_transform_unchanged(self):
         """Transform with fewer than 6 elements should not be changed."""
         transform = [1.0, 2.0]
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+        assert ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
 
     def test_from_asset_with_fix_flag(self):
         """from_asset with fix_proj_transform=True should fix GDAL-ordered transforms."""
@@ -1290,7 +1290,7 @@ class TestFixGdalOrderedTransform:
                 "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
             },
         )
-        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=True)
+        metadata = ProjectionMetadata.from_asset(asset, fix_proj_transform=True)
         assert metadata.bbox == pytest.approx((3.0, 50.0, 4.0, 51.0))
 
     def test_from_asset_without_fix_flag(self):
@@ -1303,7 +1303,7 @@ class TestFixGdalOrderedTransform:
                 "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
             },
         )
-        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=False)
+        metadata = ProjectionMetadata.from_asset(asset, fix_proj_transform=False)
         # Without fix, bbox will be computed from the wrong transform
         assert metadata.bbox != pytest.approx((3.0, 50.0, 4.0, 51.0))
 
@@ -1329,32 +1329,32 @@ class TestFixGdalOrderedTransform:
     )
     def test_fix_real_world_gdal_transforms(self, gdal_transform, expected_rasterio):
         """Real-world GDAL-ordered transforms should be correctly converted to rasterio/affine order."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_transform) == expected_rasterio
+        assert ProjectionMetadata._fix_gdal_ordered_transform(gdal_transform) == expected_rasterio
 
 
 class TestTemporalExtent:
     def test_as_tuple_empty(self):
-        extent = _TemporalExtent(None, None)
+        extent = TemporalExtent(None, None)
         assert extent.as_tuple() == (None, None)
 
     def test_as_tuple(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.as_tuple() == (
             datetime.datetime(2025, 3, 4, 11, 11, 11, tzinfo=datetime.timezone.utc),
             datetime.datetime(2025, 5, 6, 22, 22, 22, tzinfo=datetime.timezone.utc),
         )
 
     def test_isoformat(self):
-        assert _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22").isoformat() == (
+        assert TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22").isoformat() == (
             "2025-03-04T11:11:11+00:00",
             "2025-05-06T22:22:22+00:00",
         )
-        assert _TemporalExtent(None, "2025-05-06").isoformat() == (None, "2025-05-06T00:00:00+00:00")
-        assert _TemporalExtent("2025-05-06", None).isoformat() == ("2025-05-06T00:00:00+00:00", None)
-        assert _TemporalExtent(None, None).isoformat() == (None, None)
+        assert TemporalExtent(None, "2025-05-06").isoformat() == (None, "2025-05-06T00:00:00+00:00")
+        assert TemporalExtent("2025-05-06", None).isoformat() == ("2025-05-06T00:00:00+00:00", None)
+        assert TemporalExtent(None, None).isoformat() == (None, None)
 
     def test_intersects_empty(self):
-        extent = _TemporalExtent(None, None)
+        extent = TemporalExtent(None, None)
         assert extent.intersects("1789-07-14") == True
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(start_datetime="1914-07-28", end_datetime="1918-11-11") == True
@@ -1362,7 +1362,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal=None) == True
 
     def test_intersects_nominal_basic(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(nominal="2022-10-11") == False
         assert extent.intersects(nominal="2025-03-03T12:13:14") == False
         assert extent.intersects(nominal="2025-03-05T05:05:05") == True
@@ -1374,7 +1374,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal=None) == True
 
     def test_intersects_nominal_edges(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(nominal="2025-03-04T11:11:10") == False
         assert extent.intersects(nominal="2025-03-04T11:11:11") == True
         assert extent.intersects(nominal="2025-03-05T05:05:05") == True
@@ -1382,7 +1382,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-06T22:22:22") == False
 
     def test_intersects_nominal_timezones(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
+        extent = TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
         assert extent.intersects(nominal="2025-03-04T11:11:10") == False
         assert extent.intersects(nominal="2025-03-04T11:11:10-02") == True
         assert extent.intersects(nominal="2025-03-04T11:11:10-04:00") == True
@@ -1397,21 +1397,21 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-07T01:22:22Z") == False
 
     def test_intersects_nominal_half_open(self):
-        extent = _TemporalExtent(None, "2025-05-06")
+        extent = TemporalExtent(None, "2025-05-06")
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(nominal="2025-05-05") == True
         assert extent.intersects(nominal="2025-05-06") == False
         assert extent.intersects(nominal="2025-11-11") == False
         assert extent.intersects(nominal=None) == True
 
-        extent = _TemporalExtent("2025-05-06", None)
+        extent = TemporalExtent("2025-05-06", None)
         assert extent.intersects(nominal="2025-05-05") == False
         assert extent.intersects(nominal="2025-05-06") == True
         assert extent.intersects(nominal="2099-11-11") == True
         assert extent.intersects(nominal=None) == True
 
     def test_intersects_start_end_basic(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(start_datetime="2022-02-02", end_datetime="2022-02-03") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-04-04") == True
         assert extent.intersects(start_datetime="2025-03-10", end_datetime="2025-04-04") == True
@@ -1426,7 +1426,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime=None, end_datetime="2025-04-04") == True
 
     def test_intersects_start_end_edges(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:10") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:11") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:12") == True
@@ -1436,7 +1436,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-05-06T22:22:23", end_datetime="2025-08-08") == False
 
     def test_intersects_start_end_timezones(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
+        extent = TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12Z") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12+06") == False
@@ -1444,7 +1444,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T10:10:10-03") == True
 
     def test_intersects_start_end_half_open(self):
-        extent = _TemporalExtent(None, "2025-05-06")
+        extent = TemporalExtent(None, "2025-05-06")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == False
@@ -1453,7 +1453,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-06-06", end_datetime=None) == False
         assert extent.intersects(start_datetime=None, end_datetime="2025-05-05") == True
 
-        extent = _TemporalExtent("2025-05-06", None)
+        extent = TemporalExtent("2025-05-06", None)
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == True
@@ -1464,11 +1464,11 @@ class TestTemporalExtent:
 
     def test_intersects_nominal_vs_start_end(self):
         """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293"""
-        extent = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent = TemporalExtent("2024-02-01", "2024-02-10")
         assert extent.intersects(nominal="2024-01-01", start_datetime="2024-01-01", end_datetime="2024-12-31") == True
 
     def test_intersects_interval(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects_interval(["2022-02-02", "2022-02-03"]) == False
         assert extent.intersects_interval(["2025-02-02", "2025-04-04"]) == True
         assert extent.intersects_interval(["2025-03-10", "2025-04-04"]) == True
@@ -1481,11 +1481,11 @@ class TestTemporalExtent:
         assert extent.intersects_interval([None, "2025-04-04"]) == True
 
     def test_as_cache_key(self):
-        extent1 = _TemporalExtent("2024-02-01", "2024-02-10")
-        extent2 = _TemporalExtent("2024-02-01", "2024-02-10")
-        extent3 = _TemporalExtent(None, "2024-02-10")
-        extent4 = _TemporalExtent(None, "2024-02-10")
-        extent5 = _TemporalExtent("2024-02-10", None)
+        extent1 = TemporalExtent("2024-02-01", "2024-02-10")
+        extent2 = TemporalExtent("2024-02-01", "2024-02-10")
+        extent3 = TemporalExtent(None, "2024-02-10")
+        extent4 = TemporalExtent(None, "2024-02-10")
+        extent5 = TemporalExtent("2024-02-10", None)
 
         cache = {extent1: 1, extent3: 3}
         assert cache[extent2] == 1
@@ -1529,7 +1529,7 @@ class TestTemporalExtent:
         ],
     )
     def test_from_load_param_extent(self, given, expected):
-        extent = _TemporalExtent.from_load_param_extent(given)
+        extent = TemporalExtent.from_load_param_extent(given)
         assert extent.as_tuple() == expected
 
 
@@ -1694,12 +1694,12 @@ class TestSpatialExtent:
 
 class TestSpatialFilteringGeometries:
     def test_empty(self):
-        sfg = _SpatialFilteringGeometries(geometries=None)
+        sfg = SpatialFilteringGeometries(geometries=None)
         assert sfg.get_simplified_geojson() is None
 
     def test_simple_box_geoseries(self):
         geometries = geopandas.GeoSeries([shapely.geometry.box(1, 2, 3, 4)])
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        sfg = SpatialFilteringGeometries(geometries=geometries)
         simplified = sfg.get_simplified_geojson()
         simplified = json.loads(simplified)
         assert simplified == {
@@ -1710,7 +1710,7 @@ class TestSpatialFilteringGeometries:
     def test_simple_box_vector_cube(self):
         gdf = geopandas.GeoDataFrame(geometry=[shapely.geometry.box(1, 2, 3, 4)])
         geometries = DriverVectorCube(geometries=gdf)
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        sfg = SpatialFilteringGeometries(geometries=geometries)
         simplified = sfg.get_simplified_geojson()
         simplified = json.loads(simplified)
         assert simplified == {
@@ -1731,7 +1731,7 @@ class TestSpatialFilteringGeometries:
         ],
     )
     def test_unsupported_geometry_types(self, gdf):
-        sfg = _SpatialFilteringGeometries(geometries=gdf)
+        sfg = SpatialFilteringGeometries(geometries=gdf)
         assert sfg.get_simplified_geojson() is None
 
 
@@ -1770,7 +1770,7 @@ class TestSpatioTemporalExtent:
         ],
     )
     def test_item_intersects(self, bbox, properties, expected):
-        extent = _SpatioTemporalExtent(
+        extent = SpatioTemporalExtent(
             bbox=BoundingBox(west=21, south=35, east=25, north=38, crs=4326),
             from_date="2024-02-01",
             to_date="2024-02-10",
@@ -1804,7 +1804,7 @@ class TestSpatioTemporalExtent:
         ],
     )
     def test_collection_intersects_simple(self, bboxes, intervals, expected):
-        extent = _SpatioTemporalExtent(
+        extent = SpatioTemporalExtent(
             bbox=BoundingBox(west=21, south=35, east=25, north=38, crs=4326),
             from_date="2024-02-01",
             to_date="2024-02-10",
@@ -1821,11 +1821,11 @@ class TestSpatioTemporalExtent:
 
     def test_as_cache_key(self):
         bbox1 = BoundingBox(west=1, south=2, east=3, north=4, crs=4326)
-        extent1 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
-        extent2 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
-        extent3 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
-        extent4 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
-        extent5 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
+        extent1 = SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent2 = SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent3 = SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent4 = SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent5 = SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
 
         cache = {extent1: 1, extent3: 3}
         assert cache[extent2] == 1
@@ -2685,7 +2685,7 @@ class TestAdaptingPropertyFilter:
 class TestItemCollection:
     def test_from_stac_item_basic(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
         item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
 
         assert item_collection.items == [item]
@@ -2702,7 +2702,7 @@ class TestItemCollection:
         item = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-09-04", bbox=[20, 30, 25, 35]))
 
         from_date, to_date = interval
-        spatiotemporal_extent = _SpatioTemporalExtent(
+        spatiotemporal_extent = SpatioTemporalExtent(
             bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
         )
         item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
@@ -2729,7 +2729,7 @@ class TestItemCollection:
     @gps_config_overrides()
     def test_from_own_job(self, bbox, interval, expected):
         from_date, to_date = interval
-        spatiotemporal_extent = _SpatioTemporalExtent(
+        spatiotemporal_extent = SpatioTemporalExtent(
             bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
         )
 
@@ -2808,7 +2808,7 @@ class TestItemCollection:
         collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
         collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
 
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
         item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
         assert item_collection.items == [item1, item2]
 
@@ -2844,7 +2844,7 @@ class TestItemCollection:
         from_date, to_date = interval or (None, None)
         if bbox:
             bbox = BoundingBox.from_wsen_tuple(bbox, crs=4326)
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
         item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
 
         expected = [{1: item1, 2: item2}[x] for x in expected]
@@ -2881,7 +2881,7 @@ class TestItemCollection:
         given_url = f"{dummy_stac_api}/collections/collection-123"
         collection: pystac.Collection = pystac.read_file(given_url)
         property_filter = PropertyFilter(properties={})
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
         item_collection = ItemCollection.from_stac_api(
             collection,
             original_url=given_url,
@@ -2902,7 +2902,7 @@ class TestItemCollection:
         given_url = f"{dummy_stac_api}/collections/custom-s2"
         collection: pystac.Collection = pystac.read_file(given_url)
         property_filter = PropertyFilter(properties={})
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=from_date, to_date=to_date)
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=None, from_date=from_date, to_date=to_date)
         item_collection = ItemCollection.from_stac_api(
             collection,
             original_url=given_url,
@@ -2928,7 +2928,7 @@ class TestItemCollection:
         given_url = f"{dummy_stac_api}/collections/custom-s2"
         collection: pystac.Collection = pystac.read_file(given_url)
         property_filter = PropertyFilter(properties={})
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date="2024-01-01", to_date="2025-01-01")
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=bbox, from_date="2024-01-01", to_date="2025-01-01")
         item_collection = ItemCollection.from_stac_api(
             collection,
             original_url=given_url,
@@ -3020,7 +3020,7 @@ class TestItemCollection:
                 }
             }
         )
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
         item_collection = ItemCollection.from_stac_api(
             collection,
             original_url=given_url,
@@ -3065,7 +3065,7 @@ class TestItemCollection:
             north=7800000,
             crs="EPSG:32601",
         )
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox)
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=bbox)
         item_collection = ItemCollection.from_stac_api(
             collection,
             original_url=given_url,
@@ -3116,7 +3116,7 @@ class TestItemCollection:
             collection,
             original_url=given_url,
             property_filter=PropertyFilter(properties={}),
-            spatiotemporal_extent=_SpatioTemporalExtent(),
+            spatiotemporal_extent=SpatioTemporalExtent(),
             max_items=max_items,
         )
         assert [item.id for item in item_collection.items] == expected_items
@@ -3193,7 +3193,7 @@ class TestItemCollection:
                 collection,
                 original_url=collection_url,
                 property_filter=PropertyFilter(properties={}),
-                spatiotemporal_extent=_SpatioTemporalExtent(),
+                spatiotemporal_extent=SpatioTemporalExtent(),
             )
 
         # The item must be returned despite the bad asset
@@ -3281,7 +3281,7 @@ class TestItemCollection:
                 }
             }
         )
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        spatiotemporal_extent = SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
         item_collection = ItemCollection.from_stac_api(
             collection,
             original_url=given_url,
@@ -3353,7 +3353,7 @@ class TestItemCollection:
             collection,
             original_url=given_url,
             property_filter=PropertyFilter(properties={}),
-            spatiotemporal_extent=_SpatioTemporalExtent(bbox=None, from_date="2025-01-01", to_date=None),
+            spatiotemporal_extent=SpatioTemporalExtent(bbox=None, from_date="2025-01-01", to_date=None),
         )
         assert set(item.id for item in orig.items) == {
             "item-0",
@@ -3374,7 +3374,7 @@ class TestItemCollection:
 
     def test_serialization_basic(self, tmp_path):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
-        spatiotemporal_extent = _SpatioTemporalExtent()
+        spatiotemporal_extent = SpatioTemporalExtent()
         orig = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
 
         # Serialize to file
@@ -3392,7 +3392,7 @@ class TestItemCollection:
             collection,
             original_url=given_url,
             property_filter=PropertyFilter(properties={}),
-            spatiotemporal_extent=_SpatioTemporalExtent(),
+            spatiotemporal_extent=SpatioTemporalExtent(),
         )
 
         # Serialize to file
@@ -4071,7 +4071,7 @@ class TestPrepareContext:
         ],
     )
     def test_get_pixel_value_scaling_mode(self, feature_flags, url, expected):
-        apply_sentinel2_reflectance_offset = _get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
+        apply_sentinel2_reflectance_offset = get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
         assert apply_sentinel2_reflectance_offset == expected
 
     @pytest.mark.parametrize(
@@ -4736,16 +4736,16 @@ class TestPrepareContext:
 
 class TestResolutionTracker:
     def test_empty(self):
-        tracker = _ResolutionTracker()
+        tracker = ResolutionTracker()
         assert tracker.finest_for() == (set(), None)
 
     def test_no_keys(self):
-        tracker = _ResolutionTracker()
+        tracker = ResolutionTracker()
         tracker.track(epsg=4326, res=(1, 2))
         assert tracker.finest_for() == ({4326}, (1, 2))
 
     def test_basic(self):
-        tracker = _ResolutionTracker()
+        tracker = ResolutionTracker()
         tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
         tracker.track(key="B01", epsg=4326, res=(0.2, 0.2))
         tracker.track(key="B02", epsg=4326, res=(0.3, 0.3))
@@ -4757,14 +4757,14 @@ class TestResolutionTracker:
         assert tracker.finest_for(["B01", "B03"]) == ({4326}, (0.1, 0.1))
 
     def test_multi_epsg(self):
-        tracker = _ResolutionTracker()
+        tracker = ResolutionTracker()
         tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
         tracker.track(key="B01", epsg=32631, res=(10, 10))
 
         assert tracker.finest_for(["B01"]) == ({4326, 32631}, None)
 
     def test_multi_utm(self):
-        tracker = _ResolutionTracker()
+        tracker = ResolutionTracker()
         tracker.track(key="B01", epsg=32629, res=(10, 10))
         tracker.track(key="B01", epsg=32631, res=(10, 10))
         tracker.track(key="B02", epsg=32631, res=(20, 20))

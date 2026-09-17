@@ -251,7 +251,7 @@ class TestBuildStacOpenSearchClient:
 
     def _create_mock_item_collection(self, items: list):
         """Create a mock ItemCollection."""
-        from openeogeotrellis.load_stac import ItemCollection
+        from openeogeotrellis.stac.item_collection import ItemCollection
 
         item_collection = mock.MagicMock(spec=ItemCollection)
         item_collection.items = items

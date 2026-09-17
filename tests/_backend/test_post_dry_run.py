@@ -22,7 +22,7 @@ from openeogeotrellis._backend.post_dry_run import (
     _snap_bbox,
     determine_global_extent,
 )
-from openeogeotrellis.load_stac import _ProjectionMetadata
+from openeogeotrellis.stac.projection import ProjectionMetadata
 
 
 class TestGridInfo:
@@ -1473,19 +1473,19 @@ class TestPostDryRun:
 class TestDetermineBestGridFromProjMetadata:
     def test_empty(self):
         assert _determine_best_grid_from_proj_metadata([]) is None
-        assert _determine_best_grid_from_proj_metadata([_ProjectionMetadata()]) is None
+        assert _determine_best_grid_from_proj_metadata([ProjectionMetadata()]) is None
 
     def test_simple_crs(self):
-        grid = _determine_best_grid_from_proj_metadata([_ProjectionMetadata(epsg=4326)])
+        grid = _determine_best_grid_from_proj_metadata([ProjectionMetadata(epsg=4326)])
         assert grid == _GridInfo(crs="EPSG:4326", resolution=None)
 
     def test_most_common_crs(self):
         grid = _determine_best_grid_from_proj_metadata(
             [
-                _ProjectionMetadata(epsg=32632),
-                _ProjectionMetadata(epsg=32631),
-                _ProjectionMetadata(),
-                _ProjectionMetadata(epsg=32631),
+                ProjectionMetadata(epsg=32632),
+                ProjectionMetadata(epsg=32631),
+                ProjectionMetadata(),
+                ProjectionMetadata(epsg=32631),
             ]
         )
         assert grid == _GridInfo(crs="EPSG:32631")
@@ -1493,10 +1493,10 @@ class TestDetermineBestGridFromProjMetadata:
     def test_most_common_crs_except_none(self):
         grid = _determine_best_grid_from_proj_metadata(
             [
-                _ProjectionMetadata(),
-                _ProjectionMetadata(epsg=32631),
-                _ProjectionMetadata(),
-                _ProjectionMetadata(),
+                ProjectionMetadata(),
+                ProjectionMetadata(epsg=32631),
+                ProjectionMetadata(),
+                ProjectionMetadata(),
             ]
         )
         assert grid == _GridInfo(crs="EPSG:32631")
@@ -1506,10 +1506,10 @@ class TestDetermineBestGridFromProjMetadata:
         proj_shape = (10_000, 10_000)
         grid = _determine_best_grid_from_proj_metadata(
             [
-                _ProjectionMetadata(epsg=32632, bbox=proj_bbox, shape=proj_shape),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
-                _ProjectionMetadata(),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
+                ProjectionMetadata(epsg=32632, bbox=proj_bbox, shape=proj_shape),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
+                ProjectionMetadata(),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
             ]
         )
         assert grid == _GridInfo(crs="EPSG:32631", resolution=(10, 10))
@@ -1537,15 +1537,15 @@ class TestDetermineBestGridFromProjMetadata:
                 # 3 cases with resolution (10, 10)
                 # 4 cases with (10000, 10000)
                 # 2 cases with (10, 10) + imprecision:
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox_off, shape=proj_shape),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
-                _ProjectionMetadata(epsg=32631, bbox=proj_bbox_off, shape=proj_shape),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox_off, shape=proj_shape),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape_low_res),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox, shape=proj_shape),
+                ProjectionMetadata(epsg=32631, bbox=proj_bbox_off, shape=proj_shape),
             ]
         )
         assert grid == _GridInfo(crs="EPSG:32631", resolution=expected_resolution)
