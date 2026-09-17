@@ -271,6 +271,8 @@ spec:
         value: "TRUE"
       - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
         value: "{{fuse_mount_batchjob_s3_bucket}}"
+      - name: OPENEO_OTEL_ENABLED
+        value: "{{ open_telemetry_enabled }}"
       - name: OPENEO_EJR_API
         value: {{ openeo_ejr_api }}
       - name: OPENEO_EJR_BACKEND_ID
@@ -328,10 +330,10 @@ spec:
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     ports:
       - containerPort: {{ open_telemetry_prometheus_port | default(9464, true) }}
-        name: prom-executor
+        name: prom-scala
         protocol: TCP
       - containerPort: {{ open_telemetry_prometheus_port_python | default(9465, true) }}
-        name: prom-executor
+        name: prom-python
         protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true

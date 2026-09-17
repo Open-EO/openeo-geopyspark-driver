@@ -99,6 +99,7 @@ from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_render_manifest_template,
     k8s_get_batch_job_cfg_secret_name,
+    k8s_set_secret_owner_reference,
     truncate_user_id_k8s,
     ensure_kubernetes_config,
 )
@@ -2037,7 +2038,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         api_instance_core.create_namespaced_secret(
                             pod_namespace, s3_profiles_cfg_batch_secret, pretty=True
                         )
-                    api_instance_custom_object.create_namespaced_custom_object(
+                    spark_app = api_instance_custom_object.create_namespaced_custom_object(
                         "sparkoperator.k8s.io",
                         "v1beta2",
                         pod_namespace,
@@ -2052,6 +2053,16 @@ class GpsBatchJobs(backend.BatchJobs):
                         user_id=user_id,
                         results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
                     )
+                    if get_backend_config().provide_s3_profiles_and_tokens:
+                        # Adopt the secret (which had to be created before the Spark application that mounts it)
+                        # so that Kubernetes cleans it up together with the Spark application.
+                        k8s_set_secret_owner_reference(
+                            api_instance_core,
+                            namespace=pod_namespace,
+                            secret_name=batch_job_cfg_secret_name,
+                            owner=spark_app,
+                            log=log,
+                        )
 
                 except ApiException as e:
                     log.error("failed to submit Spark application", exc_info=True)
