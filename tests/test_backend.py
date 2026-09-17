@@ -9,6 +9,7 @@ from typing import Union
 from unittest.mock import MagicMock
 
 import dirty_equals
+import kubernetes.client.exceptions
 import mock
 import pytest
 import shapely
@@ -33,7 +34,11 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
+from openeogeotrellis.integrations.kubernetes import (
+    k8s_render_manifest_template,
+    k8s_set_secret_owner_reference,
+    K8S_SPARK_APP_STATE,
+)
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
@@ -857,6 +862,74 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
     )
 
 
+class TestK8sSetSecretOwnerReference:
+    SPARK_APP = {
+        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+        "kind": "SparkApplication",
+        "metadata": {"name": "a-1234", "namespace": "spark-jobs", "uid": "cafe-1234"},
+    }
+
+    def test_sets_owner_reference(self):
+        core_api = mock.Mock()
+
+        assert (
+            k8s_set_secret_owner_reference(
+                core_api, namespace="spark-jobs", secret_name="cfg-a-1234", owner=self.SPARK_APP
+            )
+            is True
+        )
+
+        core_api.patch_namespaced_secret.assert_called_once_with(
+            name="cfg-a-1234",
+            namespace="spark-jobs",
+            body={
+                "metadata": {
+                    "ownerReferences": [
+                        {
+                            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+                            "kind": "SparkApplication",
+                            "name": "a-1234",
+                            "uid": "cafe-1234",
+                            "controller": False,
+                            # Must stay False: we have no "update" permission on the owner's finalizers.
+                            "blockOwnerDeletion": False,
+                        }
+                    ]
+                }
+            },
+        )
+
+    @pytest.mark.parametrize("owner", [{}, {"metadata": {}}, {"metadata": {"name": "a-1234"}}])
+    def test_no_uid_in_owner(self, owner, caplog):
+        caplog.set_level(logging.WARNING)
+        core_api = mock.Mock()
+
+        assert (
+            k8s_set_secret_owner_reference(core_api, namespace="spark-jobs", secret_name="cfg-a-1234", owner=owner)
+            is False
+        )
+
+        core_api.patch_namespaced_secret.assert_not_called()
+        assert "Not setting owner reference on secret cfg-a-1234" in caplog.text
+
+    def test_patch_failure_is_just_a_warning(self, caplog):
+        """Adopting the secret is best effort: a separate cleanup based on "created_at" remains the safety net."""
+        caplog.set_level(logging.WARNING)
+        core_api = mock.Mock()
+        core_api.patch_namespaced_secret.side_effect = kubernetes.client.exceptions.ApiException(
+            status=403, reason="Forbidden"
+        )
+
+        assert (
+            k8s_set_secret_owner_reference(
+                core_api, namespace="spark-jobs", secret_name="cfg-a-1234", owner=self.SPARK_APP
+            )
+            is False
+        )
+
+        assert "Failed to set owner reference on secret cfg-a-1234" in caplog.text
+
+
 def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_config_path):
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",
@@ -1200,6 +1273,71 @@ class TestGpsBatchJobs:
         backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
         mock_create_spark_pod.assert_called_once()
         assert job.get("results_metadata_uri") == f"s3://{mock_s3_bucket.name}/batch_jobs/{job_id}/job_metadata.json"
+
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.create_namespaced_secret", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.patch_namespaced_secret", return_value=mock.MagicMock())
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.create_namespaced_custom_object",
+        return_value={
+            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+            "kind": "SparkApplication",
+            "metadata": {"name": "a-1234", "uid": "cafe-1234"},
+        },
+    )
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
+        return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
+    )
+    def test_start_k8s_job_adopts_batch_job_cfg_secret(
+        self,
+        mock_get_spark_pod_status,
+        mock_create_spark_pod,
+        mock_patch_secret,
+        mock_create_secret,
+        mock_get_pod_image,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_s3_bucket,
+        fast_sleep,
+    ):
+        """The batch job config secret is created before the Spark application, and adopted by it afterwards."""
+        with gps_config_overrides(provide_s3_profiles_and_tokens=True):
+            self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+            job_id, job = next(iter(job_registry.db.items()))
+
+            backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+
+        # Job started as usual.
+        assert job["status"] == JOB_STATUS.QUEUED
+        assert job["application_id"] is not None
+        mock_create_secret.assert_called_once()
+        mock_create_spark_pod.assert_called_once()
+
+        # And the secret is now owned by the Spark application.
+        secret_name = f"cfg-{job['application_id']}"
+        mock_patch_secret.assert_called_once()
+        _, kwargs = mock_patch_secret.call_args
+        assert kwargs["name"] == secret_name
+        assert kwargs["body"] == {
+            "metadata": {
+                "ownerReferences": [
+                    {
+                        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+                        "kind": "SparkApplication",
+                        "name": "a-1234",
+                        "uid": "cafe-1234",
+                        "controller": False,
+                        "blockOwnerDeletion": False,
+                    }
+                ]
+            }
+        }
 
     def test_getters_read_from_s3_results_metadata_uri(
         self,
