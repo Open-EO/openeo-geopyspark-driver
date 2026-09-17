@@ -789,6 +789,20 @@ class TestSentinel5:
             equal_nan=True,
         )
 
+    def test_data_loading_with_complex_bounding_box(self):
+        nc_file_path = Path(
+            "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
+        )
+        assert nc_file_path.exists()
+        params = {
+            "filename": str(nc_file_path),
+            "spatial_extent": {"west": -180, "south": -90, "east": 180, "north": 90},
+            "temporal_extent": ["2026-09-10T07:30:00Z", "2026-09-10T09:30:00Z"],
+            "filter_value": 0.0,
+        }
+        data = load_level2_data(params)
+        print("Inspect results manually")
+
     def test_data_loading_no2(self):
         """Test if it loads all bands, data and shape of bands."""
         params = {

@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Optional, Sequence
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, box
+from shapely.geometry.base import BaseGeometry
 import numpy as np
 from netCDF4 import Dataset, num2date
+from shapely.geometry.multipolygon import MultiPolygon
 
 from openeogeotrellis.utils import typechecked
 
@@ -164,7 +166,29 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
 
 
 @typechecked
-def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
+def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
+    assert lat.ndim == 2 and lon.ndim == 2
+    assert lat.shape == lon.shape
+    # print(lat.shape)  # (4172, 215)
+    latitude_threshold = 85
+    # return get_bounding_polygon_specific(lat, lon)
+
+    polygons = []
+    start_ok = None
+    was_ok = False
+    for i in range(lat.shape[0]):
+        max_lat = max(abs(lat[i, :]))
+        is_ok = max_lat < latitude_threshold and i < lat.shape[0] - 1
+        if not was_ok and is_ok:
+            start_ok = i
+        elif was_ok and not is_ok:
+            polygons.append(get_bounding_polygon_specific(lat[start_ok:i, :], lon[start_ok:i, :]))
+        was_ok = is_ok
+    return MultiPolygon(polygons)
+
+
+@typechecked
+def get_bounding_polygon_specific(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     """Get bounding polygon from lat-lon arrays.
 
     Args:
@@ -200,13 +224,13 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
 
 
 @typechecked
-def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: Polygon) -> np.ndarray:
+def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: BaseGeometry) -> np.ndarray:
     """Mask coordinates (lat,lon) that are not inside the polygon.
 
     Args:
         lon (2d Array of float): Pixel centers longitude.
         lat (2d Array of float): Pixel centers latitude.
-        polygon (shapely Polygon): Polygon to mask the coordinates.
+        polygon (shapely geometry): Polygon (or MultiPolygon) to mask the coordinates.
 
     Returns:
         mask (Array of bool): Boolean mask for the coordinates inside the polygon.
