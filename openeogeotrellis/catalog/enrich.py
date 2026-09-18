@@ -6,8 +6,9 @@ from typing import Callable, Dict, List, Optional, Union
 from openeo.util import deep_get
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
+
+from . import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.util.logging import TrackingIter
 
