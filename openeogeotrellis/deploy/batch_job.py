@@ -358,7 +358,7 @@ def run_job(
     finalize.finalize_job(
         result,
         tracer=tracer,
-        process_graph=pg_copy,
+        process_graph=process_graph,
         job_specification=job_specification,
         job_dir=job_dir,
         output_file=output_file,
