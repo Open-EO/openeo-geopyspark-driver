@@ -87,7 +87,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL, WHITELIST
-from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.catalog.collection_metadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.credit_check import ExecutionDetails
 from openeogeotrellis.integrations.credit_check_registry import get_batch_execution_details

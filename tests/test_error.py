@@ -788,7 +788,7 @@ If you need help, create an issue at https://github.com/tensorflow/tensorflow/is
 def test_empty_assert_message():
     with pytest.raises(AssertionError) as e_info:
         from openeogeotrellis.collections.testing import load_test_collection
-        from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+        from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 
         # triggering an assert error directly here gives a default error message.
         # This nested assert gives an empty message:
