@@ -710,8 +710,6 @@ class TestCalrissianJobLauncher:
 
     def test_datacube_to_cwl_argument(self, api110, tmp_path):
         from openeogeotrellis.backend import GpsUdfRuntimes
-        from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
-        import glob
         import rasterio
 
         example_collection_json = str(
@@ -767,7 +765,7 @@ class TestCalrissianJobLauncher:
         ), mock.patch("openeogeotrellis.integrations.calrissian.ensure_kubernetes_config"), gps_config_overrides(
             batch_job_work_dir_root=str(tmp_path)
         ):
-            run_graph_locally(process_graph=process_graph, output_dir=tmp_path)
+            response = api110.check_result(process_graph)
 
         # The CWL job should have received the "datacube_s2" context argument
         # as a string (path/URL to the STAC catalog written for it), not the raw datacube object.
@@ -775,9 +773,8 @@ class TestCalrissianJobLauncher:
         cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
         assert isinstance(cwl_arguments["datacube_s2"], str)
 
-        files = list(glob.glob(str(tmp_path / "*.tif")))
-        print(files)
-        output_file = files[0]
+        output_file = tmp_path / "result.tif"
+        output_file.write_bytes(response.data)
 
         with rasterio.open(output_file) as ds:
             # dummy_stac.cwl should return a catalog with B04, B03, B02 bands, ignoring the input argument.
