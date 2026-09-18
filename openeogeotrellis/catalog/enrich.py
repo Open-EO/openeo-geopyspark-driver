@@ -9,8 +9,8 @@ from openeo_driver.util.http import requests_with_retry
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
+from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.util.logging import TrackingIter
-from openeogeotrellis.utils import dict_merge_recursive
 
 logger = logging.getLogger(__name__)
 
