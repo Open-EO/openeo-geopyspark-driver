@@ -2,7 +2,7 @@ import pytest
 from openeo_driver.backend import LoadParameters
 from openeo_driver.errors import OpenEOApiException
 
-from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import CollectionCubeMetadata
 from openeogeotrellis.catalog.layer_catalog import LayerCatalog
 
 
@@ -14,7 +14,7 @@ def _load_params(**kwargs) -> LoadParameters:
 
 
 def test_native_crs_epsg_int():
-    metadata = GeopysparkCubeMetadata({
+    metadata = CollectionCubeMetadata({
         "id": "S1",
         "cube:dimensions": {
             "x": {"type": "spatial", "axis": "x", "reference_system": 4326},
@@ -25,7 +25,7 @@ def test_native_crs_epsg_int():
 
 
 def test_native_crs_auto_utm():
-    metadata = GeopysparkCubeMetadata({
+    metadata = CollectionCubeMetadata({
         "id": "S1",
         "cube:dimensions": {
             "x": {"type": "spatial", "axis": "x", "reference_system": {"id": {"authority": "OGC", "code": "Auto42001"}}},
@@ -36,7 +36,7 @@ def test_native_crs_auto_utm():
 
 
 def test_native_crs_no_dimensions_defaults_to_utm():
-    metadata = GeopysparkCubeMetadata({"id": "S1"})
+    metadata = CollectionCubeMetadata({"id": "S1"})
     assert LayerCatalog(all_metadata=[]).native_crs(metadata) == "UTM"
 
 
@@ -92,7 +92,7 @@ def test_resolve_merged_by_common_name_picks_highest_priority_available():
             "_vito": {"data_source": {"provider:backend": "high", "common_name_priority": 2}},
         },
     ])
-    metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata("MERGED"))
+    metadata = CollectionCubeMetadata(catalog.get_collection_metadata("MERGED"))
     resolved = catalog.resolve_merged_by_common_name(
         "MERGED", metadata, _load_params(properties={}), temporal_extent=("2020-01-01", "2020-02-01"),
         spatial_extent={"west": 0, "south": 0, "east": 1, "north": 1},
@@ -104,7 +104,7 @@ def test_resolve_merged_by_common_name_no_fitting_provider_raises():
     catalog = LayerCatalog(all_metadata=[
         {"id": "MERGED", "_vito": {"data_source": {"merged_collections": []}}},
     ])
-    metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata("MERGED"))
+    metadata = CollectionCubeMetadata(catalog.get_collection_metadata("MERGED"))
     with pytest.raises(OpenEOApiException):
         catalog.resolve_merged_by_common_name(
             "MERGED", metadata, _load_params(properties={}), temporal_extent=("2020-01-01", "2020-02-01"),

@@ -33,7 +33,7 @@ def clean_number_pair(tuple_to_clean):
     return None
 
 
-class GeopysparkCubeMetadata(CollectionMetadata):
+class CollectionCubeMetadata(CollectionMetadata):
     """
     GeoPySpark Cube metadata (additional tracking of spatial and temporal extent
     """
@@ -66,7 +66,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def _clone_and_update(
             self, metadata: dict = None, dimensions: List[Dimension] = None,
             spatial_extent: dict = None, temporal_extent: tuple = None, **kwargs
-    ) -> 'GeopysparkCubeMetadata':
+    ) -> 'CollectionCubeMetadata':
         # noinspection PyTypeChecker
         return super()._clone_and_update(
             metadata=metadata, dimensions=dimensions,
@@ -75,7 +75,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             **kwargs
         )
 
-    def filter_bbox(self, west, south, east, north, crs) -> 'GeopysparkCubeMetadata':
+    def filter_bbox(self, west, south, east, north, crs) -> 'CollectionCubeMetadata':
         """Create new metadata instance with spatial extent"""
         # TODO take intersection with existing extent
         return self._clone_and_update(
@@ -86,7 +86,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def spatial_extent(self) -> Union[dict, None]:
         return self._spatial_extent
 
-    def filter_temporal(self, start: Union[str, None], end: Union[str, None]) -> "GeopysparkCubeMetadata":
+    def filter_temporal(self, start: Union[str, None], end: Union[str, None]) -> "CollectionCubeMetadata":
         """Create new metadata instance with temporal extent"""
         # TODO: support time zones other than UTC
         # TODO: support date/datetime objects too

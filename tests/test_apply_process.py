@@ -16,15 +16,15 @@ from pyspark import SparkContext
 from shapely.geometry import Point
 
 from openeogeotrellis.geopysparkdatacube import (
-    GeopysparkCubeMetadata,
+    CollectionCubeMetadata,
     GeopysparkDataCube,
 )
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 
 
-def _build_metadata(bands: List[str] = ["B01", "B02"]) -> GeopysparkCubeMetadata:
+def _build_metadata(bands: List[str] = ["B01", "B02"]) -> CollectionCubeMetadata:
     """Helper to build metadata instance"""
-    return GeopysparkCubeMetadata(
+    return CollectionCubeMetadata(
         {
             "cube:dimensions": {"bands": {"type": "bands", "values": bands}},
             "summaries": {"eo:bands": [{"name": b, "common_name": "common" + b} for b in bands]},
@@ -191,7 +191,7 @@ def test_apply_complex_graph():
 def test_reduce_bands():
     input = create_spacetime_layer()
     input = gps.Pyramid({0: input})
-    collection_metadata = GeopysparkCubeMetadata(
+    collection_metadata = CollectionCubeMetadata(
         {
             "cube:dimensions": {
                 "my_bands": {"type": "bands", "values": ["B04", "B08"]},
@@ -350,7 +350,7 @@ def create_red_nir_layer() -> 'GeopysparkDataCube':
     red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
     layer = _create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
     pyramid = gps.Pyramid({0: layer})
-    metadata = GeopysparkCubeMetadata(
+    metadata = CollectionCubeMetadata(
         {
             "cube:dimensions": {
                 "x": {"type": "spatial", "axis": "x"},
@@ -372,7 +372,7 @@ def create_elevation_layer():
     elevation_1, elevation_2 = np.mgrid[0:10, 0:10]
     layer = _create_spacetime_layer(cells=np.array([[elevation_1], [elevation_2]]))
     pyramid = gps.Pyramid({0: layer})
-    metadata = GeopysparkCubeMetadata(
+    metadata = CollectionCubeMetadata(
         {
             "cube:dimensions": {
                 "x": {"type": "spatial", "axis": "x"},

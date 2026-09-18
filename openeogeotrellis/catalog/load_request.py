@@ -13,7 +13,7 @@ from shapely.geometry import box
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.util.datetime import normalize_temporal_extent
 
-from .collection_metadata import GeopysparkCubeMetadata
+from .collection_metadata import CollectionCubeMetadata
 
 if TYPE_CHECKING:
     # imported lazily to avoid a load_request.py <-> layer_catalog.py import cycle at runtime
@@ -66,7 +66,7 @@ class CollectionLoadRequest:
     """
 
     collection_id: str  # after merged_by_common_name resolution
-    metadata: GeopysparkCubeMetadata  # band-filtered, renamed, temporal+bbox filtered
+    metadata: CollectionCubeMetadata  # band-filtered, renamed, temporal+bbox filtered
     source_info: dict  # the "_vito"."data_source" block
     source_type: str  # lowercased
     west: float
@@ -141,7 +141,7 @@ def resolve_load_request(
             east = 180
             north = 90
 
-    metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id))
+    metadata = CollectionCubeMetadata(catalog.get_collection_metadata(collection_id))
     layer_source_info = metadata.get("_vito", "data_source", default={})
 
     if layer_source_info.get("type") == "merged_by_common_name":

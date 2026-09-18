@@ -12,7 +12,7 @@ from openeo_driver.errors import OpenEOApiException
 
 from openeogeotrellis.util.datetime import normalize_temporal_extent, parse_approximate_isoduration
 
-from .collection_metadata import GeopysparkCubeMetadata
+from .collection_metadata import CollectionCubeMetadata
 from .validation import check_missing_products
 
 logger = logging.getLogger(__name__)
@@ -22,10 +22,10 @@ class LayerCatalog(CollectionCatalog):
     """Collection metadata, without any engine-specific loading."""
 
     def resolve_merged_by_common_name(
-        self, collection_id: str, metadata: GeopysparkCubeMetadata, load_params: LoadParameters,
+        self, collection_id: str, metadata: CollectionCubeMetadata, load_params: LoadParameters,
         temporal_extent: Tuple[str, str], spatial_extent: dict
-    ) -> GeopysparkCubeMetadata:
-        upstream_metadatas = [GeopysparkCubeMetadata(self.get_collection_metadata(cid))
+    ) -> CollectionCubeMetadata:
+        upstream_metadatas = [CollectionCubeMetadata(self.get_collection_metadata(cid))
                               for cid in metadata.get("_vito", "data_source", "merged_collections")]
         # Check sources in order of priority and skip ones where we can detect missing products.
         for m in sorted(upstream_metadatas, key=lambda m: m.common_name_priority(), reverse=True):
@@ -45,7 +45,7 @@ class LayerCatalog(CollectionCatalog):
 
         raise OpenEOApiException(message=f"No fitting provider:backend found for {collection_id!r}")
 
-    def native_crs(self, metadata: GeopysparkCubeMetadata) -> str:
+    def native_crs(self, metadata: CollectionCubeMetadata) -> str:
         dimension_crss = [d.crs for d in metadata.spatial_dimensions]
 
         if len(dimension_crss) > 0:
@@ -74,7 +74,7 @@ class LayerCatalog(CollectionCatalog):
         self, collection_id: str, load_params: LoadParameters
     ) -> Tuple[Optional[str], Optional[str]]:
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
-        metadata = GeopysparkCubeMetadata(metadata_json)
+        metadata = CollectionCubeMetadata(metadata_json)
 
         temporal_extent_constraints = load_params.temporal_extent
 
@@ -128,7 +128,7 @@ class LayerCatalog(CollectionCatalog):
         temporal_extent = self.derive_temporal_extent(collection_id, load_params)
 
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
-        metadata = GeopysparkCubeMetadata(metadata_json)
+        metadata = CollectionCubeMetadata(metadata_json)
 
         consider_as_singular_time_step = deep_get(metadata_json, "_vito", "data_source",
                                                   "consider_as_singular_time_step", default=False)
