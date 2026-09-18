@@ -15,11 +15,14 @@ import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 from openeogeotrellis.catalog.load_request import CollectionLoadRequest
+from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.utils import to_projected_polygons
+
+# Note: intentionally NOT importing `datetime` here — see build_creo_pyramid() below.
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +368,20 @@ def build_sentinel_hub_pyramid(request: CollectionLoadRequest, ctx: JvmLoadConte
         return PyramidSourceResult(pyramid=pyramid, metadata=metadata)
 
 
+def build_creo_pyramid(request: CollectionLoadRequest, ctx: JvmLoadContext) -> PyramidSourceResult:
+    mission = request.source_info['mission']
+    level = request.source_info['level']
+    catalog = CreoCatalogClient(mission=mission, level=level)
+    product_paths = catalog.query_product_paths(datetime.strptime(request.from_date[:10], "%Y-%m-%d"),
+                                                datetime.strptime(request.to_date[:10], "%Y-%m-%d"),
+                                                ulx=request.west, uly=request.north,
+                                                brx=request.east, bry=request.south)
+    # TODO: geotrelliss3.CreoPyramidFactory no longer exists.
+    pyramid = ctx.jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, request.metadata.band_names) \
+        .datacube_seq(ctx.projected_polygons_native_crs, request.from_date, request.to_date, {}, request.collection_id)
+    return PyramidSourceResult(pyramid=pyramid)
+
+
 def build_globspatialonly_pyramid(request: CollectionLoadRequest, ctx: JvmLoadContext) -> PyramidSourceResult:
     jvm = ctx.jvm
     metadata = request.metadata
@@ -557,6 +574,7 @@ SOURCE_BUILDERS: Dict[str, Callable[[CollectionLoadRequest, JvmLoadContext], Pyr
     "file-probav": build_file_probav_pyramid,
     "geotiff": build_geotiff_pyramid,
     "sentinel-hub": build_sentinel_hub_pyramid,
+    "creo": build_creo_pyramid,
     "file-cgls2": build_file_cgls_pyramid,
     "file-agera5": build_file_agera5_pyramid,
     "file-glob": build_file_agera5_pyramid,
