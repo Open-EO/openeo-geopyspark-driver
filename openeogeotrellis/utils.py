@@ -30,7 +30,6 @@ import pytz
 from epsel import on_first_time
 from kazoo.client import KazooClient
 
-from openeo.util import rfc3339
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
@@ -90,52 +89,6 @@ def mdc_remove(sc, jvm, *mdc_keys):
         jvm.org.slf4j.MDC.remove(key)
         sc.setLocalProperty(key, None)
 
-
-
-def dict_merge_recursive(a: collections.abc.Mapping, b: collections.abc.Mapping, overwrite=False) -> collections.abc.Mapping:
-    """
-    Merge two dictionaries recursively
-
-    :param a: first dictionary
-    :param b: second dictionary
-    :param overwrite: whether values of b can overwrite values of a
-    :return: merged dictionary
-
-    # TODO move this to utils module in openeo-python-driver or openeo-python-client?
-    """
-    # Start with shallow copy, we'll copy deeper parts where necessary through recursion.
-    result = dict(a)
-    for key, value in b.items():
-        if key in result:
-            if isinstance(value, collections.abc.Mapping) and isinstance(result[key], collections.abc.Mapping):
-                result[key] = dict_merge_recursive(result[key], value, overwrite=overwrite)
-            elif overwrite:
-                result[key] = value
-            elif result[key] == value:
-                pass
-            else:
-                raise ValueError("Can not automatically merge values {a!r} and {b!r} for key {k!r}"
-                                 .format(a=result[key], b=value, k=key))
-        else:
-            result[key] = value
-    return result
-
-
-def normalize_date(date_string: Union[str, None]) -> Union[str, None]:
-    if date_string is not None:
-        date = dateutil.parser.parse(date_string)
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=pytz.UTC)
-        return date.isoformat()
-    return None
-
-
-def normalize_temporal_extent(temporal_extent: Tuple[Union[str, None], Union[str, None]]) -> Tuple[str, str]:
-    start, end = temporal_extent
-    return (
-        normalize_date(start or "2000-01-01"),  # TODO: better fallback start date?
-        normalize_date(end or rfc3339.now_utc()),
-    )
 
 
 def describe_path(path: Union[Path, str]) -> dict:
@@ -595,22 +548,6 @@ def parse_json_from_output(output_str: str) -> Dict[str, Any]:
     return json.loads(json_str)
 
 
-def calculate_rough_area(geoms: Iterable[BaseGeometry]):
-    """
-    For every geometry, roughly estimate its area using its bounding box and return their sum.
-
-    @param geoms: the geometries to estimate the area for
-    @return: the sum of the estimated areas
-    """
-    total_area = 0
-    for geom in geoms:
-        if hasattr(geom, "geoms"):
-            total_area += calculate_rough_area(geom.geoms)
-        else:
-            total_area += (geom.bounds[2] - geom.bounds[0]) * (geom.bounds[3] - geom.bounds[1])
-    return total_area
-
-
 class StatsReporter:
     """
     Context manager to collect stats using `collections.Counter`
@@ -640,135 +577,6 @@ class StatsReporter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.report(f"{self.name}: {json.dumps(self.stats)}")
-
-
-def reproject_cellsize(
-        spatial_extent: dict,
-        input_resolution: tuple,
-        input_crs: str,
-        to_crs: str,
-) -> Tuple[float, float]:
-    """
-    :param spatial_extent: The spatial extent is needed, because conversion is often
-    different when done at the poles compared to the equator.
-    eg: When converting 1meter to degrees (in LatLon) at the North Pole, it can be way more degrees more in LatLon
-    compared to the same conversion at the equator.
-    :param input_resolution:
-    :param input_crs:
-    :param to_crs:
-    """
-    if "crs" not in spatial_extent:
-        spatial_extent = spatial_extent.copy()
-        spatial_extent["crs"] = "EPSG:4326"
-    west, south = spatial_extent["west"], spatial_extent["south"]
-    east, north = spatial_extent["east"], spatial_extent["north"]
-    spatial_extent_shaply = box(west, south, east, north)
-    if to_crs == "Auto42001" or input_crs == "Auto42001":
-        # Find correct UTM zone
-        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
-        if to_crs == "Auto42001":
-            to_crs = utm_zone_crs
-        if input_crs == "Auto42001":
-            input_crs = utm_zone_crs
-
-    p = spatial_extent_shaply.representative_point()
-    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], input_crs, always_xy=True)
-    x, y = transformer.transform(p.x, p.y)
-
-    cell_bbox = {
-        "west": x,
-        "east": x + input_resolution[0],
-        "south": y,
-        "north": y + input_resolution[1],
-        "crs": input_crs
-    }
-    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
-
-    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
-    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
-
-    return cell_width_reprojected, cell_height_reprojected
-
-
-def health_check_extent(extent):
-    crs = extent.get("crs", "EPSG:4326")
-    is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
-
-    if extent["west"] > extent["east"] or extent["south"] > extent["north"]:
-        logger.warning(f"health_check_extent extent with surface<0: {extent}")
-        return False
-
-    if is_utm:
-        # This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
-        utm_bounds = {
-            "west": 166021.44,
-            "south": -10000000,
-            "east": 833978.56,
-            "north": 10000000,
-        }
-        width = utm_bounds["east"] - utm_bounds["west"]
-        horizontal_tolerance = 5  # UTM zone has quite some horizontal tolerance
-        utm_bounds["west"] = utm_bounds["west"] - width * horizontal_tolerance
-        utm_bounds["east"] = utm_bounds["east"] + width * horizontal_tolerance
-        if (
-            extent["west"] < utm_bounds["west"]
-            or extent["east"] > utm_bounds["east"]
-            or extent["south"] < utm_bounds["south"]
-            or extent["north"] > utm_bounds["north"]
-        ):
-            logger.warning(f"health_check_extent dangerous extent: {extent}")
-            return False
-    elif crs == "EPSG:4326":
-        horizontal_tolerance = 1.1
-        if (
-            extent["west"] < -180 * horizontal_tolerance
-            or extent["east"] > 180 * horizontal_tolerance
-            or extent["south"] < -90
-            or extent["north"] > 90
-        ):
-            logger.warning(f"health_check_extent dangerous extent: {extent}")
-            return False
-
-    return True
-
-
-def parse_approximate_isoduration(s):
-    """
-    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.
-    Approximate, because it does not care about leap years, months with different number of days, etc.
-    Examples: "PT1H30M15.460S", "P5DT4M", "P2WT3H", "P1D"
-    Based on: https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
-    """
-
-    def get_isosplit(s_arg, split):
-        if split in s_arg:
-            n, s_arg = s_arg.split(split, 1)
-        else:
-            n = '0'
-        return float(n.replace(',', '.')), s_arg  # to handle like "P0,5Y"
-
-    s = s.split('P', 1)[-1]  # Remove prefix
-    # M can mean month or minute, so we split the day and time part:
-    if 'T' in s:
-        s_date0, s_time0 = s.split('T', 1)
-    else:
-        s_date0 = s
-        s_time0 = ''
-    s_date, s_time = s_date0, s_time0
-    s_yr, s_date = get_isosplit(s_date, 'Y')  # Step through letter dividers
-    s_mo, s_date = get_isosplit(s_date, 'M')
-    s_wk, s_date = get_isosplit(s_date, 'W')
-    s_dy, s_date = get_isosplit(s_date, 'D')
-
-    s_hr, s_time = get_isosplit(s_time, 'H')
-    s_mi, s_time = get_isosplit(s_time, 'M')
-    s_sc, s_time = get_isosplit(s_time, 'S')
-    n_yr = s_yr * 365  # approx days for year, month, week
-    n_mo = s_mo * 30.4  # Average days per month
-    n_wk = s_wk * 7
-    dt = datetime.timedelta(days=n_yr + n_mo + n_wk + s_dy, hours=s_hr, minutes=s_mi,
-                            seconds=s_sc)
-    return dt
 
 
 def _make_set_for_key(

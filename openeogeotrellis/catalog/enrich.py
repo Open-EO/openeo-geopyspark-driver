@@ -6,11 +6,10 @@ from typing import Callable, Dict, List, Optional, Union
 from openeo.util import deep_get
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
+from . import DATA_SOURCE_PROPERTIES
+from .opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
+from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.util.logging import TrackingIter
-from openeogeotrellis.utils import dict_merge_recursive
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +24,7 @@ LinksFilter = Callable[[LinksList], LinksList]
 def enrich_catalog_metadata(
     metadata: CatalogDict,
     *,
+    default_opensearch_endpoint: Optional[str] = None,
     upstream_links_filter: Optional[LinksFilter] = None,
 ) -> CatalogDict:
     """
@@ -40,6 +40,8 @@ def enrich_catalog_metadata(
     values take precedence) via :func:`dict_merge_recursive`.
 
     :param metadata: Catalog dict keyed on collection id.
+    :param default_opensearch_endpoint: OpenSearch endpoint to use when a collection's
+        data source does not specify one explicitly.
     :param upstream_links_filter: optional filter function for upstream links, before merging with local links
     :return: Enriched catalog dict (may be a new dict object).
     """
@@ -69,7 +71,7 @@ def enrich_catalog_metadata(
         enrichment_stats[f"{data_source_type=}"] += 1
 
         os_cid = data_source.get("opensearch_collection_id")
-        os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
+        os_endpoint = data_source.get("opensearch_endpoint") or default_opensearch_endpoint
         os_variant = data_source.get("opensearch_variant")
 
         needs_enrichment = data_source.get(DATA_SOURCE_PROPERTIES.ENRICH, True)

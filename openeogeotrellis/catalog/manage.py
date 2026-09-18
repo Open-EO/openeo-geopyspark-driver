@@ -34,9 +34,10 @@ from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
 from openeogeotrellis.util.compat import function_supports_kwargs
+
+from . import DATA_SOURCE_PROPERTIES
+from .enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
 
 _log = logging.getLogger(__name__)
 

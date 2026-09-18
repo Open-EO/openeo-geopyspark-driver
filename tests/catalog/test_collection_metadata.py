@@ -1,6 +1,6 @@
 import pytest
 
-from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 
 
 class TestGeopysparkCubeMetadata:

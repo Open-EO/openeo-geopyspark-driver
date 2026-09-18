@@ -86,8 +86,8 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters, query
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL
-from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL, WHITELIST
+from openeogeotrellis.catalog.collection_metadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.credit_check import ExecutionDetails
 from openeogeotrellis.integrations.credit_check_registry import get_batch_execution_details
@@ -116,7 +116,7 @@ from openeogeotrellis.job_registry import (
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     get_layer_catalog,
-    extra_validation_load_collection, WHITELIST,
+    extra_validation_load_collection,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
@@ -146,14 +146,14 @@ from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
 )
 from openeogeotrellis.util.byteunit import byte_string_as
+from openeogeotrellis.util.datastructures import dict_merge_recursive
+from openeogeotrellis.util.datetime import normalize_temporal_extent
 from openeogeotrellis.utils import (
-    dict_merge_recursive,
     get_jvm,
     get_s3_file_contents,
     map_optional,
     mdc_include,
     mdc_remove,
-    normalize_temporal_extent,
     S3ClientBuilder,
     single_value,
     to_projected_polygons,
@@ -1483,7 +1483,12 @@ class GpsProcessing(ConcreteProcessing):
                 if source_id.process_id == "load_collection":
                     cid = source_id.arguments[0]
                     load_params = _extract_load_parameters(env, source_id=source_id)
-                    yield from extra_validation_load_collection(collection_id=cid, load_params=load_params, env=env)
+                    yield from extra_validation_load_collection(
+                        collection_id=cid,
+                        load_params=load_params,
+                        env=env,
+                        global_extent_provider=openeogeotrellis._backend.post_dry_run.get_global_extent,
+                    )
         except Exception as e:
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
