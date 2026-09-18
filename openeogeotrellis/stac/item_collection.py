@@ -23,11 +23,10 @@ from __future__ import annotations
 import datetime
 import logging
 import re
-import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Literal, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple, Union
 
 import pystac
 import pystac_client
@@ -43,7 +42,6 @@ from openeo_driver.utils import EvalEnv
 from urllib3 import Retry
 
 import openeo_driver.backend
-from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY, STAC_API_FILTER_BY_GEOMETRY_DEFAULT
 from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO
 from openeogeotrellis.stac.assets import is_band_asset, is_supported_raster_mime_type
@@ -60,6 +58,7 @@ from openeogeotrellis.stac.stac_object_fetching import (
     STAC_API_BACKOFF_FACTOR,
     STAC_API_RETRY_TOTAL,
     REQUESTS_TIMEOUT_SECONDS,
+    PollingConfig,
     _JitteredRetry,
     _await_stac_object,
 )
@@ -421,19 +420,21 @@ class ItemCollection:
         return cls(items=pystac_item_collection.items)
 
 
-@dataclass
+@dataclass(frozen=True)
 class StacResolution:
     """
-    Result of resolving a load_stac `url`: either a live STAC object
-    (Item/Collection/Catalog) to be routed/collected/filtered as usual,
-    or (own-job dependency case) an `ItemCollection` built directly from a
-    sibling batch job's result assets, bypassing STAC fetching and property
-    filtering entirely.
+    What a source resolver produced: either a STAC object that still needs
+    routing/collecting/filtering, or an already-collected set of Items
+    (own-job dependency case, bypassing STAC fetching and property filtering
+    entirely). Exactly one of the two fields is set.
     """
 
-    kind: Literal["stac_object", "own_job_item_collection"]
     stac_object: Optional[Union[pystac.Item, pystac.Collection, pystac.Catalog]] = None
     item_collection: Optional["ItemCollection"] = None
+
+    def __post_init__(self):
+        if (self.stac_object is None) == (self.item_collection is None):
+            raise ValueError("StacResolution needs exactly one of stac_object / item_collection")
 
 
 class StacSourceResolver(Protocol):
@@ -445,34 +446,26 @@ class StacSourceResolver(Protocol):
     bypassing STAC fetching and property filtering).
     """
 
-    def resolve(
-        self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent, feature_flags: Dict[str, Any]
-    ) -> Optional[StacResolution]: ...
+    def resolve(self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent) -> Optional[StacResolution]: ...
 
 
 class LiveStacSourceResolver:
     """Resolves `url` by fetching/polling it as a live STAC object (Item/Collection/Catalog)."""
 
-    def __init__(self, *, stac_io: Optional[pystac.stac_io.StacIO] = None):
+    def __init__(self, *, stac_io: Optional[pystac.stac_io.StacIO] = None, polling: Optional[PollingConfig] = None):
         self._stac_io = stac_io
+        self._polling = polling or PollingConfig.from_backend_config()
 
-    def resolve(
-        self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent, feature_flags: Dict[str, Any]
-    ) -> StacResolution:
-        backend_config = get_backend_config()
-        poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
-        max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
-        max_poll_time = time.time() + max_poll_delay_seconds
-
+    def resolve(self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent) -> StacResolution:
         logger.info(f"LiveStacSourceResolver: fetching STAC object from {url=} {spatiotemporal_extent=}")
         stac_object = _await_stac_object(
             url=url,
-            poll_interval_seconds=poll_interval_seconds,
-            max_poll_delay_seconds=max_poll_delay_seconds,
-            max_poll_time=max_poll_time,
+            poll_interval_seconds=self._polling.poll_interval_seconds,
+            max_poll_delay_seconds=self._polling.max_poll_delay_seconds,
+            max_poll_time=self._polling.deadline(),
             stac_io=self._stac_io,
         )
-        return StacResolution(kind="stac_object", stac_object=stac_object)
+        return StacResolution(stac_object=stac_object)
 
 
 class OwnJobStacSourceResolver:
@@ -486,25 +479,25 @@ class OwnJobStacSourceResolver:
     (e.g. it's a plain STAC API/catalog URL).
     """
 
-    def __init__(self, *, user: User, batch_jobs: openeo_driver.backend.BatchJobs):
+    def __init__(
+        self,
+        *,
+        user: User,
+        batch_jobs: openeo_driver.backend.BatchJobs,
+        polling: Optional[PollingConfig] = None,
+    ):
         self._user = user
         self._batch_jobs = batch_jobs
+        self._polling = polling or PollingConfig.from_backend_config()
 
-    def resolve(
-        self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent, feature_flags: Dict[str, Any]
-    ) -> Optional[StacResolution]:
-        backend_config = get_backend_config()
-        poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
-        max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
-        max_poll_time = time.time() + max_poll_delay_seconds
-
+    def resolve(self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent) -> Optional[StacResolution]:
         dependency_job_info = _await_dependency_job(
             url=url,
             user=self._user,
             batch_jobs=self._batch_jobs,
-            poll_interval_seconds=poll_interval_seconds,
-            max_poll_delay_seconds=max_poll_delay_seconds,
-            max_poll_time=max_poll_time,
+            poll_interval_seconds=self._polling.poll_interval_seconds,
+            max_poll_delay_seconds=self._polling.max_poll_delay_seconds,
+            max_poll_time=self._polling.deadline(),
         )
         if not dependency_job_info:
             return None
@@ -516,7 +509,24 @@ class OwnJobStacSourceResolver:
             batch_jobs=self._batch_jobs,
             user=self._user,
         )
-        return StacResolution(kind="own_job_item_collection", item_collection=item_collection)
+        return StacResolution(item_collection=item_collection)
+
+
+def _default_source_resolvers(
+    *,
+    user: Optional[User],
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs],
+    stac_io: Optional[pystac.stac_io.StacIO],
+) -> List[StacSourceResolver]:
+    """
+    Own-job resolution is tried first: a URL pointing at one of the user's own
+    batch jobs is served from that job's results, without fetching it over HTTP.
+    """
+    resolvers: List[StacSourceResolver] = []
+    if user and batch_jobs:
+        resolvers.append(OwnJobStacSourceResolver(user=user, batch_jobs=batch_jobs))
+    resolvers.append(LiveStacSourceResolver(stac_io=stac_io))
+    return resolvers
 
 
 def construct_item_collection(
@@ -530,6 +540,7 @@ def construct_item_collection(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     user: Optional[User] = None,
     spatial_filtering_geometries: Union[SpatialFilteringGeometries, None] = None,
+    source_resolvers: Optional[Sequence[StacSourceResolver]] = None,
 ) -> Tuple["ItemCollection", dict, List[str], bool]:
     """
     Construct Stac ItemCollection from given load_stac URL
@@ -547,28 +558,28 @@ def construct_item_collection(
 
     netcdf_with_time_dimension = False
 
-    # Try the own-job dependency resolver first (only when a user/batch_jobs context
-    # is available at all): an own-job URL can be resolved directly into an
-    # `ItemCollection` from the sibling job's result assets, bypassing STAC fetching
-    # and property filtering entirely. Fall back to the live STAC source resolver otherwise.
-    resolution: Optional[StacResolution] = None
-    if user and batch_jobs:
-        resolution = OwnJobStacSourceResolver(user=user, batch_jobs=batch_jobs).resolve(
-            url, spatiotemporal_extent=spatiotemporal_extent, feature_flags=feature_flags
-        )
+    if source_resolvers is None:
+        source_resolvers = _default_source_resolvers(user=user, batch_jobs=batch_jobs, stac_io=stac_io)
+
+    # Own-job URLs (when tried) are served from the sibling job's results directly,
+    # bypassing STAC fetching and property filtering; anything else falls through
+    # to the live STAC source resolver.
+    for resolver in source_resolvers:
+        resolution = resolver.resolve(url, spatiotemporal_extent=spatiotemporal_extent)
+        if resolution is not None:
+            break
+    else:
+        raise LoadStacException(url=url, info="no STAC source resolver could resolve this URL")
 
     stac_metadata_parser = _StacMetadataParser(logger=logger)
 
-    if resolution and resolution.kind == "own_job_item_collection":
+    if resolution.item_collection is not None:
         # TODO: improve metadata for this case
         collection_summary: dict = {}
         item_collection = resolution.item_collection
         # TODO: improve band name detection for this case
         band_names = []
     else:
-        resolution = LiveStacSourceResolver(stac_io=stac_io).resolve(
-            url, spatiotemporal_extent=spatiotemporal_extent, feature_flags=feature_flags
-        )
         stac_object = resolution.stac_object
         logger.info(f"construct_item_collection: got {type(stac_object).__name__} {stac_object.id!r}")
 

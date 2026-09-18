@@ -11,6 +11,7 @@ unlike the generic STAC object fetching here which is portable as-is.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import random
 import time
@@ -25,6 +26,7 @@ from urllib3 import Retry
 
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,25 @@ STAC_API_RETRY_TOTAL = 25
 STAC_API_MINIMUM_BACKOFF_SECONDS = 1
 STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
 REQUESTS_TIMEOUT_SECONDS = 60
+
+
+@dataclasses.dataclass(frozen=True)
+class PollingConfig:
+    """How long to keep polling a not-yet-complete STAC source, and how often."""
+
+    poll_interval_seconds: float
+    max_poll_delay_seconds: float
+
+    @classmethod
+    def from_backend_config(cls) -> "PollingConfig":
+        backend_config = get_backend_config()
+        return cls(
+            poll_interval_seconds=backend_config.job_dependencies_poll_interval_seconds,
+            max_poll_delay_seconds=backend_config.job_dependencies_max_poll_delay_seconds,
+        )
+
+    def deadline(self) -> float:
+        return time.time() + self.max_poll_delay_seconds
 
 
 class _JitteredRetry(Retry):
