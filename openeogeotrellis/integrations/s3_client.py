@@ -28,7 +28,7 @@ def eodata_s3_client():
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
     endpoint = os.environ.get("AWS_S3_ENDPOINT")
-    https = "http" if os.environ.get("AWS_HTTPS").lower() == "no" else "https"
+    https = "http" if os.environ.get("AWS_HTTPS", "yes").lower() == "no" else "https"
     s3_client = boto3.client(
         "s3",
         aws_access_key_id=aws_access_key_id,

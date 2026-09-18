@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 import pyproj
 
+from openeo_driver.errors import ProcessParameterInvalidException
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.util.geometry import GeometryBufferer
@@ -198,6 +199,12 @@ def _apply_load_params_overrides(
                 target_epsg = target_bbox.best_utm()
             else:
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
+                if target_epsg is None:
+                    raise ProcessParameterInvalidException(
+                        process="load_stac",
+                        parameter="target_crs",
+                        reason=f"Unable to determine an EPSG code for target_crs: {load_params.target_crs!r}",
+                    )
 
     return cell_width, cell_height, target_epsg
 
