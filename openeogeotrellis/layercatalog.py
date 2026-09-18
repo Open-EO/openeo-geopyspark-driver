@@ -34,7 +34,7 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
+from openeogeotrellis.catalog.enrich import CatalogDict, enrich_catalog_metadata
 from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 import openeogeotrellis.collections.s1backscatter_orfeo
@@ -966,12 +966,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return super().get_collection_queryables(collection_id=collection_id)
 
 
-# Type annotation aliases to make things more self-documenting
-CollectionId = str
-CollectionMetadataDict = Dict[str, Union[str, dict, list]]
-CatalogDict = Dict[CollectionId, CollectionMetadataDict]
-
-
 def _read_catalog_file(path: Union[str, Path]) -> CatalogDict:
     path = Path(path)
     try:
@@ -1025,7 +1019,9 @@ def _get_layer_catalog(
 
     logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
     if enrich_metadata:
-        metadata = enrich_catalog_metadata(metadata)
+        metadata = enrich_catalog_metadata(
+            metadata, default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint
+        )
 
     metadata = _merge_layers_with_common_name(metadata)
 
