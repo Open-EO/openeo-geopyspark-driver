@@ -1,15 +1,9 @@
-import argparse
 import datetime as dt
-import gzip
-import json
 import logging
 import math
-import sys
-import zipfile
 from copy import deepcopy, copy
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
-from pathlib import Path
 
 import dateutil.parser
 import geopyspark
@@ -29,12 +23,12 @@ from openeo_driver.errors import OpenEOApiException, InternalException, ProcessG
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
+from openeo_driver.utils import EvalEnv, WhiteListEvalEnv, smart_bool
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
-from openeogeotrellis.catalog.enrich import CatalogDict, enrich_catalog_metadata
+from openeogeotrellis.catalog.files import dump_layer_catalog, load_catalog_files
 from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 import openeogeotrellis.collections.s1backscatter_orfeo
@@ -45,7 +39,6 @@ from openeogeotrellis.constants import EVAL_ENV_KEY, WHITELIST
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.util.datetime import normalize_temporal_extent, parse_approximate_isoduration
 from openeogeotrellis.util.geometry import calculate_rough_area, health_check_extent
 from openeogeotrellis.util.projection import reproject_cellsize
@@ -966,177 +959,22 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return super().get_collection_queryables(collection_id=collection_id)
 
 
-def _read_catalog_file(path: Union[str, Path]) -> CatalogDict:
-    path = Path(path)
-    try:
-        if path.is_file() and path.name.lower().endswith(".json"):
-            return {coll["id"]: coll for coll in read_json(path)}
-        elif path.is_file() and path.name.lower().endswith(".json.gz"):
-            with gzip.open(path, mode="rt", encoding="utf-8") as f:
-                return {coll["id"]: coll for coll in json.load(fp=f)}
-        elif path.is_file() and path.name.lower().endswith(".zip"):
-            catalog = {}
-            with zipfile.ZipFile(path, mode="r") as zf:
-                for name in zf.namelist():
-                    if name.lower().endswith(".json"):
-                        with zf.open(name, mode="r") as f:
-                            data = json.load(f)
-                        if isinstance(data, dict):
-                            # File with single collection
-                            catalog[data["id"]] = data
-                        elif isinstance(data, list):
-                            # File with list of collections
-                            catalog.update({coll["id"]: coll for coll in data})
-                        else:
-                            logger.warning(f"Skipping catalog source {path!r}/{name!r}: unexpected {type(data)=}")
-            return catalog
-        else:
-            raise ValueError(f"Unsupported catalog format {path=}")
-    except Exception as e:
-        raise ValueError(f"Failed to read layer catalog from {path=}: {e=}") from e
-
-
-@TimingLogger(title="_get_layer_catalog", logger=logger.info)
-def _get_layer_catalog(
-    catalog_files: Optional[List[str]] = None,
-    enrich_metadata: Optional[bool] = None,
-) -> CatalogDict:
-    """
-    Build layer catalog from JSON files (possibly compressed)
-    """
-    if enrich_metadata is None:
-        enrich_metadata = get_backend_config().opensearch_enrich
-    if catalog_files is None:
-        catalog_files = get_backend_config().layer_catalog_files
-
-    metadata: CatalogDict = {}
-
-    logger.debug(f"_get_layer_catalog: {catalog_files=}")
-    for path in catalog_files:
-        logger.debug(f"_get_layer_catalog: reading {path}")
-        metadata = dict_merge_recursive(metadata, _read_catalog_file(path), overwrite=True)
-        logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
-
-    logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
-    if enrich_metadata:
-        metadata = enrich_catalog_metadata(
-            metadata, default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint
-        )
-
-    metadata = _merge_layers_with_common_name(metadata)
-
-    return metadata
-
-
 def get_layer_catalog(
     vault: Vault = None,
     # TODO: just call this arg `enrich_metadata` is this is about more than just OpenSearch
     opensearch_enrich: Optional[bool] = None,
 ) -> GeoPySparkLayerCatalog:
-    metadata = _get_layer_catalog(enrich_metadata=opensearch_enrich)
+    backend_config = get_backend_config()
+    enrich_metadata = opensearch_enrich if opensearch_enrich is not None else backend_config.opensearch_enrich
+    metadata = load_catalog_files(
+        catalog_files=backend_config.layer_catalog_files,
+        enrich_metadata=enrich_metadata,
+        default_opensearch_endpoint=backend_config.default_opensearch_endpoint,
+    )
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
     )
-
-
-def dump_layer_catalog():
-    """CLI tool to dump layer catalog with enrichment"""
-    cli = argparse.ArgumentParser()
-    cli.add_argument("--enrich", action="store_true", help="Enable metadata enrichment.")
-    cli.add_argument(
-        "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
-    )
-    cli.add_argument(
-        "--container",
-        choices=["list", "dict"],
-        default="list",
-        help="Top level container to list the collections in: a list like in openEO API, or a dict, keyed on collection id.",
-    )
-    cli.add_argument("--verbose", action="store_true")
-    arguments = cli.parse_args()
-
-    logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
-
-    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, enrich_metadata=arguments.enrich)
-    if arguments.container == "list":
-        metadata = list(metadata.values())
-    json.dump(metadata, fp=sys.stdout, indent=2)
-
-
-def _merge_layers_with_common_name(metadata: CatalogDict):
-    """Merge collections with same common name. Updates metadata dict in place."""
-    common_names = set(str(m["common_name"]) for m in metadata.values() if "common_name" in m)
-    logger.debug(f"Creating merged collections for common names: {common_names}")
-    for common_name in common_names:
-        merged = {
-            "id": common_name,
-            "_vito": {"data_source": {
-                "type": "merged_by_common_name",
-                "common_name": common_name,
-                "merged_collections": [],
-            }},
-            "providers": [],
-            "links": [],
-            "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
-        }
-
-        merge_sources = [m for m in metadata.values() if m.get("common_name") == common_name]
-        # Give priority to (reference/override) values in the "virtual:merge-by-common-name" placeholder entry
-        merge_sources = sorted(
-            merge_sources,
-            key=(lambda m: deep_get(m, "_vito", "data_source", "type", default=None) == "virtual:merge-by-common-name"),
-            reverse=True,
-        )
-        eo_bands = {}
-        logger.info(f"Merging {common_name} from {[m['id'] for m in merge_sources]}")
-        for to_merge in merge_sources:
-            if not deep_get(to_merge, "_vito", "data_source", "type", default="").startswith("virtual:"):
-                merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
-            # Fill some fields with first hit
-            for field in ["title", "description", "keywords", "version", "license", "cube:dimensions", "summaries"]:
-                if field not in merged and field in to_merge:
-                    merged[field] = deepcopy(to_merge[field])
-            # Fields to take union
-            for field in ["providers", "links"]:
-                if isinstance(to_merge.get(field), list):
-                    merged[field] += deepcopy(to_merge[field])
-
-            # Take union of bands
-            for band_dim in [k for k, v in to_merge.get("cube:dimensions", {}).items() if v["type"] == "bands"]:
-                if band_dim not in merged["cube:dimensions"]:
-                    merged["cube:dimensions"][band_dim] = deepcopy(to_merge["cube:dimensions"][band_dim])
-                else:
-                    for b in to_merge["cube:dimensions"][band_dim]["values"]:
-                        if b not in merged["cube:dimensions"][band_dim]["values"]:
-                            merged["cube:dimensions"][band_dim]["values"].append(b)
-            for b in deep_get(to_merge, "summaries", "eo:bands", default=[]):
-                band_name = b["name"]
-                if band_name not in eo_bands:
-                    eo_bands[band_name] = b
-                else:
-                    # Merge some things
-                    aliases = set(eo_bands[band_name].get("aliases", [])) | set(b.get("aliases", []))
-                    if aliases:
-                        eo_bands[band_name]["aliases"] = list(aliases)
-
-            # Union of extents
-            # TODO: make sure first bbox/interval is overall extent
-            merged["extent"]["spatial"]["bbox"].extend(deep_get(to_merge, "extent", "spatial", "bbox", default=[]))
-            merged["extent"]["temporal"]["interval"].extend(
-                deep_get(to_merge, "extent", "temporal", "interval", default=[])
-            )
-
-        # Adapt band order under `eo:bands`, based on `cube:dimensions`
-        band_dims = [k for k, v in merged.get("cube:dimensions", {}).items() if v["type"] == "bands"]
-        if band_dims:
-            (band_dim,) = band_dims
-            merged["summaries"]["eo:bands"] = [eo_bands[b] for b in merged["cube:dimensions"][band_dim]["values"]]
-            # TODO #1109 also merge/handle "common" bands under summaries (instead of legacy eo:bands)
-
-        metadata[common_name] = merged
-
-    return metadata
 
 
 def check_missing_products(
