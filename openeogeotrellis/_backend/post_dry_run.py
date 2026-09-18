@@ -300,7 +300,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     property_filter_pg_map = constraint.get("properties")
 
     _log.info(f"Calling construct_item_collection for {stac_url=}")
-    item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
+    stac_source = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
         spatial_filtering_geometries=spatial_filtering_geometries,
@@ -309,6 +309,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         stac_io=None,  # TODO?
         # TODO: custom (lower) max_items as we do not necessarily need all items to determine spatial extent?
     )
+    item_collection = stac_source.item_collection
 
     # Collect set of (uqique) asset projection metadata items
     _log.info(f"Collecting projection metadata from {len(item_collection.items)} items")

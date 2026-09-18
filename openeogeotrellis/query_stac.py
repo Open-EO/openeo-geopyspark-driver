@@ -26,10 +26,10 @@ def item_collection_from_stac_query(
         temporal_extent=temporal_extent,
     )
     property_filter_pg_map = None
-    item_collection, *_tail = construct_item_collection(
+    stac_source = construct_item_collection(
         url=url,
         spatiotemporal_extent=spatiotemporal_extent,
         property_filter_pg_map=property_filter_pg_map,
     )
     logger.info(f"Query to '{url}' with spatial_extent '{spatial_extent}' and temporal_extent '{temporal_extent}'")
-    return pystac.ItemCollection(item_collection.items)
+    return pystac.ItemCollection(stac_source.item_collection.items)

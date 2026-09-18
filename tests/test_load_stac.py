@@ -3405,9 +3405,9 @@ class TestItemCollection:
 
 def test_construct_item_collection_minimal(dummy_stac_api):
     url = f"{dummy_stac_api}/collections/collection-123"
-    item_collection, metadata, bands, netcdf_with_time_dimension = construct_item_collection(url=url)
-    assert set(item.id for item in item_collection.items) == {"item-1", "item-2", "item-3"}
-    assert bands == []
+    stac_source = construct_item_collection(url=url)
+    assert set(item.id for item in stac_source.item_collection.items) == {"item-1", "item-2", "item-3"}
+    assert stac_source.band_names == []
     # TODO deeper tests that also involve various band metadata detection aspects
 
 

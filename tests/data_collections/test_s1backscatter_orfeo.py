@@ -23,6 +23,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeoV2,
     _instant_ms_to_day,
 )
+from openeogeotrellis.stac.item_collection import StacSource
 
 
 class TestBuildFilterProperties:
@@ -278,7 +279,9 @@ class TestBuildStacOpenSearchClient:
         )
 
         item_collection = self._create_mock_item_collection([item])
-        mock_construct_item_collection.return_value = (item_collection, {}, [], False)
+        mock_construct_item_collection.return_value = StacSource(
+            item_collection=item_collection, collection_summary={}, band_names=[], netcdf_with_time_dimension=False
+        )
 
         # Build the client
         s1_backscatter = S1BackscatterOrfeo()
@@ -324,7 +327,9 @@ class TestBuildStacOpenSearchClient:
         )
         item = pystac.Item.from_dict(item_data)
         item_collection = self._create_mock_item_collection([item])
-        mock_construct_item_collection.return_value = (item_collection, {}, [], False)
+        mock_construct_item_collection.return_value = StacSource(
+            item_collection=item_collection, collection_summary={}, band_names=[], netcdf_with_time_dimension=False
+        )
 
         # Build the client
         s1_backscatter = S1BackscatterOrfeo()

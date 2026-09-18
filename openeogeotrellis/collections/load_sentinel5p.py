@@ -352,12 +352,12 @@ def _build_stac_opensearch_client(
         temporal_extent=temporal_extent,
     )
 
-    item_collection, _, _, _ = construct_item_collection(
+    item_collection = construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
         property_filter_pg_map={},
         feature_flags=feature_flags,
-    )
+    ).item_collection
 
     logger.info(f"S5P STAC query at {stac_url!r} returned {len(item_collection.items)} item(s)")
 

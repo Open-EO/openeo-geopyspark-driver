@@ -93,11 +93,11 @@ def test_sentinel3_stac_query_recent_data_nrt():
         _log.info(f"  Querying {collection_name}: {url}")
 
         try:
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-            )
+            ).item_collection
 
             num_items = len(item_collection.items)
             collection_results[collection_name] = num_items
@@ -197,11 +197,11 @@ def test_sentinel3_stac_query_older_data_ntc():
         _log.info(f"  Querying {collection_name}: {url}")
 
         try:
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-            )
+            ).item_collection
 
             num_items = len(item_collection.items)
             collection_results[collection_name] = num_items
@@ -301,11 +301,11 @@ def test_sentinel3_stac_deduplication_ntc_takes_precedence():
         _log.info(f"Querying {collection_name}: {url}")
 
         try:
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-            )
+            ).item_collection
 
             items = list(item_collection.items)
             _log.info(f"  Found {len(items)} items in {collection_name}")

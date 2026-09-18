@@ -171,7 +171,7 @@ def _prepare_context(
         #       mainly to be used as fallback band listing when no user-specified band selection was made,
         #       and bit of validation too where appropriate.
         with TimingLogger(title=f"construct_item_collection({url=})", logger=logger.info):
-            item_collection, collection_summary, available_band_names, netcdf_with_time_dimension = construct_item_collection(
+            stac_source = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
@@ -182,6 +182,10 @@ def _prepare_context(
                 user=user,
                 spatial_filtering_geometries=spatial_filtering_geometries,
             )
+            item_collection = stac_source.item_collection
+            collection_summary = stac_source.collection_summary
+            available_band_names = stac_source.band_names
+            netcdf_with_time_dimension = stac_source.netcdf_with_time_dimension
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
@@ -207,7 +211,7 @@ def _prepare_context(
         collected_link_band_names = asset_table.collected_link_band_names
 
         jvm = get_jvm()
-        opensearch_client, opensearch_link_titles_map = build_opensearch_features(asset_table, jvm)
+        opensearch_client = build_opensearch_features(asset_table=asset_table, jvm=jvm)
     except OpenEOApiException:
         raise
     except Exception as e:
@@ -280,7 +284,7 @@ def _prepare_context(
     pyramid_factory = build_pyramid_factory(
         netcdf_with_time_dimension=netcdf_with_time_dimension,
         opensearch_client=opensearch_client,
-        opensearch_link_titles_map=opensearch_link_titles_map,
+        opensearch_link_titles_map=asset_table.opensearch_link_titles_map,
         source_band_names=source_band_names,
         requested_band_names=requested_band_names,
         asset_band_names=asset_band_names,

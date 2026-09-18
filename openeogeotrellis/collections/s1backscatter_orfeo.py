@@ -251,12 +251,12 @@ class S1BackscatterOrfeo:
         )
 
         # Query STAC API
-        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+        item_collection = construct_item_collection(
             url=url,
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
             feature_flags=feature_flags,
-        )
+        ).item_collection
         # Build FixedFeaturesOpenSearchClient from STAC items
         jvm = get_jvm()
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()

@@ -345,12 +345,12 @@ def _build_stac_opensearch_client(
         logger.info(f"Querying STAC collection {collection_name}: {url}")
         try:
             # Query STAC API
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
                 feature_flags=load_stac_feature_flags,
-            )
+            ).item_collection
             logger.info(f"Found {len(item_collection.items)} items in {collection_name}")
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
         except Exception as e:

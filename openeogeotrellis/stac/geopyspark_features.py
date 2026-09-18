@@ -9,21 +9,15 @@ decision logic lives here.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from openeogeotrellis.stac.asset_table import AssetTable
 
 logger = logging.getLogger(__name__)
 
 
-def build_opensearch_features(asset_table: AssetTable, jvm: Any) -> Tuple[Any, Dict[str, str]]:
-    """
-    Translate an `AssetTable` into a populated JVM FixedFeaturesOpenSearchClient.
-
-    Returns:
-        opensearch_client: populated JVM FixedFeaturesOpenSearchClient
-        opensearch_link_titles_map: mapping of band name -> link title (for granule_metadata bands)
-    """
+def build_opensearch_features(*, asset_table: AssetTable, jvm: Any) -> Any:
+    """Translate an `AssetTable` into a populated JVM FixedFeaturesOpenSearchClient."""
     opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
     for item in asset_table.items:
@@ -83,4 +77,4 @@ def build_opensearch_features(asset_table: AssetTable, jvm: Any) -> Tuple[Any, D
         logger.debug(f"opensearch.addFeature {item.item_id=}")
         opensearch_client.addFeature(builder.build())
 
-    return opensearch_client, asset_table.opensearch_link_titles_map
+    return opensearch_client

@@ -98,11 +98,11 @@ def test_s1backscatter_stac_api_queries_multiple_product_types():
     # Query the live STAC API
     url = "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
 
-    item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+    item_collection = construct_item_collection(
         url=url,
         spatiotemporal_extent=spatiotemporal_extent,
         property_filter_pg_map=property_filter_pg_map,
-    )
+    ).item_collection
 
     _log.info("Query successful!")
     _log.info(f"  Total items returned: {len(item_collection.items)}")

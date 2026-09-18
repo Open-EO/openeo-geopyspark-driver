@@ -529,6 +529,22 @@ def _default_source_resolvers(
     return resolvers
 
 
+@dataclass(frozen=True)
+class StacSource:
+    """
+    A STAC source resolved down to the Items it contains, plus the collection-level
+    metadata needed to describe the resulting cube.
+    """
+
+    item_collection: "ItemCollection"
+    #: Raw STAC Collection/Catalog JSON; empty for a single Item or an own-job source.
+    collection_summary: dict
+    #: Band names detected in STAC metadata; fallback when the user selects no bands.
+    band_names: List[str]
+    #: Whether the source stores netCDF assets carrying their own time dimension.
+    netcdf_with_time_dimension: bool
+
+
 def construct_item_collection(
     url: str,
     *,
@@ -541,15 +557,13 @@ def construct_item_collection(
     user: Optional[User] = None,
     spatial_filtering_geometries: Union[SpatialFilteringGeometries, None] = None,
     source_resolvers: Optional[Sequence[StacSourceResolver]] = None,
-) -> Tuple["ItemCollection", dict, List[str], bool]:
+) -> StacSource:
     """
-    Construct Stac ItemCollection from given load_stac URL
+    Construct a `StacSource` (an `ItemCollection` plus its collection-level metadata)
+    from a given load_stac URL.
 
-    Returns a tuple of (item_collection, collection_summary, band_names, netcdf_with_time_dimension),
-    where `collection_summary` is the raw STAC collection/catalog JSON dict
-    (or `{}` when there is no such collection/catalog, e.g. for a single Item or own-job source).
-    It is up to the caller to turn this into a `GeopysparkCubeMetadata` (or equivalent) —
-    this module intentionally has no engine-specific metadata coupling.
+    It is up to the caller to turn `collection_summary` into a `GeopysparkCubeMetadata`
+    (or equivalent) — this module intentionally has no engine-specific metadata coupling.
     """
     spatiotemporal_extent = spatiotemporal_extent or SpatioTemporalExtent()
     property_filter_pg_map = property_filter_pg_map or {}
@@ -676,5 +690,9 @@ def construct_item_collection(
     if deduplicator := _deduplicator_from_feature_flags(feature_flags=feature_flags, id=url):
         item_collection = item_collection.deduplicated(deduplicator=deduplicator)
 
-    # TODO: possible to embed band names in collection_summary directly?
-    return item_collection, collection_summary, band_names, netcdf_with_time_dimension
+    return StacSource(
+        item_collection=item_collection,
+        collection_summary=collection_summary,
+        band_names=band_names,
+        netcdf_with_time_dimension=netcdf_with_time_dimension,
+    )
