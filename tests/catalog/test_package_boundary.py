@@ -2,7 +2,7 @@
 Enforces that `openeogeotrellis.catalog` stays self-contained and engine-agnostic:
 
 - absolute imports from `openeogeotrellis` are limited to a small allowlist
-  (`openeogeotrellis.constants`, `openeogeotrellis.util.*`, `openeogeotrellis.opensearch`);
+  (`openeogeotrellis.constants`, `openeogeotrellis.util.*`);
 - `geopyspark`, `pyspark` and `py4j` may never be imported;
 - imports between modules of the package itself must be relative;
 - nothing reads `get_backend_config()` or `ConfigParams()`.
@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPO_ROOT / "openeogeotrellis" / "catalog"
 
 BANNED_ABSOLUTE_IMPORT_ROOTS = {"py4j", "pyspark", "geopyspark"}
-ALLOWED_OPENEOGEOTRELLIS_MODULES = {"openeogeotrellis.constants", "openeogeotrellis.opensearch"}
+ALLOWED_OPENEOGEOTRELLIS_MODULES = {"openeogeotrellis.constants"}
 ALLOWED_OPENEOGEOTRELLIS_PREFIXES = ("openeogeotrellis.util.", "openeogeotrellis.util")
 BANNED_NAMES = {"get_backend_config", "ConfigParams"}
 
@@ -135,7 +135,7 @@ def test_isolated_import(tmp_path):
     (isolated_parent / "__init__.py").write_text("")
     shutil.copytree(PACKAGE_ROOT, isolated_parent / "catalog")
 
-    allowed_modules = repr({"openeogeotrellis.constants", "openeogeotrellis.opensearch", "openeogeotrellis.util"})
+    allowed_modules = repr({"openeogeotrellis.constants", "openeogeotrellis.util"})
     runner_script = tmp_path / "run_isolated_import.py"
     runner_script.write_text(
         _ISOLATED_IMPORT_RUNNER.replace("__PACKAGE_NAME__", "isolated_parent.catalog").replace(
