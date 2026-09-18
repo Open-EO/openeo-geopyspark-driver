@@ -329,7 +329,7 @@ def test_resolution_and_offset_handling(
         env=EvalEnv(),
     )
 
-    assert context.cellsize == (resolution, resolution)
+    assert (context.target_grid.cell_width, context.target_grid.cell_height) == (resolution, resolution)
     assert context.extent_crs == "EPSG:32636"
 
     dumper = OpenSearchClientDumper()

@@ -4,7 +4,7 @@ import datetime as dt
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pystac
 import pystac.stac_io
@@ -46,11 +46,7 @@ from openeogeotrellis.stac.asset_table import (
 )
 
 # Target grid (EPSG/cellsize) selection
-from openeogeotrellis.stac.target_grid import (
-    apply_load_params_overrides,
-    determine_cell_size,
-    determine_target_epsg,
-)
+from openeogeotrellis.stac.target_grid import TargetGrid, select_target_grid
 
 # GeoPySpark/JVM-specific pyramid factory / opensearch feature construction
 from openeogeotrellis.stac.geopyspark_features import build_opensearch_features
@@ -89,7 +85,7 @@ class _LoadStacContext:
     requested_bbox: Optional[BoundingBox]
     metadata: GeopysparkCubeMetadata
     spatiotemporal_extent: SpatioTemporalExtent
-    cellsize: Tuple[float, float]
+    target_grid: TargetGrid
     url: str
     jvm: Any
 
@@ -272,27 +268,12 @@ def _prepare_context(
     #       Just reuse "target_band_names" here directly?
     requested_band_names = metadata.band_names
 
-    target_epsg = determine_target_epsg(
+    target_grid = select_target_grid(
         resolution_tracker=resolution_tracker,
         observed_epsgs=observed_epsgs,
         source_band_names=source_band_names,
-        target_bbox=target_bbox,
-    )
-
-    cell_width, cell_height = determine_cell_size(
-        resolution_tracker=resolution_tracker,
-        observed_epsgs=observed_epsgs,
-        source_band_names=source_band_names,
-        target_epsg=target_epsg,
         target_bbox=target_bbox,
         feature_flags=feature_flags,
-    )
-
-    cell_width, cell_height, target_epsg = apply_load_params_overrides(
-        cell_width=cell_width,
-        cell_height=cell_height,
-        target_epsg=target_epsg,
-        target_bbox=target_bbox,
         load_params=load_params,
     )
 
@@ -303,8 +284,8 @@ def _prepare_context(
         source_band_names=source_band_names,
         requested_band_names=requested_band_names,
         asset_band_names=asset_band_names,
-        cell_width=cell_width,
-        cell_height=cell_height,
+        cell_width=target_grid.cell_width,
+        cell_height=target_grid.cell_height,
         url=url,
         env=env,
         jvm=jvm,
@@ -323,7 +304,7 @@ def _prepare_context(
         projected_polygons = to_projected_polygons(jvm, geometries, crs=extent_crs, buffer_points=True)
 
     projected_polygons = getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$").reproject(
-        projected_polygons, target_epsg
+        projected_polygons, target_grid.epsg
     )
 
     metadata_properties = {}
@@ -357,7 +338,7 @@ def _prepare_context(
         requested_bbox=requested_bbox,
         metadata=metadata,
         spatiotemporal_extent=spatiotemporal_extent,
-        cellsize=(float(cell_width), float(cell_height)),
+        target_grid=target_grid,
         url=url,
         jvm=jvm,
     )

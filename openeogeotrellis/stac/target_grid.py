@@ -7,8 +7,9 @@ when set.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import pyproj
 
@@ -22,7 +23,53 @@ from openeogeotrellis.util.projection import is_utm_epsg_code
 logger = logging.getLogger(__name__)
 
 
-def determine_target_epsg(
+@dataclasses.dataclass(frozen=True)
+class TargetGrid:
+    """Output datacube grid: CRS and cell size, in the units of that CRS."""
+
+    epsg: int
+    cell_width: float
+    cell_height: float
+
+
+def select_target_grid(
+    *,
+    resolution_tracker: ResolutionTracker,
+    observed_epsgs: Set[int],
+    source_band_names: List[str],
+    target_bbox: BoundingBox,
+    feature_flags: Dict[str, Any],
+    load_params: Any,
+) -> TargetGrid:
+    """
+    Determine the output EPSG code and cell size, applying
+    `load_params.target_crs`/`target_resolution` overrides where set.
+    """
+    target_epsg = _determine_target_epsg(
+        resolution_tracker=resolution_tracker,
+        observed_epsgs=observed_epsgs,
+        source_band_names=source_band_names,
+        target_bbox=target_bbox,
+    )
+    cell_width, cell_height = _determine_cell_size(
+        resolution_tracker=resolution_tracker,
+        observed_epsgs=observed_epsgs,
+        source_band_names=source_band_names,
+        target_epsg=target_epsg,
+        target_bbox=target_bbox,
+        feature_flags=feature_flags,
+    )
+    cell_width, cell_height, target_epsg = _apply_load_params_overrides(
+        cell_width=cell_width,
+        cell_height=cell_height,
+        target_epsg=target_epsg,
+        target_bbox=target_bbox,
+        load_params=load_params,
+    )
+    return TargetGrid(epsg=target_epsg, cell_width=cell_width, cell_height=cell_height)
+
+
+def _determine_target_epsg(
     *,
     resolution_tracker: ResolutionTracker,
     observed_epsgs: Set[int],
@@ -62,7 +109,7 @@ def determine_target_epsg(
     return target_epsg
 
 
-def determine_cell_size(
+def _determine_cell_size(
     *,
     resolution_tracker: ResolutionTracker,
     observed_epsgs: Set[int],
@@ -118,7 +165,7 @@ def determine_cell_size(
     return float(cell_width), float(cell_height)
 
 
-def apply_load_params_overrides(
+def _apply_load_params_overrides(
     *,
     cell_width: float,
     cell_height: float,
