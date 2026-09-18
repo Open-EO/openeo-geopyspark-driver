@@ -221,3 +221,27 @@ def test_property_filters_flattened_and_conditions():
     )
     assert property_filters.conditions() == {"eo:cloud_cover": {"eq": 50}}
     assert property_filters.flattened() == {"eo:cloud_cover": 50}
+
+
+def test_property_filters_reflects_later_mutation_of_custom_properties():
+    """
+    The sentinel-hub PLANETSCOPE pyramid builder does
+    `del load_params.properties['byoc_id']` between two property_filters calls
+    and relies on the second call no longer returning it (doc 03 SS7.2).
+    """
+    eq_byoc_id = {
+        "process_graph": {
+            "eq1": {
+                "process_id": "eq",
+                "arguments": {"x": {"from_parameter": "value"}, "y": "my-byoc-id"},
+                "result": True,
+            }
+        }
+    }
+    custom_properties = {"byoc_id": eq_byoc_id}
+    property_filters = PropertyFilters.resolve(
+        layer_properties={}, custom_properties=custom_properties, env=EvalEnv()
+    )
+    assert "byoc_id" in property_filters.conditions()
+    del custom_properties["byoc_id"]
+    assert "byoc_id" not in property_filters.conditions()

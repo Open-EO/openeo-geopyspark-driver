@@ -24,20 +24,29 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass(frozen=True)
 class PropertyFilters:
-    """Replaces the old `metadata_properties(flatten_eqs)` closure with a value object."""
+    """
+    Replaces the old `metadata_properties(flatten_eqs)` closure with a value object.
 
-    _all_properties: Dict[str, dict]
+    `conditions()`/`flattened()` recompute from `_custom_properties` on every call
+    instead of caching, because that dict is `load_params.properties` itself (not a
+    copy): the PLANETSCOPE branch in the sentinel-hub pyramid builder does
+    `del load_params.properties['byoc_id']` between two calls and relies on the
+    second call no longer seeing it (doc 03 §7.2).
+    """
+
+    _layer_properties: Dict[str, dict]
+    _custom_properties: Dict[str, dict]
+    _env: EvalEnv
 
     @classmethod
     def resolve(cls, *, layer_properties: dict, custom_properties: dict, env: EvalEnv) -> "PropertyFilters":
-        all_properties = {
-            property_name: filter_properties.extract_literal_match(condition, env)
-            for property_name, condition in {**layer_properties, **custom_properties}.items()
-        }
-        return cls(_all_properties=all_properties)
+        return cls(_layer_properties=layer_properties, _custom_properties=custom_properties, _env=env)
 
     def conditions(self) -> Dict[str, dict]:
-        return self._all_properties
+        return {
+            property_name: filter_properties.extract_literal_match(condition, self._env)
+            for property_name, condition in {**self._layer_properties, **self._custom_properties}.items()
+        }
 
     def flattened(self) -> Dict[str, object]:
         def eq_value(criterion: Dict[str, object]) -> object:
@@ -46,7 +55,7 @@ class PropertyFilters:
             # TODO https://github.com/Open-EO/openeo-geotrellis-extensions/issues/39
             return list(criterion.values())[0]
 
-        return {property_name: eq_value(criterion) for property_name, criterion in self._all_properties.items()}
+        return {property_name: eq_value(criterion) for property_name, criterion in self.conditions().items()}
 
 
 @dataclasses.dataclass(frozen=True)
