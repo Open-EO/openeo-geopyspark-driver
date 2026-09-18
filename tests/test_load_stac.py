@@ -9,6 +9,7 @@ import importlib.metadata
 import dirty_equals
 import geopandas
 import openeo.metadata
+from openeo.metadata import _StacMetadataParser
 import pystac
 import pytest
 import responses
@@ -27,7 +28,6 @@ from openeogeotrellis.load_stac import (
     NoDataAvailableException,
     SpatialFilteringGeometries,
     SpatioTemporalExtent,
-    _StacMetadataParser,
     TemporalExtent,
     _prepare_context,
     spatiotemporal_extent_from_load_params,
