@@ -5,22 +5,19 @@ from typing import List, Dict, Optional
 
 import geopyspark
 import py4j.protocol
-import pyproj
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger
-from openeo_driver import filter_properties
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, ProcessGraphComplexityException
-from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, WhiteListEvalEnv, smart_bool
-from shapely.geometry import box
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
 from openeogeotrellis.catalog.files import dump_layer_catalog, load_catalog_files
 from openeogeotrellis.catalog.layer_catalog import LayerCatalog
+from openeogeotrellis.catalog.load_request import resolve_load_request
 from openeogeotrellis.catalog.validation import extra_validation_load_collection
 from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
@@ -29,10 +26,9 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY, WHITELIST
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.util.datetime import normalize_temporal_extent
 from openeogeotrellis.utils import (
     to_projected_polygons,
     get_jvm,
@@ -95,103 +91,38 @@ class GeoPySparkLayerCatalog(LayerCatalog):
             f"load_collection: Creating raster datacube for {collection_id=} ({pg_node_id=}) with {load_params=}, {env=}"
         )
 
-        from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
-        spatial_extent = load_params.spatial_extent
+        request = resolve_load_request(
+            collection_id=collection_id,
+            load_params=load_params,
+            env=env,
+            catalog=self,
+            default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint,
+        )
 
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        srs = spatial_extent.get("crs", 'EPSG:4326')
-        if isinstance(srs, int):
-            srs = 'EPSG:%s' % str(srs)
+        collection_id = request.collection_id
+        metadata = request.metadata
+        layer_source_info = request.source_info
+        layer_source_type = request.source_type
+        is_utm = request.is_utm
+        catalog_type = request.catalog_type  # E.g. STAC, Opensearch, Creodias
+        postprocessing_band_graph = request.postprocessing_band_graph
+        cell_width = request.cell_width
+        cell_height = request.cell_height
+        bands = request.bands
+        band_indices = request.band_indices
+        normalized_band_selection = request.normalized_band_selection
+        from_date, to_date = request.from_date, request.to_date
+        west, south, east, north, srs = request.west, request.south, request.east, request.north, request.srs
+        correlation_id = request.correlation_id
+        feature_flags = request.feature_flags
+        experimental = request.experimental
+        max_soft_errors_ratio = request.max_soft_errors_ratio
+        opensearch_endpoint = request.opensearch_endpoint
+        sar_backscatter_compatible = request.sar_backscatter_compatible
 
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
-        if not spatial_bounds_present:
-            if env.get(EVAL_ENV_KEY.REQUIRE_BOUNDS, False):
-                raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
-                                         message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
-                                             c=collection_id))
-            else:
-                #whole world processing, for instance in viewing services
-                srs = "EPSG:4326"
-                west = -180.0
-                south = -90
-                east = 180
-                north = 90
-                spatial_bounds_present=True
-
-        metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
-        layer_source_info = metadata.get("_vito", "data_source", default={})
-
-        if layer_source_info.get("type") == "merged_by_common_name":
-            logger.info(f"Resolving 'merged_by_common_name' collection {metadata.get('id')}")
-            metadata = self.resolve_merged_by_common_name(
-                collection_id=collection_id, metadata=metadata, load_params=load_params,
-                temporal_extent=temporal_extent, spatial_extent=spatial_extent
-            )
-            collection_id = metadata.get("id")
-            layer_source_info = metadata.get("_vito", "data_source", default={})
-            logger.info(f"Resolved 'merged_by_common_name' to collection {metadata.get('id')}")
-
-        sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
-        if load_params.sar_backscatter is not None and not sar_backscatter_compatible:
-            raise OpenEOApiException(message="""Process "sar_backscatter" is not applicable for collection {c}."""
-                                     .format(c=collection_id), status_code=400)
-
-        layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-        is_utm = layer_source_info.get("is_utm", False)
-        catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
-
-        postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
-        logger.debug("Cube source type: {s!r}".format(s=layer_source_type))
-        cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
-        cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
-
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-            # Note: the `metadata.filter_bands()` includes resolving band naming ("common_name" and aliases)
-            #       which we want to preserve in `normalized_band_selection`,
-            #       before `metadata.rename_labels()` changes it back to the originally requested band names.
-            normalized_band_selection = metadata.band_names
-            metadata = metadata.rename_labels(metadata.band_dimension.name, target=bands, source=metadata.band_names)
-        else:
-            band_indices = None
-            # Use ordered bands selection from metadata
-            normalized_band_selection = metadata.band_names if metadata.has_band_dimension() else None
-
-        logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
-
-        #band specific gsd can override collection default
-        band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
-        if len(band_gsds) > 0:
-
-            def smallest_cell_size(band_gsd, coordinate_index):
-                return (
-                    min(size[coordinate_index] for size in band_gsd) if isinstance(band_gsd[0], list)
-                    else band_gsd[coordinate_index]
-                )
-
-            cell_width = float(min(smallest_cell_size(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
-            cell_height = float(min(smallest_cell_size(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
-
-        native_crs = self.native_crs(metadata)
-
-        metadata = metadata.filter_temporal(from_date, to_date)
-
-        correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
-        logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
-
-        logger.info("Detected process types:" + str(load_params.process_types))
-
-
-        feature_flags = load_params.get("featureflags", {})
-        experimental = feature_flags.get("experimental", False)
 
         pysc = geopyspark.get_spark_context()
         description = f"load_collection_{collection_id}"
@@ -201,11 +132,7 @@ class GeoPySparkLayerCatalog(LayerCatalog):
 
         jvm = get_jvm()
 
-        extent = None
-
-
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-        metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
         geometries = load_params.aggregate_spatial_geometries
         empty_geometries = isinstance(geometries, DriverVectorCube) and len(geometries.get_geometries()) == 0
@@ -217,26 +144,7 @@ class GeoPySparkLayerCatalog(LayerCatalog):
                 jvm, geometries, crs=srs, buffer_points=True
             )
 
-        if native_crs == 'UTM':
-            target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
-        else:
-            target_epsg_code = int(native_crs.split(":")[-1])
-
-
-        if (load_params.target_resolution is not None ):
-            if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
-                cell_width = float(load_params.target_resolution[0])
-                cell_height = float(load_params.target_resolution[1])
-
-
-        if (load_params.target_crs is not None ):
-            if load_params.target_resolution is not None and load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
-                if isinstance(load_params.target_crs,int):
-                    target_epsg_code = load_params.target_crs
-                elif isinstance(load_params.target_crs,dict) and load_params.target_crs.get("id",{}).get("code") == 'Auto42001':
-                    target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
-                else:
-                    target_epsg_code = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
+        target_epsg_code = request.target_epsg
 
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
@@ -246,10 +154,6 @@ class GeoPySparkLayerCatalog(LayerCatalog):
         logger.debug(projected_polygons_native_crs.polygons()[0].toString())
 
         datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
-        opensearch_endpoint = layer_source_info.get(
-            "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
-        )
-        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
@@ -263,23 +167,7 @@ class GeoPySparkLayerCatalog(LayerCatalog):
             datacubeParams.setUseNewFeatureExtentIntersection2(val)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
-            layer_properties = metadata.get("_vito", "properties", default={})
-            custom_properties = load_params.properties
-
-            all_properties = {
-                property_name: filter_properties.extract_literal_match(condition, env)
-                for property_name, condition in {**layer_properties, **custom_properties}.items()
-            }
-
-            def eq_value(criterion: Dict[str, object]) -> object:
-                if len(criterion) != 1:
-                    raise ValueError(f'expected a single "eq" criterion, was {criterion}')
-
-                #TODO https://github.com/Open-EO/openeo-geotrellis-extensions/issues/39
-                return list(criterion.values())[0]
-
-            return ({property_name: eq_value(criterion) for property_name, criterion in all_properties.items()}
-                    if flatten_eqs else all_properties)
+            return request.property_filters.flattened() if flatten_eqs else request.property_filters.conditions()
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
