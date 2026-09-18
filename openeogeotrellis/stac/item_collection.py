@@ -51,16 +51,16 @@ from openeogeotrellis.stac.extents import (
     SpatioTemporalExtent,
     get_item_temporal_extent,
 )
-from openeogeotrellis.stac.item_deduplicator import ItemDeduplicator, _deduplicator_from_feature_flags
-from openeogeotrellis.stac.own_job import _await_dependency_job
+from openeogeotrellis.stac.item_deduplicator import ItemDeduplicator, deduplicator_from_feature_flags
+from openeogeotrellis.stac.own_job import await_dependency_job
 from openeogeotrellis.stac.property_filter import AdaptingPropertyFilter, PropertyFilter, PropertyFilterPGMap
 from openeogeotrellis.stac.stac_object_fetching import (
     STAC_API_BACKOFF_FACTOR,
     STAC_API_RETRY_TOTAL,
     REQUESTS_TIMEOUT_SECONDS,
     PollingConfig,
-    _JitteredRetry,
-    _await_stac_object,
+    JitteredRetry,
+    await_stac_object,
 )
 from openeogeotrellis.util.logging import TrackingIter
 
@@ -253,7 +253,7 @@ class ItemCollection:
             # https://stac.openeo.vito.be/ and https://stac.terrascope.be
             fields = None
 
-        retry = _JitteredRetry(
+        retry = JitteredRetry(
             total=STAC_API_RETRY_TOTAL,
             backoff_factor=STAC_API_BACKOFF_FACTOR,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
@@ -458,7 +458,7 @@ class LiveStacSourceResolver:
 
     def resolve(self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent) -> StacResolution:
         logger.info(f"LiveStacSourceResolver: fetching STAC object from {url=} {spatiotemporal_extent=}")
-        stac_object = _await_stac_object(
+        stac_object = await_stac_object(
             url=url,
             poll_interval_seconds=self._polling.poll_interval_seconds,
             max_poll_delay_seconds=self._polling.max_poll_delay_seconds,
@@ -491,7 +491,7 @@ class OwnJobStacSourceResolver:
         self._polling = polling or PollingConfig.from_backend_config()
 
     def resolve(self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent) -> Optional[StacResolution]:
-        dependency_job_info = _await_dependency_job(
+        dependency_job_info = await_dependency_job(
             url=url,
             user=self._user,
             batch_jobs=self._batch_jobs,
@@ -687,7 +687,7 @@ def construct_item_collection(
     # Deduplicate items
     # TODO: smarter and more fine-grained deduplication behavior?
     #       - enable by default or only do it on STAC API usage?
-    if deduplicator := _deduplicator_from_feature_flags(feature_flags=feature_flags, id=url):
+    if deduplicator := deduplicator_from_feature_flags(feature_flags=feature_flags, id=url):
         item_collection = item_collection.deduplicated(deduplicator=deduplicator)
 
     return StacSource(

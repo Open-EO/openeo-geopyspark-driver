@@ -66,7 +66,7 @@ from openeogeotrellis.collections.sentinel5p_functions import (
     resample_data,
     get_mask_from_polygon,
 )
-from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.load_stac import spatiotemporal_extent_from_load_params, construct_item_collection
 from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
@@ -347,7 +347,7 @@ def _build_stac_opensearch_client(
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
     feature_flags = feature_flags or {}
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent,
     )

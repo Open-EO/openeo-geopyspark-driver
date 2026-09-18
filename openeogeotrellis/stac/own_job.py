@@ -41,7 +41,7 @@ def extract_own_job_info(
         return None
 
 
-def _await_dependency_job(
+def await_dependency_job(
     url: str,
     *,
     user: Optional[User] = None,

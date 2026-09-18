@@ -221,7 +221,7 @@ class ItemDeduplicator:
         return result
 
 
-def _deduplicator_from_feature_flags(feature_flags: dict, *, id: Optional[str] = None) -> Union[ItemDeduplicator, None]:
+def deduplicator_from_feature_flags(feature_flags: dict, *, id: Optional[str] = None) -> Union[ItemDeduplicator, None]:
     deduplicate_items = feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default)
 
     if deduplicate_items:

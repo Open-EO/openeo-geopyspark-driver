@@ -31,11 +31,10 @@ from openeogeotrellis.stac.extents import (
     SpatialFilteringGeometries,
     SpatioTemporalExtent,
     TemporalExtent,
-    _spatiotemporal_extent_from_load_params,
+    spatiotemporal_extent_from_load_params,
 )
 from openeogeotrellis.stac.exceptions import LoadStacException
 from openeogeotrellis.stac.item_collection import construct_item_collection
-from openeogeotrellis.stac.own_job import _await_dependency_job, extract_own_job_info
 from openeogeotrellis.stac.property_filter import PropertyFilterPGMap
 
 # Per-item/per-asset analysis (projection metadata, band/pixel decisions)
@@ -152,7 +151,7 @@ def _prepare_context(
         if from_date == until_date
         else until_date - dt.timedelta(milliseconds=1)
     )
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=load_params.spatial_extent,
         temporal_extent=load_params.temporal_extent,
     )

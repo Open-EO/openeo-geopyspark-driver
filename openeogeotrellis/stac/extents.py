@@ -309,7 +309,7 @@ class SpatioTemporalExtent:
         )
 
 
-def _spatiotemporal_extent_from_load_params(
+def spatiotemporal_extent_from_load_params(
     spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
 ) -> SpatioTemporalExtent:

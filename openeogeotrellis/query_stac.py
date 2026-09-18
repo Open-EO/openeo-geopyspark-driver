@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional, Union, Tuple
 from openeo_driver.util.geometry import BoundingBox
-from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.load_stac import spatiotemporal_extent_from_load_params, construct_item_collection
 
 import pystac
 
@@ -21,7 +21,7 @@ def item_collection_from_stac_query(
 
     .. _pystac ItemCollection: https://pystac.readthedocs.io/en/latest/api/pystac.html#pystac.ItemCollection
     """
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent,
     )

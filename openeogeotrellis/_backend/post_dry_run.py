@@ -287,7 +287,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # TODO: improve logging: e.g. automatically include stac URL and what context we are in
     _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
 
-    spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = openeogeotrellis.load_stac.spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
     )

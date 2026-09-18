@@ -14,7 +14,7 @@ from unittest import skip
 
 import pytest
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
-from openeogeotrellis.load_stac import construct_item_collection, _spatiotemporal_extent_from_load_params
+from openeogeotrellis.load_stac import construct_item_collection, spatiotemporal_extent_from_load_params
 
 _log = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def test_s1backscatter_stac_api_queries_multiple_product_types():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )

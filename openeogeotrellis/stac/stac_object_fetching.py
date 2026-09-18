@@ -5,7 +5,7 @@ Fetches the STAC object (Item, Collection, or Catalog) at a given URL,
 polling until the results of a (partial) batch job are complete.
 
 Note: polling for the own-job dependency case (`extract_own_job_info` /
-`_await_dependency_job`) lives in `openeogeotrellis.stac.own_job` instead,
+`await_dependency_job`) lives in `openeogeotrellis.stac.own_job` instead,
 as it is genuinely backend/job-registry-specific (needs `BatchJobs`),
 unlike the generic STAC object fetching here which is portable as-is.
 """
@@ -57,7 +57,7 @@ class PollingConfig:
         return time.time() + self.max_poll_delay_seconds
 
 
-class _JitteredRetry(Retry):
+class JitteredRetry(Retry):
     """Retry with jitter to avoid thundering herd on 429 responses.
 
     - No Retry-After header: full jitter (random in [0, base_backoff])
@@ -79,7 +79,7 @@ class _JitteredRetry(Retry):
         return False
 
 
-def _await_stac_object(
+def await_stac_object(
     url: str,
     *,
     poll_interval_seconds: float,
@@ -88,7 +88,7 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        retry = _JitteredRetry(
+        retry = JitteredRetry(
             total=STAC_API_RETRY_TOTAL,
             backoff_factor=STAC_API_BACKOFF_FACTOR,
             status_forcelist={429, 500, 502, 503, 504},

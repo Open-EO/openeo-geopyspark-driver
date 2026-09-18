@@ -12,7 +12,7 @@ from openeogeotrellis.stac.extents import (
     SpatialFilteringGeometries,
     SpatioTemporalExtent,
     TemporalExtent,
-    _spatiotemporal_extent_from_load_params,
+    spatiotemporal_extent_from_load_params,
 )
 
 
@@ -73,7 +73,7 @@ class TestSpatioTemporalExtent:
         assert not extent.item_intersects(DummyItem())
 
     def test_spatiotemporal_extent_from_load_params(self):
-        extent = _spatiotemporal_extent_from_load_params(
+        extent = spatiotemporal_extent_from_load_params(
             spatial_extent={"west": 3, "south": 51, "east": 4, "north": 52},
             temporal_extent=("2024-01-01", "2024-02-01"),
         )

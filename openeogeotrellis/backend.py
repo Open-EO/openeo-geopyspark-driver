@@ -130,6 +130,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
+from openeogeotrellis.stac.own_job import extract_own_job_info
 from openeogeotrellis.stac.partialjobresults import PartialJobResults
 from openeogeotrellis.udf import (
     run_udf_code,
@@ -2184,7 +2185,7 @@ class GpsBatchJobs(backend.BatchJobs):
             elif source_id.process_id == "load_stac":
                 dependency = PartialJobResults.get_partial_results_from_load_stac_arguments(
                     arguments=source_id.arguments,
-                    extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
+                    extract_own_job_info=lambda url: extract_own_job_info(url, user_id=user_id, batch_jobs=self),
                     logger_adapter=logger_adapter,
                     requests_session=self._requests_session,
                 )

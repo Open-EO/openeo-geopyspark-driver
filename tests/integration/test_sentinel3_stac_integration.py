@@ -20,7 +20,7 @@ from openeogeotrellis.collections.sentinel3 import (
     _get_acquisition_key,
     SLSTR_PRODUCT_TYPE,
 )
-from openeogeotrellis.load_stac import construct_item_collection, _spatiotemporal_extent_from_load_params
+from openeogeotrellis.load_stac import construct_item_collection, spatiotemporal_extent_from_load_params
 
 _log = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def test_sentinel3_stac_query_recent_data_nrt():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )
@@ -179,7 +179,7 @@ def test_sentinel3_stac_query_older_data_ntc():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )
@@ -285,7 +285,7 @@ def test_sentinel3_stac_deduplication_ntc_takes_precedence():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )

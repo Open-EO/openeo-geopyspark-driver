@@ -36,12 +36,12 @@ from openeogeotrellis.load_stac import (
     _StacMetadataParser,
     TemporalExtent,
     _prepare_context,
-    _spatiotemporal_extent_from_load_params,
+    spatiotemporal_extent_from_load_params,
     construct_item_collection,
-    extract_own_job_info,
     get_pixel_value_scaling_mode,
     load_stac,
 )
+from openeogeotrellis.stac.own_job import extract_own_job_info
 from openeogeotrellis.stac.item_collection import (
     STAC_API_PER_PAGE_LIMIT_DEFAULT,
     ItemCollection,
@@ -50,7 +50,7 @@ from openeogeotrellis.stac.item_collection import (
 )
 from openeogeotrellis.stac.assets import is_band_asset, is_supported_raster_mime_type
 from openeogeotrellis.stac.property_filter import AdaptingPropertyFilter, PropertyFilter
-from openeogeotrellis.stac.item_deduplicator import ItemDeduplicator, _deduplicator_from_feature_flags
+from openeogeotrellis.stac.item_deduplicator import ItemDeduplicator, deduplicator_from_feature_flags
 from openeogeotrellis.stac.extents import _SpatialExtent
 from openeogeotrellis.stac.asset_table import (
     PixelValueScalingMode,
@@ -1886,7 +1886,7 @@ class TestSpatioTemporalExtent:
 )
 def test_spatiotemporal_extent_from_load_params(load_params, expected, time_machine):
     time_machine.move_to("2024-01-02T03:04:05Z")
-    extent = _spatiotemporal_extent_from_load_params(load_params.spatial_extent, load_params.temporal_extent)
+    extent = spatiotemporal_extent_from_load_params(load_params.spatial_extent, load_params.temporal_extent)
     assert (extent.spatial_extent.as_bbox(), extent.temporal_extent.as_tuple()) == expected
 
 
@@ -3788,7 +3788,7 @@ class TestItemDeduplicator:
         )
 
         item_collection = ItemCollection([item_0, item_1, item_2])
-        deduplicator = _deduplicator_from_feature_flags(feature_flags)
+        deduplicator = deduplicator_from_feature_flags(feature_flags)
         if deduplicator:
             item_collection = item_collection.deduplicated(deduplicator=deduplicator)
 

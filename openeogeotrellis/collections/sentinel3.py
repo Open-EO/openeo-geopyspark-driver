@@ -299,7 +299,7 @@ def _build_stac_opensearch_client(
 
     Queries multiple STAC collections (e.g., NRT and NTC for SLSTR LST) and merges results.
     """
-    from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
+    from openeogeotrellis.load_stac import spatiotemporal_extent_from_load_params
     from openeogeotrellis.load_stac import construct_item_collection
 
     product_type = metadata_properties["productType"]
@@ -323,7 +323,7 @@ def _build_stac_opensearch_client(
     property_filter_pg_map = _map_attributes_to_property_filter(stac_attributes)
 
     # Build spatiotemporal extent
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )
