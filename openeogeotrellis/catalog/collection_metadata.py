@@ -35,7 +35,7 @@ def clean_number_pair(tuple_to_clean):
 
 class CollectionCubeMetadata(CollectionMetadata):
     """
-    Collection cube metadata (additional tracking of spatial and temporal extent
+    GeoPySpark Cube metadata (additional tracking of spatial and temporal extent
     """
 
     # TODO move to python driver?
