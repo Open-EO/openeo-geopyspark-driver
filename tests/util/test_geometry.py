@@ -9,10 +9,47 @@ import shapely.geometry
 
 from openeo_driver.util.geometry import BoundingBox
 
-from openeogeotrellis.util.geometry import BoundingBoxMerger, GeometrySimplifier, GridSnapper, bbox_to_geojson
+from openeogeotrellis.util.geometry import (
+    BoundingBoxMerger,
+    GeometrySimplifier,
+    GridSnapper,
+    bbox_to_geojson,
+    calculate_rough_area,
+    health_check_extent,
+)
 from ..data import get_test_data_file
 
 logger = logging.getLogger(__name__)
+
+
+def test_calculate_rough_area_single_geometry():
+    assert calculate_rough_area([shapely.geometry.box(0, 0, 2, 3)]) == 6
+
+
+def test_calculate_rough_area_multiple_geometries():
+    geoms = [shapely.geometry.box(0, 0, 2, 3), shapely.geometry.box(0, 0, 1, 1)]
+    assert calculate_rough_area(geoms) == 7
+
+
+def test_calculate_rough_area_multipolygon():
+    multi = shapely.geometry.MultiPolygon([shapely.geometry.box(0, 0, 2, 3), shapely.geometry.box(0, 0, 1, 1)])
+    assert calculate_rough_area([multi]) == 7
+
+
+@pytest.mark.parametrize(
+    ["extent", "expected"],
+    [
+        ({"west": 0, "south": 0, "east": 1, "north": 1, "crs": "EPSG:4326"}, True),
+        ({"west": 1, "south": 0, "east": 0, "north": 1, "crs": "EPSG:4326"}, False),  # west > east
+        ({"west": -200, "south": 0, "east": 0, "north": 1, "crs": "EPSG:4326"}, False),  # out of lon-lat bounds
+        ({"west": 0, "south": -95, "east": 1, "north": 1, "crs": "EPSG:4326"}, False),
+        ({"west": 500000, "south": 4000000, "east": 600000, "north": 4100000, "crs": "EPSG:32631"}, True),
+        ({"west": -1e9, "south": -1e9, "east": 1e9, "north": 1e9, "crs": "EPSG:32631"}, False),
+        ({"west": 500000, "south": 4000000, "east": 600000, "north": 4100000, "crs": "Auto42001"}, True),
+    ],
+)
+def test_health_check_extent(extent, expected):
+    assert health_check_extent(extent) == expected
 
 
 class TestBoundingBoxMerger:

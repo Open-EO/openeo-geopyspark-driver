@@ -47,12 +47,11 @@ from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.util.datetime import normalize_temporal_extent, parse_approximate_isoduration
+from openeogeotrellis.util.geometry import calculate_rough_area, health_check_extent
 from openeogeotrellis.utils import (
     to_projected_polygons,
     get_jvm,
-    calculate_rough_area,
     reproject_cellsize,
-    health_check_extent,
 )
 from openeogeotrellis.vault import Vault
 
