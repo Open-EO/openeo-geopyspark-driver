@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+from __future__ import annotations
 import argparse
 import collections
 import copy
@@ -265,6 +266,102 @@ class BandMetadata:
         )
 
 
+class BandMetadataList:
+    """
+    Container for a list of BandMetadata objects, with some convenience methods
+
+    Note that it's called a "list" to not overcomplicate the naming,
+    but design-wise it's more centered around an immutable, ordered collection of band metadata,
+    so it behaves more like a tuple than a list.
+    """
+
+    __slot__ = ("_bands",)
+
+    def __init__(self, bands: Iterable[BandMetadata]):
+        self._bands = tuple(bands)
+
+    def __iter__(self) -> Iterator[BandMetadata]:
+        return iter(self._bands)
+
+    def as_list(self) -> List[BandMetadata]:
+        return list(self._bands)
+
+    def apply_raster_scale_and_offset_to_band_metadata(self) -> BandMetadataList:
+        """
+        Convert list of band metadata to reflect the automatic application
+        of `raster:scale` and `raster:offset` to the raster data at data load time,
+        (remove original `raster:scale`, `raster:offset`, update data_type, nodata, ...)
+        """
+        # TODO: how to make sure this is aligned with the actual implementation in openeo-geotrellis-extension?
+        has_scaling = any(b.raster_scale not in {1, None} for b in self)
+        has_fractional_offset = any(
+            isinstance(b.raster_offset, float) and not b.raster_offset.is_integer() for b in self
+        )
+        to_float = has_scaling or has_fractional_offset
+
+        def convert(band: BandMetadata) -> BandMetadata:
+            data = dataclasses.asdict(band)
+            # Remove `raster:scale` and `raster:offset` fields
+            data["raster_scale"] = None
+            data["raster_offset"] = None
+            if to_float:
+                data["data_type"] = "float32"
+                # TODO: possible to set `nodata`? e.g. "nan"?
+                data["nodata"] = None
+
+            if (
+                band.raster_scale not in {1, None} or band.raster_offset not in {0.0, None}
+            ) and band.classification_classes:
+                # TODO: how to combine auto-scaling and classification classes?
+                _log.warning(
+                    f"Band {band.name!r} with both scaling (scale {band.raster_scale}, offset {band.raster_offset}) and classification classes {band.classification_classes}."
+                )
+                data["classification_classes"] = None
+
+            return BandMetadata(**data)
+
+        return BandMetadataList(convert(b) for b in self)
+
+    def add_band_name_aliases_add_prefix(self, prefix: str) -> BandMetadataList:
+        """Add band name aliases using the given prefix."""
+
+        def convert(band: BandMetadata) -> BandMetadata:
+            aliases = list(band.aliases or []) + [f"{prefix}{band.name}"]
+            return dataclasses.replace(band, aliases=aliases)
+
+        return BandMetadataList(convert(b) for b in self)
+
+    def add_band_name_aliases_drop_prefix(self, prefix: str) -> BandMetadataList:
+        """Add band name aliases by dropping the given prefix from the band names."""
+
+        def convert(band: BandMetadata) -> BandMetadata:
+            alias = band.name.removeprefix(prefix)
+            aliases = list(band.aliases or [])
+            if alias and alias not in ([band.name] + aliases):
+                return dataclasses.replace(band, aliases=aliases + [alias])
+            return band
+
+        return BandMetadataList(convert(b) for b in self)
+
+    def add_band_name_aliases_drop_common_prefix(self) -> BandMetadataList:
+        """Add band name aliases by dropping the common prefix from the band names."""
+        if common_prefix := _find_common_prefix(b.name for b in self):
+            return self.add_band_name_aliases_drop_prefix(common_prefix)
+        return self
+
+
+def _find_common_prefix(strings: Iterable[str]) -> Union[str, None]:
+    """Find common prefix of a list of strings."""
+    prefix = None
+    for s in strings:
+        if prefix is None:
+            prefix = s
+        else:
+            while prefix and not s.startswith(prefix):
+                prefix = prefix[:-1]
+    return prefix
+
+
 @functools.lru_cache
 def get_upstream_stac_metadata(stac_url: str) -> dict:
     _log.info(f"Fetching upstream STAC metadata from {stac_url=}")
@@ -293,7 +390,7 @@ def build_stac_collection_metadata(
     stac_url: str,
     description: Optional[str] = None,
     description_prefix: Optional[str] = None,
-    bands: Union[List[BandMetadata], str],
+    bands: Union[List[BandMetadata], BandMetadataList, str],
     load_stac_feature_flags: Optional[dict] = None,
     x_dim: Optional[dict] = None,
     y_dim: Optional[dict] = None,
@@ -364,7 +461,7 @@ def build_stac_collection_metadata(
 
     if bands == GUESS_BANDS_FROM_UPSTREAM:
         bands = extract_band_metadata_list(upstream_metadata)
-    elif isinstance(bands, list):
+    elif isinstance(bands, (list, BandMetadataList)):
         pass
     else:
         raise ValueError(bands)
@@ -565,49 +662,19 @@ class _BandMetadataCollector:
 
         return self
 
-    def get_band_metadata_list(self) -> List[BandMetadata]:
-        return [BandMetadata(**b) for b in self._collected_band_metadata]
+    def get_band_metadata_list(self) -> BandMetadataList:
+        return BandMetadataList(BandMetadata(**b) for b in self._collected_band_metadata)
 
 
-def extract_band_metadata_list(metadata: dict) -> List[BandMetadata]:
+def extract_band_metadata_list(metadata: dict) -> BandMetadataList:
     """Extract/guess band metadata from raw STAC collection metadata"""
     collector = _BandMetadataCollector()
     return collector.collect_from_stac_collection_metadata(metadata).get_band_metadata_list()
 
 
 def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) -> List[BandMetadata]:
-    """
-    Convert list of band metadata to reflect the automatic application
-    of `raster:scale` and `raster:offset` to the raster data at data load time,
-    (remove original `raster:scale`, `raster:offset`, update data_type, nodata, ...)
-    """
-    # TODO: how to make sure this is aligned with the actual implementation in openeo-geotrellis-extension?
-    has_scaling = any(b.raster_scale not in {1, None} for b in bands)
-    has_fractional_offset = any(isinstance(b.raster_offset, float) and not b.raster_offset.is_integer() for b in bands)
-    to_float = has_scaling or has_fractional_offset
-
-    def convert(band: BandMetadata) -> BandMetadata:
-        data = dataclasses.asdict(band)
-        # Remove `raster:scale` and `raster:offset` fields
-        data["raster_scale"] = None
-        data["raster_offset"] = None
-        if to_float:
-            data["data_type"] = "float32"
-            # TODO: possible to set `nodata`? e.g. "nan"?
-            data["nodata"] = None
-
-        if (
-            band.raster_scale not in {1, None} or band.raster_offset not in {0.0, None}
-        ) and band.classification_classes:
-            # TODO: how to combine auto-scaling and classification classes?
-            _log.warning(
-                f"Band {band.name!r} with both scaling (scale {band.raster_scale}, offset {band.raster_offset}) and classification classes {band.classification_classes}."
-            )
-            data["classification_classes"] = None
-
-        return BandMetadata(**data)
-
-    return [convert(b) for b in bands]
+    # adapter for legacy usage.
+    return BandMetadataList(bands).apply_raster_scale_and_offset_to_band_metadata().as_list()
 
 
 def dict_compare(d1: dict, d2: dict, name1: str = "left", name2: str = "right") -> List[str]:
