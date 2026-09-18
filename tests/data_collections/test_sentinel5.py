@@ -8,7 +8,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 import pytest
@@ -354,9 +354,25 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
 # ---------------------------------------------------------------------------
 
 requires_eodata = pytest.mark.skipif(
-    not os.path.exists("/eodata") or not os.listdir("/eodata"),
+    (not os.path.exists("/eodata_CACHE/eodata") or not os.listdir("/eodata_CACHE/eodata"))
+    and (not os.path.exists("/eodata") or not os.listdir("/eodata")),
     reason="requires mounting /eodata.",
 )
+
+
+def fix_eodata_path(path: Union[Path, str]) -> Union[Path, str]:
+    if isinstance(path, Path):
+        p = str(path)
+    else:
+        p = path
+    if p.startswith("/eodata/"):
+        p = p.replace("/eodata/", "/eodata_CACHE/eodata/")
+        if os.path.exists(p):
+            if isinstance(path, Path):
+                return Path(p)
+            else:
+                return p
+    return path
 
 def assert_tif_file_is_healthy(tif_path):
     import rioxarray
@@ -792,7 +808,9 @@ class TestSentinel5:
 
     def test_data_loading_with_complex_bounding_box_01(self):
         nc_file_path = Path(
-            "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
+            fix_eodata_path(
+                "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
+            )
         )
         assert nc_file_path.exists()
         params = {
@@ -811,7 +829,9 @@ class TestSentinel5:
         This product has bad anti-meridian wrapping. The polygon probably needs to be split.
         """
         nc_file_path = Path(
-            "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2023/06/29/S5P_OFFL_L2__AER_AI_20230629T125244_20230629T143414_29583_03_020500_20230701T023445.nc"
+            fix_eodata_path(
+                "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2023/06/29/S5P_OFFL_L2__AER_AI_20230629T125244_20230629T143414_29583_03_020500_20230701T023445.nc"
+            )
         )
         assert nc_file_path.exists()
         params = {
