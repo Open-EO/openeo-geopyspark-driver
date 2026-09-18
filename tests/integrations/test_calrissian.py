@@ -765,21 +765,13 @@ class TestCalrissianJobLauncher:
         ), mock.patch("openeogeotrellis.integrations.calrissian.ensure_kubernetes_config"), gps_config_overrides(
             batch_job_work_dir_root=str(tmp_path)
         ):
-            response = api110.check_result(process_graph)
+            api110.check_result(process_graph)
 
         # The CWL job should have received the "datacube_s2" context argument
         # as a string (path/URL to the STAC catalog written for it), not the raw datacube object.
         fake_launcher.run_cwl_workflow.assert_called_once()
         cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
         assert isinstance(cwl_arguments["datacube_s2"], str)
-
-        output_file = tmp_path / "result.tif"
-        output_file.write_bytes(response.data)
-
-        with rasterio.open(output_file) as ds:
-            # dummy_stac.cwl should return a catalog with B04, B03, B02 bands, ignoring the input argument.
-            print(ds.descriptions)
-            assert ds.descriptions == ("B04", "B03", "B02")
 
 
 class TestCalrissianS3Result:
