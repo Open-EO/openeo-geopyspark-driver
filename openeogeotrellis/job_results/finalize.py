@@ -51,7 +51,7 @@ def finalize_job(
     result_metadata: dict = {}
     tracker_metadata: dict = {}
     items: List[dict] = []
-    auxiliary_links_cache: Dict[Tuple[str, bool], str] = {}
+    auxiliary_links_cache: Dict[Tuple[str, str, bool], str] = {}
     ml_model_metadata: Optional[Dict] = None
 
     def assemble(*, result: SaveResult, apply_gdal: bool, asset_metadata: Dict, result_items: Optional[List[dict]] = None) -> dict:
@@ -308,7 +308,7 @@ def _write_metadata_file(
     *,
     stac11_mode: bool,
     hooks: JobResultsHooks,
-    auxiliary_links_cache: Dict[Tuple[str, bool], str],
+    auxiliary_links_cache: Dict[Tuple[str, str, bool], str],
 ) -> None:
     def log_asset_hrefs(context: str):
         if stac11_mode:
@@ -356,7 +356,7 @@ def _copy_auxiliary_links(
     job_dir: Path,
     for_export_workspace: bool,
     hooks: JobResultsHooks,
-    cache: Dict[Tuple[str, bool], str],
+    cache: Dict[Tuple[str, str, bool], str],
 ) -> List[dict]:
     """files should be downloadable from the web app driver"""
     links = auxiliary_links.target if isinstance(auxiliary_links, BadlyHashable) else auxiliary_links
@@ -364,7 +364,7 @@ def _copy_auxiliary_links(
     copied_auxiliary_links = []
     for auxiliary_link in links:
         auxiliary_file = Path(auxiliary_link["href"])
-        cache_key = (str(auxiliary_file), for_export_workspace)
+        cache_key = (str(auxiliary_file), str(job_dir), for_export_workspace)
         if cache_key not in cache:
             cache[cache_key] = hooks.publish_auxiliary_file(auxiliary_file, job_dir, for_export_workspace=for_export_workspace)
         copied_auxiliary_links.append(dict(auxiliary_link, href=cache[cache_key]))
