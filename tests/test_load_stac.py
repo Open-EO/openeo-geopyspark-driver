@@ -45,15 +45,14 @@ from openeogeotrellis.load_stac import (
 from openeogeotrellis.stac.item_collection import (
     STAC_API_PER_PAGE_LIMIT_DEFAULT,
     ItemCollection,
-    _is_band_asset,
-    _is_supported_raster_mime_type,
     _pystac_item_from_dict_lenient,
     _supports_item_search,
 )
+from openeogeotrellis.stac.assets import is_band_asset, is_supported_raster_mime_type
 from openeogeotrellis.stac.property_filter import AdaptingPropertyFilter, PropertyFilter
 from openeogeotrellis.stac.item_deduplicator import ItemDeduplicator, _deduplicator_from_feature_flags
 from openeogeotrellis.stac.extents import _SpatialExtent
-from openeogeotrellis.stac.opensearch_features import (
+from openeogeotrellis.stac.asset_table import (
     PixelValueScalingMode,
     ResolutionTracker,
     _get_pixel_value_scale_and_offset,
@@ -835,12 +834,12 @@ class TestStacMetadataParser:
 
 
 def test_is_supported_raster_mime_type():
-    assert _is_supported_raster_mime_type("image/tiff; application=geotiff")
-    assert _is_supported_raster_mime_type("image/tiff; application=geotiff; profile=cloud-optimized")
-    assert _is_supported_raster_mime_type("image/jp2")
-    assert _is_supported_raster_mime_type("application/x-hdf5")
-    assert _is_supported_raster_mime_type("application/x-hdf")
-    assert not _is_supported_raster_mime_type("text/html")
+    assert is_supported_raster_mime_type("image/tiff; application=geotiff")
+    assert is_supported_raster_mime_type("image/tiff; application=geotiff; profile=cloud-optimized")
+    assert is_supported_raster_mime_type("image/jp2")
+    assert is_supported_raster_mime_type("application/x-hdf5")
+    assert is_supported_raster_mime_type("application/x-hdf")
+    assert not is_supported_raster_mime_type("text/html")
 
 
 @pytest.mark.parametrize(
@@ -860,7 +859,7 @@ def test_is_supported_raster_mime_type():
 )
 def test_is_band_asset(data, expected):
     asset = pystac.Asset.from_dict(data)
-    assert _is_band_asset(asset) == expected
+    assert is_band_asset(asset) == expected
 
 
 @pytest.mark.parametrize(

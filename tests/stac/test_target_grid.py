@@ -1,5 +1,5 @@
 """
-Focused unit tests for `openeogeotrellis.stac.target_resolution`, exercised
+Focused unit tests for `openeogeotrellis.stac.target_grid`, exercised
 through its own public surface (no JVM/GeoPySpark dependency), independent of
 `test_load_stac.py`'s end-to-end JVM-backed checks.
 """
@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 from openeo_driver.util.geometry import BoundingBox
 
-from openeogeotrellis.stac.opensearch_features import ResolutionTracker
-from openeogeotrellis.stac.target_resolution import (
+from openeogeotrellis.stac.asset_table import ResolutionTracker
+from openeogeotrellis.stac.target_grid import (
     apply_load_params_overrides,
     determine_cell_size,
     determine_target_epsg,

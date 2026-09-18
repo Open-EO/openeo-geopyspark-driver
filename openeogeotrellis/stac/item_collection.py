@@ -46,6 +46,7 @@ import openeo_driver.backend
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY, STAC_API_FILTER_BY_GEOMETRY_DEFAULT
 from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO
+from openeogeotrellis.stac.assets import is_band_asset, is_supported_raster_mime_type
 from openeogeotrellis.stac.exceptions import LoadStacException
 from openeogeotrellis.stac.extents import (
     SpatialFilteringGeometries,
@@ -102,56 +103,6 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
         # this is one way to determine if a time dimension is used, but it does depend on the use of item_assets and datacube extension.
         return len(dimensions) == 1 and "time" in dimensions.pop()
     return False
-
-
-def _is_supported_raster_mime_type(mime_type: str) -> bool:
-    mime_type = mime_type.lower()
-    # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
-    return (
-        mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
-        or mime_type.startswith("image/vnd.stac.geotiff")
-        or mime_type.startswith("image/jp2")
-        or mime_type.startswith("image/png")
-        or mime_type.startswith("image/jpeg")
-        or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
-        or mime_type.startswith("application/x-netcdf")
-        or mime_type.startswith("application/netcdf")
-    )
-
-
-def _is_band_asset(asset: pystac.Asset) -> bool:
-    # TODO: what does this function actually detect?
-    #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
-    #       but implementation also seems to be happy with just being loadable as raster data in some sense.
-
-    # Skip unsupported media types (if known)
-    if asset.media_type:
-        if asset.media_type == "image/vnd.stac.geotiff; cloud-optimized=true":
-            return True
-        if not _is_supported_raster_mime_type(asset.media_type):
-            return False
-
-    # Decide based on role (if known)
-    if asset.roles is None:
-        pass
-    elif len(asset.roles) > 0:
-        # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#list-of-asset-roles
-        roles_with_bands = {
-            "data",
-            "data-mask",
-            "snow-ice",
-            "land-water",
-            "water-mask",
-        }
-        return bool(roles_with_bands.intersection(asset.roles))
-    else:
-        logger.warning(f"_is_band_asset with {asset.href=}: ignoring empty {asset.roles=}")
-
-    # Fallback based on presence of any band metadata
-    return (
-        "eo:bands" in asset.extra_fields
-        or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
-    )
 
 
 def _pystac_item_from_dict_lenient(item: dict) -> pystac.Item:
@@ -452,7 +403,7 @@ class ItemCollection:
     def iter_items_with_band_assets(self) -> Iterator[Tuple[pystac.Item, Dict[str, pystac.Asset]]]:
         """Iterate over items along with their band assets only."""
         for item in self.items:
-            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
+            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if is_band_asset(asset)}
             if band_assets:
                 yield item, band_assets
 

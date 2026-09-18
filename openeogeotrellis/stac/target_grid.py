@@ -1,12 +1,9 @@
 """
-Target CRS and cell-size determination for load_stac.
+Target grid determination: the output datacube's EPSG code and cell size.
 
-Given the resolution/EPSG information collected during per-item/per-asset
-analysis, determines:
-1. The target EPSG code for the output datacube.
-2. The output cell size (width, height) in the units of that CRS.
-
-Both can be overridden by load_params (target_crs / target_resolution).
+Derives both from the resolution/EPSG information collected during per-asset
+analysis, with `load_params.target_crs`/`target_resolution` taking precedence
+when set.
 """
 from __future__ import annotations
 
@@ -19,7 +16,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.util.geometry import GeometryBufferer
 
-from openeogeotrellis.stac.opensearch_features import ResolutionTracker
+from openeogeotrellis.stac.asset_table import ResolutionTracker
 from openeogeotrellis.util.projection import is_utm_epsg_code
 
 logger = logging.getLogger(__name__)

@@ -39,14 +39,14 @@ from openeogeotrellis.stac.own_job import _await_dependency_job, extract_own_job
 from openeogeotrellis.stac.property_filter import PropertyFilterPGMap
 
 # Per-item/per-asset analysis (projection metadata, band/pixel decisions)
-from openeogeotrellis.stac.opensearch_features import (
+from openeogeotrellis.stac.asset_table import (
     AssetTable,
     get_pixel_value_scaling_mode,
     build_asset_table,
 )
 
 # Target grid (EPSG/cellsize) selection
-from openeogeotrellis.stac.target_resolution import (
+from openeogeotrellis.stac.target_grid import (
     apply_load_params_overrides,
     determine_cell_size,
     determine_target_epsg,

@@ -1,17 +1,17 @@
 """
 GeoPySpark/JVM-specific translation of an `AssetTable` into an OpenSearch
-FixedFeaturesOpenSearchClient, for load_stac.
+FixedFeaturesOpenSearchClient.
 
 Thin mechanical translation of the engine-agnostic decisions already made in
-`openeogeotrellis.stac.opensearch_features.build_asset_table` into JVM calls.
-No decision logic lives here.
+`openeogeotrellis.stac.asset_table.build_asset_table` into JVM calls. No
+decision logic lives here.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Tuple
 
-from openeogeotrellis.stac.opensearch_features import AssetTable
+from openeogeotrellis.stac.asset_table import AssetTable
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +64,8 @@ def build_opensearch_features(asset_table: AssetTable, jvm: Any) -> Tuple[Any, D
                     link.band_names,
                 )
 
-        for special_link in item.special_links:
-            builder = builder.addLink(special_link.href, special_link.asset_id, special_link.band_names)
+        for metadata_link in item.metadata_links:
+            builder = builder.addLink(metadata_link.href, metadata_link.asset_id, metadata_link.band_names)
 
         if item.crs_epsg:
             builder = builder.withCRS(f"EPSG:{item.crs_epsg}")

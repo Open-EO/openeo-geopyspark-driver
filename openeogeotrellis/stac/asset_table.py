@@ -1,18 +1,17 @@
 """
-Per-item / per-asset analysis for load_stac.
+Per-item / per-asset analysis of a STAC `ItemCollection`.
 
-Iterates over the collected STAC Items and their band Assets to:
-- determine per-asset projection metadata (EPSG, bbox, shape/resolution)
-- select which bands each asset contributes
-- determine pixel value scale/offset and datatype/nodata
-- track resolutions and EPSGs for later target-CRS/cell-size determination
-- collect all decisions into a plain `AssetTable`, one `AssetTableItem` per
-  surviving STAC Item, ready to be translated into whatever engine-specific
-  raster-loading representation a consumer needs (e.g. an OpenSearch
-  FixedFeaturesOpenSearchClient in `openeogeotrellis.stac.geopyspark_features`).
+Iterates over the collected STAC Items and their band Assets to determine
+per-asset projection metadata (EPSG, bbox, shape/resolution), which bands each
+asset contributes, pixel value scale/offset, and datatype/nodata; tracks
+resolutions and EPSGs for later target-CRS/cell-size determination; and
+collects all of it into a plain `AssetTable`, one `AssetTableItem` per
+surviving STAC Item.
 
-The main entry point is `build_asset_table`. This module is intentionally
-engine-agnostic: no `pyspark`/`py4j`/JVM dependency anywhere in it.
+Main entry point: `build_asset_table`. Contains no JVM/GeoPySpark dependency,
+so it can be unit-tested without a Spark context; translating an `AssetTable`
+into a JVM raster-loading representation is
+`openeogeotrellis.stac.geopyspark_features`'s job.
 """
 from __future__ import annotations
 
@@ -35,6 +34,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeogeotrellis.stac.extents import SpatioTemporalExtent
 from openeogeotrellis.stac.item_collection import ItemCollection
 from openeogeotrellis.stac.projection import compute_cellsize, get_asset_property, get_proj_metadata
+from openeogeotrellis.util.datastructures import NoveltyTracker
 from openeogeotrellis.util.projection import is_utm_epsg_code
 
 logger = logging.getLogger(__name__)
@@ -55,32 +55,6 @@ class PixelValueScalingMode(enum.Enum):
 
     # Normal mode: apply scale and offset to convert to physical quantities
     SCALE_AND_OFFSET = "SCALE_AND_OFFSET"
-
-
-class NoveltyTracker:
-    """Utility to detect new things."""
-
-    # TODO: move to more general utility module
-
-    def __init__(self):
-        self._seen: set = set()
-
-    def is_new(self, x) -> bool:
-        """Check if the item is new (not seen before)."""
-        if isinstance(x, list):
-            key = tuple(x)
-        else:
-            # TODO: wider coverage to make the thing hashable
-            key = x
-        if key in self._seen:
-            return False
-        else:
-            self._seen.add(key)
-            return True
-
-    def already_seen(self, x) -> bool:
-        """Check if the item was seen before."""
-        return not self.is_new(x)
 
 
 class ResolutionTracker:
@@ -260,8 +234,8 @@ class AssetLink:
 
 
 @dataclasses.dataclass
-class SpecialAssetLink:
-    """A non-band-asset link (e.g. `granule_metadata`/`GEOMETRY`), ready to become one `addLink(...)` call."""
+class MetadataAssetLink:
+    """A non-band asset link (e.g. `granule_metadata`, geometry): no pixel scaling or datatype."""
 
     href: str
     asset_id: str
@@ -276,7 +250,7 @@ class AssetTableItem:
     collection_id: str
     nominal_date: str
     links: List[AssetLink]
-    special_links: List[SpecialAssetLink]
+    metadata_links: List[MetadataAssetLink]
     crs_epsg: Optional[int]
     raster_extent: Optional[Tuple[float, float, float, float]]
     resolution: Optional[float]
@@ -365,7 +339,7 @@ def build_asset_table(
 
         item_nominal_date = itm.properties.get("datetime") or itm.properties["start_datetime"]
         links: List[AssetLink] = []
-        special_links: List[SpecialAssetLink] = []
+        metadata_links: List[MetadataAssetLink] = []
 
         band_names_tracker = NoveltyTracker()
         for asset_id, asset in sorted(
@@ -472,10 +446,10 @@ def build_asset_table(
                 link_band_names = sorted(granule_metadata_band_map.values())
                 opensearch_link_titles_map.update(granule_metadata_band_map)
                 logger.debug(
-                    f"SpecialAssetLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    f"MetadataAssetLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                 )
                 opensearch_stats["links"] += 1
-                special_links.append(SpecialAssetLink(href=asset_href, asset_id=asset_id, band_names=link_band_names))
+                metadata_links.append(MetadataAssetLink(href=asset_href, asset_id=asset_id, band_names=link_band_names))
             # ProbaV Geometry asset
             elif (
                 granule_metadata_band_map
@@ -485,13 +459,13 @@ def build_asset_table(
                 link_band_names = sorted(granule_metadata_band_map.values())
                 opensearch_link_titles_map.update(granule_metadata_band_map)
                 logger.debug(
-                    f"SpecialAssetLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    f"MetadataAssetLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                 )
                 opensearch_stats["links"] += 1
-                special_links.append(SpecialAssetLink(href=asset_href, asset_id=asset_id, band_names=link_band_names))
+                metadata_links.append(MetadataAssetLink(href=asset_href, asset_id=asset_id, band_names=link_band_names))
 
         # Skip item if no assets/links were collected
-        link_count = len(links) + len(special_links)
+        link_count = len(links) + len(metadata_links)
         opensearch_stats[f"item with {link_count=}"] += 1
         if link_count == 0:
             opensearch_stats["item skip: no links"] += 1
@@ -580,7 +554,7 @@ def build_asset_table(
                 collection_id=itm.collection_id,
                 nominal_date=item_nominal_date,
                 links=links,
-                special_links=special_links,
+                metadata_links=metadata_links,
                 crs_epsg=proj_epsg,
                 raster_extent=raster_extent,
                 resolution=resolution,
