@@ -299,7 +299,7 @@ def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket, tmp_path, caplog
     assert _workspace_keys(mock_s3_client, workspace.bucket) == {str(target)}
 
     AccessDenied_log = [
-        log for log in caplog.records if log.name == "openeogeotrellis.job_results.workspaces.object_storage_workspace"
+        log for log in caplog.records if log.name == "openeogeotrellis.workspace.object_storage_workspace"
     ][0]
 
     assert AccessDenied_log.levelname == "INFO"
