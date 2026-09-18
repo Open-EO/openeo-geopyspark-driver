@@ -1,6 +1,6 @@
 from openeo_driver.utils import read_json
 
-from openeogeotrellis.collect_unique_process_ids_visitor import (
+from openeogeotrellis.job_results.result_metadata import (
     CollectUniqueProcessIdsVisitor,
 )
 
