@@ -130,3 +130,6 @@ skaffold*
 
 # Annoying temp files created by openeo-geotrellis-extension when running tests
 unknown-job_input_items_*.geojson
+
+# Planning-only notes for the batch-job-decoupling work; never meant to be committed.
+/batch_job_decoupling/
