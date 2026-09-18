@@ -493,7 +493,7 @@ def build_asset_table(
                     fallback_geometry = shapely.geometry.shape(itm.geometry)
                 else:
                     fallback_geometry = None
-            except Exception as e:
+            except Exception:
                 logger.error(
                     f"Failed to obtain fallback geometry for {itm.id!r} with implausible bbox {itm.bbox!r}",
                     exc_info=True,

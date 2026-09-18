@@ -139,7 +139,7 @@ def _determine_cell_size(
     elif cellsize_fallback:
         cell_width, cell_height = cellsize_fallback
     elif len(unique_epsgs) == 1 or (not unique_epsgs and len(observed_epsgs) == 1):
-        logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
+        logger.warning("cellsize: fallback on hardcoded 10m assumption")
         cell_width, cell_height = (10.0, 10.0)
         # TODO: there is assumption here that cellsize_fallback is given in meter, which is not true in general
         try:
@@ -155,7 +155,7 @@ def _determine_cell_size(
                 cell_height, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
     else:
-        logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
+        logger.warning("cellsize: fallback on hardcoded 10m assumption")
         cell_width, cell_height = (10.0, 10.0)
 
     logger.info(

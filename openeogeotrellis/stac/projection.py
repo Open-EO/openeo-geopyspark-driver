@@ -285,7 +285,7 @@ class ProjectionMetadata:
         """
         bbox = self.to_bounding_box()
         if not bbox:
-            logger.warning(f"coverage_for: missing bbox.")
+            logger.warning("coverage_for: missing bbox.")
             return None
         intersection = bbox.intersection(extent)
         if not intersection:

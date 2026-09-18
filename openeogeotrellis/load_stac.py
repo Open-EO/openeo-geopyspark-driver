@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import pystac
 import pystac.stac_io
 from geopyspark import LayerType
-from openeo.metadata import _StacMetadataParser
 from openeo.util import TimingLogger
 from openeo_driver.backend import LoadParameters
 import openeo_driver.backend

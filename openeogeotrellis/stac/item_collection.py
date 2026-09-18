@@ -44,7 +44,7 @@ from urllib3 import Retry
 import openeo_driver.backend
 from openeogeotrellis.constants import EVAL_ENV_KEY, STAC_API_FILTER_BY_GEOMETRY_DEFAULT
 from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO
-from openeogeotrellis.stac.assets import is_band_asset, is_supported_raster_mime_type
+from openeogeotrellis.stac.assets import is_band_asset
 from openeogeotrellis.stac.exceptions import LoadStacException
 from openeogeotrellis.stac.extents import (
     SpatialFilteringGeometries,
