@@ -5,7 +5,6 @@ import contextlib
 import dataclasses
 import datetime
 import grp
-import hashlib
 import itertools
 import json
 import logging
@@ -20,9 +19,12 @@ import tempfile
 import time
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar, Iterator
+from typing import Callable, Iterable, Optional, Tuple, Union, TypeVar, Iterator, TYPE_CHECKING
 
 from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
+
+if TYPE_CHECKING:
+    from py4j.java_gateway import JVMView
 
 import dateutil.parser
 import pyproj
@@ -45,22 +47,18 @@ from openeo_driver.util.logging import (
     setup_logging,
 )
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from py4j.clientserver import ClientServer
-from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.job_results import util as job_results_util
 from openeogeotrellis.util.runtime import get_job_id
 
 # TODO split up this kitchen sink module into more focused modules
 
 
 logger = logging.getLogger(__name__)
-
-GDALINFO_SUFFIX = "_gdalinfo.json"
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
@@ -74,6 +72,8 @@ def log_memory(function):
 
 def get_jvm() -> JVMView:
     import geopyspark
+    from py4j.clientserver import ClientServer
+
     pysc = geopyspark.get_spark_context()
     gateway = pysc._gateway
     assert isinstance(gateway, ClientServer), f"Java logging assumes ThreadLocals behave; got a {type(gateway)} instead"
@@ -345,29 +345,11 @@ def download_s3_directory(s3_url: str, output_dir: str):
 
 
 
-def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
+def to_s3_url(file_or_dir_name: Union[os.PathLike, str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: move this to openeodriver.integrations.s3?
-
     bucketname = bucketname or get_backend_config().s3_bucket_name
-
-    # See also:
-    # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html
-    #
-    # file_or_dir_name, is actually the S3 key, and it should neither start nor
-    # end with a slash in order to keep the S3 keys and S3 URLs uniform.
-    #
-    # 1) With / at the start we would get weird URLS with a // after bucketname,
-    # like so: s3://my-bucket//path-to-file-or-dir
-    #
-    # 2) Allowing folders to end with a slash just creates confusion.
-    # It keeps things simpler when S3 keys never include a slash at the end.
-    file_or_dir_name = str(file_or_dir_name).strip("/")
-
-    # Keep it robust: bucketname should not contain "/" at all but lets remove
-    # the / just in case, because mistakes are easy to make.
-    bucketname = bucketname.strip("/")
-    return f"s3://{bucketname}/{file_or_dir_name}"
+    return job_results_util.to_s3_url(file_or_dir_name, bucketname)
 
 
 def lonlat_to_mercator_tile_indices(
@@ -568,33 +550,6 @@ def json_write(
     return path
 
 
-def json_default(obj: Any) -> Any:
-    """default function for packing objects in JSON."""
-    # This function could cover more cases like jupyter's implementation does:
-    # https://github.com/jupyter/jupyter_client/blob/main/jupyter_client/jsonutil.py#L108
-
-    if isinstance(obj, Path):
-        return str(obj)
-
-    raise TypeError("%r is not JSON serializable" % obj)
-
-
-def parse_json_from_output(output_str: str) -> Dict[str, Any]:
-    lines = output_str.split("\n")
-    parsing_json = False
-    json_str = ""
-    # reverse order to get last possible json line
-    for l in reversed(lines):
-        if not parsing_json:
-            if l.endswith("}"):
-                parsing_json = True
-        json_str = l + json_str
-        if l.startswith("{"):
-            break
-
-    return json.loads(json_str)
-
-
 def calculate_rough_area(geoms: Iterable[BaseGeometry]):
     """
     For every geometry, roughly estimate its area using its bounding box and return their sum.
@@ -771,42 +726,12 @@ def parse_approximate_isoduration(s):
     return dt
 
 
-def _make_set_for_key(
-    data: Dict[str, Dict[str, Any]],
-    key: str,
-    func: callable = lambda x: x,
-) -> set:
-    """
-    Create a set containing only the values for `key` from the dicts in data.values().
-
-    Optionally apply func() to that value, for example to allow converting lists,
-    which are not hashable and cannot be a set element, to tuples.
-    """
-    return {func(val.get(key)) for val in data.values() if key in val}
-
-
 T = TypeVar("T")
 U = TypeVar("U")
 
 
 def map_optional(f: Callable[[T], U], optional: Optional[T]) -> Optional[U]:
     return None if optional is None else f(optional)
-
-
-def to_jsonable_float(x: float) -> Union[float, str]:
-    """Replaces nan, inf and -inf with its string representation to allow JSON serialization."""
-    return x if math.isfinite(x) else str(x)
-
-
-def to_jsonable(x):
-    if isinstance(x, float):
-        return to_jsonable_float(x)
-    if isinstance(x, dict):
-        return {to_jsonable(key): to_jsonable(value) for key, value in x.items()}
-    elif isinstance(x, list):
-        return [to_jsonable(elem) for elem in x]
-
-    return x
 
 
 def wait_till_path_available(path: Path):
@@ -903,11 +828,6 @@ def to_tuple(scala_tuple):
     return tuple(scala_tuple.productElement(i) for i in range(scala_tuple.productArity()))
 
 
-def unzip(*iterables: Iterable) -> Iterator:
-    # iterables are typically of equal length
-    return zip(*iterables)
-
-
 def partition(pred: Callable[[T], bool], iterable: Iterable[T]) -> Tuple[Iterator[T], Iterator[T]]:
     """Use a predicate to partition entries into true entries and false entries."""
 
@@ -915,48 +835,11 @@ def partition(pred: Callable[[T], bool], iterable: Iterable[T]) -> Tuple[Iterato
     return filter(pred, t1), itertools.filterfalse(pred, t2)
 
 
-def md5_checksum(file: Path) -> str:
-    """Computes the MD5 checksum of a (potentially large) file."""
-
-    hash_md5 = hashlib.md5()
-    with open(file, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
-class BadlyHashable:
-    """
-    Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
-    items in this cache is very small anyway.
-    """
-
-    def __init__(self, target):
-        self.target = target
-
-    def __eq__(self, other):
-        equal = isinstance(other, BadlyHashable) and self.target == other.target
-        return equal
-
-    def __hash__(self):
-        return 0
-
-    def __repr__(self):
-        return f"BadlyHashable({repr(self.target)})"
-
-
 def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_area_tolerance: float) -> bool:
     """Geometries are approximately equal if (area of) difference is small."""
 
     area_difference = ref_geom.symmetric_difference(actual_geom).area
     return area_difference / ref_geom.area < rel_area_tolerance
-
-
-def reproject_geometry(geometry, src_crs, dst_crs):
-    """Kind of like reprojectAsPolygon but the number of points remains the same."""
-
-    transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-    return transform(transformer.transform, geometry)
 
 
 # TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
