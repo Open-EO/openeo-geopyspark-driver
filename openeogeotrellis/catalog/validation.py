@@ -1,7 +1,7 @@
 import datetime as dt
 import logging
 from copy import copy, deepcopy
-from typing import Callable, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
 
 import dateutil.parser
 import pyproj
@@ -22,6 +22,10 @@ from openeogeotrellis.util.projection import reproject_cellsize
 
 from .collection_metadata import GeopysparkCubeMetadata
 
+if TYPE_CHECKING:
+    # imported lazily to avoid a validation.py <-> layer_catalog.py import cycle at runtime
+    from .layer_catalog import LayerCatalog
+
 logger = logging.getLogger(__name__)
 
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
@@ -31,7 +35,7 @@ LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
 GlobalExtentProvider = Callable[..., object]
 
 
-def potential_sentinelhub(catalog, collection_id) -> bool:
+def potential_sentinelhub(catalog: "LayerCatalog", collection_id) -> bool:
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
     if metadata.provider_backend() == "sentinelhub":
@@ -112,7 +116,7 @@ def extra_validation_load_collection(
     if "backend_implementation" not in env:
         yield {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
         return
-    catalog = env.backend_implementation.catalog
+    catalog: "LayerCatalog" = env.backend_implementation.catalog
     allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
     sync_job = smart_bool(env.get("sync_job", False))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
