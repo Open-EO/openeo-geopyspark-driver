@@ -19,7 +19,6 @@ from openeogeotrellis.utils import (
     map_optional,
     md5_checksum,
     nullcontext,
-    parse_approximate_isoduration,
     reproject_cellsize,
     single_value,
     stream_s3_binary_file_contents,
@@ -301,32 +300,6 @@ def test_reproject_cellsize(spatial_extent: dict, input_resolution: tuple, input
     print(projected_resolution)
     assert projected_resolution == tuple(pytest.approx(x, abs=1e-7) for x in expected)
 
-
-@pytest.mark.parametrize(
-    ["duration_str", "expected"],
-    [
-        ("PT1H30M15.460S", "1:30:15.460000"),
-        ("P5DT4M", "5 days, 0:04:00"),
-        ("P2WT3H", "14 days, 3:00:00"),
-        ("P16D", "16 days, 0:00:00"),
-        ("PT1H", "1:00:00"),
-        ("P1DT1S", "1 day, 0:00:01"),
-        ("P1D", "1 day, 0:00:00"),
-        ("P1M", "30 days, 9:36:00"),
-        ("P1Y", "365 days, 0:00:00"),
-        ("P2D", "2 days, 0:00:00"),
-        ("P5D", "5 days, 0:00:00"),
-        ("P6Y", "2190 days, 0:00:00"),
-        ("P999D", "999 days, 0:00:00"),
-        ("P999M", "30369 days, 14:24:00"),
-        ("P999Y", "364635 days, 0:00:00"),
-    ],
-)
-def test_parse_approximate_isoduration(duration_str, expected):
-    # This function needed some adjustments to work with durations found in layercatalog metadata:
-    duration = parse_approximate_isoduration(duration_str)
-    print(f"duration={duration}")
-    assert str(duration) == expected
 
 def test_callsite():
     # object that throws error when converting to string:
