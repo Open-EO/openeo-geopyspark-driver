@@ -3,10 +3,9 @@ STAC source resolution and per-asset analysis behind `load_stac`.
 
 The modules in this package hold the STAC-side decision logic: resolving a URL
 to a set of STAC Items, deciding per asset which bands/scaling/datatype apply,
-and deriving the output grid. Building the actual GeoPySpark datacube from
-those decisions lives in `openeogeotrellis.load_stac` and in this package's
-`geopyspark_features` / `pyramid_factory` modules, which are the only two that
-depend on the JVM.
+and deriving the output grid. None of them depend on the JVM/GeoPySpark;
+building the actual GeoPySpark datacube from those decisions lives entirely
+in `openeogeotrellis.load_stac`.
 """
 
 from openeogeotrellis.stac.asset_table import AssetTable, AssetTableItem, build_asset_table

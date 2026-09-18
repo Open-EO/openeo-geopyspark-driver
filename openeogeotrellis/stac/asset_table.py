@@ -10,8 +10,7 @@ surviving STAC Item.
 
 Main entry point: `build_asset_table`. Contains no JVM/GeoPySpark dependency,
 so it can be unit-tested without a Spark context; translating an `AssetTable`
-into a JVM raster-loading representation is
-`openeogeotrellis.stac.geopyspark_features`'s job.
+into a JVM raster-loading representation is `openeogeotrellis.load_stac`'s job.
 """
 from __future__ import annotations
 
@@ -268,7 +267,7 @@ class AssetTable:
 
     No `pyspark`/`py4j`/JVM dependency: a consumer translates this into whatever
     engine-specific raster-loading representation it needs
-    (e.g. `openeogeotrellis.stac.geopyspark_features.build_opensearch_features`).
+    (e.g. `openeogeotrellis.load_stac.build_opensearch_features`).
     """
 
     items: List[AssetTableItem]

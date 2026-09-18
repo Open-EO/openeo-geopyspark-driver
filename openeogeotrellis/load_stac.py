@@ -47,10 +47,6 @@ from openeogeotrellis.stac.asset_table import (
 # Target grid (EPSG/cellsize) selection
 from openeogeotrellis.stac.target_grid import TargetGrid, select_target_grid
 
-# GeoPySpark/JVM-specific pyramid factory / opensearch feature construction
-from openeogeotrellis.stac.geopyspark_features import build_opensearch_features
-from openeogeotrellis.stac.pyramid_factory import build_pyramid_factory
-
 if TYPE_CHECKING:
 
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -91,6 +87,120 @@ class _LoadStacContext:
 
 def get_stac_item_collection_filename(*, pg_node_id: str) -> str:
     return f"stac-item-collection-{pg_node_id}.json"
+
+
+def build_opensearch_features(*, asset_table: AssetTable, jvm: Any) -> Any:
+    """Translate an `AssetTable` into a populated JVM FixedFeaturesOpenSearchClient."""
+    opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
+    for item in asset_table.items:
+        builder = (
+            jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+            .withId(item.item_id)
+            .withCollectionId(item.collection_id)
+            .withNominalDate(item.nominal_date)
+        )
+
+        for link in item.links:
+            if link.data_type is not None:
+                if link.nodata is not None:
+                    builder = builder.addLink(
+                        link.href,  # scala arg `href: String`
+                        link.asset_id,  # scala arg `title: String`
+                        link.pixel_value_scale,  # scala arg `pixelValueScale: Double`
+                        link.pixel_value_offset,  # scala arg `pixelValueOffset: Double`
+                        link.band_names,  # scala arg `bandNames: java.util.List[String]`
+                        link.data_type,
+                        link.nodata,
+                    )
+                else:
+                    builder = builder.addLink(
+                        link.href,
+                        link.asset_id,
+                        link.pixel_value_scale,
+                        link.pixel_value_offset,
+                        link.band_names,
+                        link.data_type,
+                    )
+            else:
+                builder = builder.addLink(
+                    link.href,
+                    link.asset_id,
+                    link.pixel_value_scale,
+                    link.pixel_value_offset,
+                    link.band_names,
+                )
+
+        for metadata_link in item.metadata_links:
+            builder = builder.addLink(metadata_link.href, metadata_link.asset_id, metadata_link.band_names)
+
+        if item.crs_epsg:
+            builder = builder.withCRS(f"EPSG:{item.crs_epsg}")
+        if item.raster_extent:
+            builder = builder.withRasterExtent(*item.raster_extent)
+        if item.resolution is not None:
+            builder = builder.withResolution(item.resolution)
+        if item.bbox_wsen:
+            builder = builder.withBBox(*item.bbox_wsen)
+        if item.geometry_wkt is not None:
+            builder = builder.withGeometryFromWkt(item.geometry_wkt)
+        if item.self_url:
+            builder = builder.withSelfUrl(item.self_url)
+
+        logger.debug(f"opensearch.addFeature {item.item_id=}")
+        opensearch_client.addFeature(builder.build())
+
+    return opensearch_client
+
+
+def build_pyramid_factory(
+    *,
+    netcdf_with_time_dimension: bool,
+    opensearch_client: Any,
+    opensearch_link_titles_map: Dict[str, str],
+    source_band_names: List[str],
+    requested_band_names: List[str],
+    asset_band_names: Optional[List[str]],
+    cell_width: float,
+    cell_height: float,
+    url: str,
+    env: EvalEnv,
+    jvm: Any,
+) -> Any:
+    """
+    Build and return the JVM PyramidFactory (or NetCDFCollection) for the datacube.
+
+    For NetCDF collections with an embedded time dimension a NetCDFCollection class
+    reference is returned.  For all other cases a fully initialised PyramidFactory
+    instance is returned.
+    """
+    if netcdf_with_time_dimension:
+        # TODO: avoid `asset_band_names` as it is ill-defined here (outside its original for-loop scoped life cycle)
+        if asset_band_names:  # When no products are found, asset_band_names is None
+            sorted_bands_from_catalog = sorted(asset_band_names)
+            if requested_band_names != sorted_bands_from_catalog:
+                # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
+                logger.warning(
+                    f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
+                    f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
+                )
+        logger.info("Creating NetCDFCollection pyramid factory")
+        return jvm.org.openeo.geotrellis.layers.NetCDFCollection
+    else:
+        opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
+        logger.info(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
+        logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
+        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
+        return jvm.org.openeo.geotrellis.file.PyramidFactory(
+            opensearch_client,
+            url,  # openSearchCollectionId, not important
+            opensearch_link_titles,  # openSearchLinkTitles
+            None,  # rootPath, not important
+            # TODO how does this work? Specifying a cell size without any reference to the corresponding CRS?
+            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),  # maxSpatialResolution
+            False,  # experimental
+            max_soft_errors_ratio,
+        )
 
 
 def _prepare_context(
