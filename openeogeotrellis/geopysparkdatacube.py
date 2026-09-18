@@ -49,7 +49,7 @@ from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.sentinel3 import _instant_ms_to_minute
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube

@@ -10,6 +10,7 @@ from openeo.metadata import (
     SpatialDimension,
 )
 from openeo_driver.util.geometry import BoundingBox
+
 from openeogeotrellis.util.projection import reproject_cellsize
 
 _log = logging.getLogger(__name__)
