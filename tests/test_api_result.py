@@ -65,7 +65,7 @@ from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
-from openeogeotrellis.integrations.gdal import read_gdal_info
+from openeogeotrellis.job_results.raster_metadata import read_gdal_info
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import _LoadStacContext
 from openeogeotrellis.testing import (

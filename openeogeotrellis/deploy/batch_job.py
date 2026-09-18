@@ -17,15 +17,10 @@ from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
 from openeo_driver.constants import ITEM_LINK_PROPERTY
-from openeo_driver.datacube import DriverDataCube, DriverVectorCube
-from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import (
-    ImageCollectionResult,
-    JSONResult,
     MlModelResult,
     SaveResult,
-    VectorCubeResult,
 )
 from openeo_driver.users import User
 from openeo_driver.util.logging import (
@@ -43,14 +38,10 @@ from openeo_driver.workspacerepository import Workspace, WorkspaceRepository, ba
 from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkConf, SparkContext
 from pyspark.profiler import BasicProfiler
-from shapely.geometry import mapping
 
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import (
     GeoPySparkBackendImplementation,
-)
-from openeogeotrellis.collect_unique_process_ids_visitor import (
-    CollectUniqueProcessIdsVisitor,
 )
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
@@ -64,9 +55,12 @@ from openeogeotrellis.deploy.batch_job_metadata import (
     _transform_stac_metadata,
     href_from_job_local_path,
 )
-from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
+from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results.raster_metadata import get_abs_path_of_asset
+from openeogeotrellis.job_results.util import AnnotatedDict, BadlyHashable, json_default, to_jsonable, unzip
+from openeogeotrellis.job_results.wrapping import wrap_evaluation_result
 from openeogeotrellis.load_stac import get_stac_item_collection_filename
 from openeogeotrellis.stac_save_result import StacSaveResult
 from openeogeotrellis.udf import (
@@ -75,7 +69,6 @@ from openeogeotrellis.udf import (
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
 )
-from openeogeotrellis.job_results.util import AnnotatedDict, BadlyHashable, json_default, to_jsonable, unzip
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
     S3ClientBuilder,
@@ -357,22 +350,7 @@ def run_job(
         result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
         logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
-        if isinstance(result, DelayedVector):
-            geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
-            result = JSONResult(geojsons)
-
-        if isinstance(result, DriverDataCube):
-            format_options = job_specification.get("output", {})
-            format_options["batch_mode"] = True
-            result = ImageCollectionResult(cube=result, format="GTiff", options=format_options)
-
-        if isinstance(result, DriverVectorCube):
-            format_options = job_specification.get("output", {})
-            format_options["batch_mode"] = True
-            result = VectorCubeResult(cube=result, format="GTiff", options=format_options)
-
-        results = result if isinstance(result, List) else [result]
-        results = [result if isinstance(result, SaveResult) else JSONResult(result) for result in results]
+        results = wrap_evaluation_result(result, job_specification=job_specification)
 
         global_metadata_attributes = {
             "title": job_specification.get("title", ""),

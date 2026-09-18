@@ -34,7 +34,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
-from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+from openeogeotrellis.job_results.result_metadata import extract_result_metadata
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, reproject_geometry
 from openeogeotrellis.testing import gps_config_overrides

@@ -68,7 +68,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
-from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -1322,7 +1322,7 @@ Example usage:
     ) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
 
-        from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+        from openeogeotrellis.job_results.result_metadata import extract_result_metadata
 
         if process_graph is None:
             process_graph = {}
