@@ -8,7 +8,6 @@ import pathlib
 import re
 import shutil
 import tempfile
-import uuid
 import datetime
 from functools import partial
 from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
@@ -27,7 +26,7 @@ from geopyspark.geotrellis.constants import CellType, Unit
 from pandas import Series
 from pyproj import CRS
 from pyspark import TaskContext
-from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
+from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection, box
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
@@ -44,7 +43,7 @@ from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.util.geometry import BoundingBox
-from openeo_driver.utils import EvalEnv, smart_bool
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.sentinel3 import _instant_ms_to_minute
 from openeogeotrellis.config import get_backend_config
@@ -55,13 +54,13 @@ from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisi
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.util.datetime import to_datetime_utc
 from openeogeotrellis.util.geometry import bbox_to_geojson
-from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, reproject_geometry
+from openeogeotrellis.job_results import items as job_items
+from openeogeotrellis.job_results.util import reproject_geometry
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
     ensure_executor_logging,
     get_jvm,
-    map_optional,
     temp_csv_dir,
     reproject_cellsize,
     normalize_temporal_extent,
@@ -2041,9 +2040,12 @@ class GeopysparkDataCube(DriverDataCube):
         directory = str(pathlib.Path(filename).parent)
         s3_filename = "s3://{b}{f}".format(b=bucket, f=filename)
         s3_directory = "s3://{b}{d}".format(b=bucket, d=directory)
-        format = format.upper()
         format_options = format_options or {}
-        strict_cropping = format_options.get("strict_cropping", True)
+        format_opts = job_items.SaveResultFormatOptions.parse(
+            format, format_options, has_temporal_dimension=self.metadata.has_temporal_dimension()
+        )
+        format = format_opts.format
+        strict_cropping = format_opts.strict_cropping
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution
@@ -2054,64 +2056,8 @@ class GeopysparkDataCube(DriverDataCube):
         if req_id is not None:
             gps.get_spark_context().setJobGroup(req_id,f"save_result {req_id}",interruptOnCancel=True)
 
-        def to_latlng_bbox(bbox: "Extent") -> Tuple[float, float, float, float]:
-            latlng_extent = self._reproject_extent(
-                src_crs=max_level.layer_metadata.crs,
-                dst_crs="EPSG:4326",
-                xmin=bbox.xmin(),
-                ymin=bbox.ymin(),
-                xmax=bbox.xmax(),
-                ymax=bbox.ymax(),
-            )
-
-            return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
-
-        def to_latlng_geometry(bbox: "Extent") -> Polygon:
-            return reproject_geometry(
-                geometry=shapely.geometry.box(bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax()),
-                src_crs=max_level.layer_metadata.crs,
-                dst_crs="EPSG:4326",
-            )
-
-        def return_netcdf_items(java_items, nodata) -> dict:
-            items = {}
-
-            for java_item in java_items:
-                assets = {}
-                geometry = map_optional(to_latlng_geometry, java_item.bbox())
-                bbox = map_optional(lambda g: g.bounds, geometry)
-
-                for asset_key, asset in java_item.assets().items():
-                    assets[asset_key] = {
-                        "href": asset.path(),
-                        "type": "application/x-netcdf",
-                        "roles": ["data"],
-                        "nodata": nodata,
-                        "geometry": map_optional(mapping, geometry),
-                        "bbox": bbox,
-                    }
-                    bands = []
-                    asset_metadata = asset.metadata()
-                    for band in asset_metadata.get("bands"):
-                        band = dict(band)
-                        if "statistics" in band:
-                            band["statistics"] = dict(band.get("statistics"))
-                        bands.append(band)
-                    assets[asset_key]["bands"] = bands
-                    assets[asset_key]["raster:bands"] = bands
-                    assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
-                    assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
-                    assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                    assets[asset_key] = dict_no_none(assets[asset_key])
-
-                items[java_item.id()] = {
-                    "id": java_item.id(),
-                    "geometry": map_optional(mapping, geometry),
-                    "bbox": bbox,
-                    "assets": assets,
-                }
-
-            return items
+        def to_native_bbox(bbox: Optional["Extent"]) -> Optional[Tuple[float, float, float, float]]:
+            return None if bbox is None else (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
 
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
@@ -2136,29 +2082,23 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             crop_dates = None
 
-        tiled = format_options.get("tiled", False)
-        stitch = format_options.get("stitch", False)
-        tile_grid = format_options.get("tile_grid", None)
-        sample_by_feature = format_options.get("sample_by_feature", False)
-        feature_id_property = format_options.get("feature_id_property", None)
-        batch_mode = format_options.get("batch_mode", False)
-        overviews = format_options.get("overviews", "AUTO")
-        overview_resample = format_options.get("overview_method", "near")
-        colormap = format_options.get("colormap", None)
-        description = format_options.get("file_metadata", {}).get("description", "")
-        filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
-        separate_asset_per_band = smart_bool(format_options.get("separate_asset_per_band", False))
-        bands_metadata = format_options.get("bands_metadata", {})  # band_name -> (tag -> value)
-        file_metadata = format_options.get("file_metadata", {})  # tag -> value
-        attach_gdalinfo_assets = format_options.get("attach_gdalinfo_assets", False)
-        retain_nodata_tiles = format_options.get("retain_nodata_tiles", False)
-        if attach_gdalinfo_assets and format != "GTIFF":
-            raise OpenEOApiException(f"attach_gdalinfo_assets is only supported with format GTIFF. Was: {format}")
-
-        if separate_asset_per_band and format != "GTIFF":
-            raise OpenEOApiException(f"separate_asset_per_band is only supported with format GTIFF. Was: {format}")
-
-        filepath_per_band = format_options.get("filepath_per_band", None)
+        tiled = format_opts.tiled
+        stitch = format_opts.stitch
+        tile_grid = format_opts.tile_grid
+        sample_by_feature = format_opts.sample_by_feature
+        feature_id_property = format_opts.feature_id_property
+        batch_mode = format_opts.batch_mode
+        overviews = format_opts.overviews
+        overview_resample = format_opts.overview_resample
+        colormap = format_opts.colormap
+        description = format_opts.description
+        filename_prefix = get_jvm().scala.Option.apply(format_opts.filename_prefix)
+        separate_asset_per_band = format_opts.separate_asset_per_band
+        bands_metadata = format_opts.bands_metadata  # band_name -> (tag -> value)
+        file_metadata = format_opts.file_metadata  # tag -> value
+        attach_gdalinfo_assets = format_opts.attach_gdalinfo_assets
+        retain_nodata_tiles = format_opts.retain_nodata_tiles
+        filepath_per_band = format_opts.filepath_per_band
 
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
@@ -2186,34 +2126,54 @@ class GeopysparkDataCube(DriverDataCube):
 
             if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or stitch or format=="PNG") :
                 max_level = max_level.to_spatial_layer()
+            is_temporal_layer = max_level.layer_type != gps.LayerType.SPATIAL
 
             if format == "GTIFF":
-                compression = format_options.get("compression", "deflate")
-                predictor = format_options.get("predictor", 1)
-                zlevel = format_options.get("ZLEVEL", 6)
-                tile_size = format_options.get("tile_size")
-                bigtiff = format_options.get("bigtiff", True)
+                compression = format_opts.compression
+                predictor = format_opts.predictor
+                zlevel = format_opts.zlevel
+                tile_size = format_opts.tile_size
+                bigtiff = format_opts.bigtiff
 
-                def add_gdalinfo_objects(assets_original):
-                    assets_to_add = {}
-                    if attach_gdalinfo_assets:
-                        for key, value in assets_original.items():
-                            href_path = str(value["href"])
-                            if os.path.exists(href_path + GDALINFO_SUFFIX):  # TODO: only supported if fuse_mount_batchjob_s3_bucket?
-                                obj = {
-                                    "href": href_path + GDALINFO_SUFFIX,
-                                    "type": "application/json",
-                                    "roles": ["metadata"],
-                                }
-                                if "bbox" in value:
-                                    obj["bbox"] = value["bbox"]
-                                if "geometry" in value:
-                                    obj["geometry"] = value["geometry"]
-                                if "datetime" in value:
-                                    obj["datetime"] = value["datetime"]
-                                name_key = str(pathlib.Path(href_path + GDALINFO_SUFFIX).relative_to(save_directory))
-                                assets_to_add[name_key] = obj
-                    return {**assets_original, **assets_to_add}
+                def with_gdalinfo(items_by_id: dict) -> dict:
+                    for stac_item in items_by_id.values():
+                        stac_item["assets"] = job_items.add_gdalinfo_objects(
+                            stac_item["assets"],
+                            attach_gdalinfo_assets=attach_gdalinfo_assets,
+                            save_directory=save_directory,
+                        )
+                    return items_by_id
+
+                def to_written_asset(asset_key, asset, *, path=None, with_band_indices=False) -> "job_items.WrittenAsset":
+                    asset_metadata = asset.metadata()
+                    band_indices = None
+                    if with_band_indices:
+                        raw_band_indices = asset.bandIndices()
+                        band_indices = None if raw_band_indices is None else list(raw_band_indices)
+                    return job_items.WrittenAsset(
+                        key=asset_key,
+                        path=path if path is not None else str(asset.path()),
+                        band_indices=band_indices,
+                        proj_bbox=tuple(asset_metadata.get("proj:bbox")),
+                        proj_shape=tuple(asset_metadata.get("proj:shape")),
+                        proj_epsg=asset_metadata.get("proj:epsg"),
+                    )
+
+                def to_written_asset_guarded(asset_key, asset) -> "job_items.WrittenAsset":
+                    raw_band_indices = asset.bandIndices()
+                    proj_bbox = proj_shape = proj_epsg = None
+                    if asset_metadata := asset.metadata():
+                        proj_bbox = tuple(asset_metadata.get("proj:bbox"))
+                        proj_shape = tuple(asset_metadata.get("proj:shape"))
+                        proj_epsg = asset_metadata.get("proj:epsg")
+                    return job_items.WrittenAsset(
+                        key=asset_key,
+                        path=str(asset.path()),
+                        band_indices=None if raw_band_indices is None else list(raw_band_indices),
+                        proj_bbox=proj_bbox,
+                        proj_shape=proj_shape,
+                        proj_epsg=proj_epsg,
+                    )
 
                 if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -2237,71 +2197,31 @@ class GeopysparkDataCube(DriverDataCube):
                             filename_prefix=filename_prefix,
                         )
 
-                        items = {}
-
-                        for java_item in java_items:
-                            geometry = to_latlng_geometry(java_item.bbox())
-                            assets = {}
-
-                            for asset_key, asset in java_item.assets().items():
-                                assets[asset_key] = {
-                                    "href": asset.path(),
-                                    "geometry": mapping(geometry),
-                                    "bbox": geometry.bounds,
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                }
-                                asset_metadata = asset.metadata()
-                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
-                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
-                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                                assets[asset_key] = dict_no_none(assets[asset_key])
-
-                            assets = add_gdalinfo_objects(assets)
-
-                            item = {
-                                "id": java_item.id(),
-                                "properties": {"datetime": java_item.datetime()},
-                                "geometry": mapping(geometry),
-                                "bbox": geometry.bounds,
-                                "assets": assets,
-                            }
-
-                            items[java_item.id()] = item
-
-                        return items
+                        written = [
+                            job_items.WrittenItem(
+                                id=java_item.id(),
+                                datetime=java_item.datetime(),
+                                bbox=to_native_bbox(java_item.bbox()),
+                                crs=max_level.layer_metadata.crs,
+                                assets=[to_written_asset(k, a) for k, a in java_item.assets().items()],
+                            )
+                            for java_item in java_items
+                        ]
+                        return with_gdalinfo(job_items.build_items(written, variant=job_items.Variant.STITCH))
                     else:
                         _log.info("save_result save_stitched")
                         java_item = self._save_stitched(max_level, save_filename, gtiff_options, crop_bounds, zlevel=zlevel)
 
-                        geometry = to_latlng_geometry(java_item.bbox())
-                        assets = {}
-
-                        for asset_key, asset in java_item.assets().items():
-                            assets[asset_key] = {
-                                "href": save_filename,
-                                "geometry": mapping(geometry),
-                                "bbox": geometry.bounds,
-                                "type": "image/tiff; application=geotiff",
-                                "roles": ["data"],
-                            }
-                            asset_metadata = asset.metadata()
-                            assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
-                            assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
-                            assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                            assets[asset_key] = dict_no_none(assets[asset_key])
-
-                        assets = add_gdalinfo_objects(assets)
-
-                        item = {
-                            "id": java_item.id(),
-                            "properties": {"datetime": java_item.datetime()},
-                            "geometry": mapping(geometry),
-                            "bbox": geometry.bounds,
-                            "assets": assets,
-                        }
-
-                        return {java_item.id(): item}
+                        written_item = job_items.WrittenItem(
+                            id=java_item.id(),
+                            datetime=java_item.datetime(),
+                            bbox=to_native_bbox(java_item.bbox()),
+                            crs=max_level.layer_metadata.crs,
+                            assets=[
+                                to_written_asset(k, a, path=save_filename) for k, a in java_item.assets().items()
+                            ],
+                        )
+                        return with_gdalinfo(job_items.build_items([written_item], variant=job_items.Variant.STITCH))
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -2311,9 +2231,8 @@ class GeopysparkDataCube(DriverDataCube):
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
                     if filepath_per_band:
-                        if self.metadata.has_temporal_dimension():
-                            # The user would need a way to encode the date in the filenames
-                            raise OpenEOApiException("filepath_per_band is not supported with temporal dimension")
+                        # Validated eagerly in SaveResultFormatOptions.parse(): filepath_per_band
+                        # is not supported with a temporal dimension.
                         gtiff_options.setFilepathPerBand(get_jvm().scala.Option.apply(filepath_per_band))
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE", softwareversion)
                     if description != "":
@@ -2366,11 +2285,18 @@ class GeopysparkDataCube(DriverDataCube):
                             0,
                         )
 
-                    if tile_grid:
-                        if separate_asset_per_band:
-                            raise OpenEOApiException(message="separate_asset_per_band is not supported with tile_grid")
+                    # Validated eagerly in SaveResultFormatOptions.parse(): separate_asset_per_band
+                    # is not supported with tile_grid.
 
-                    if batch_mode and max_level.layer_type != gps.LayerType.SPATIAL:
+                    variant = job_items.select_variant(
+                        stitch=False,
+                        tile_grid=tile_grid,
+                        batch_mode=batch_mode,
+                        is_temporal_layer=is_temporal_layer,
+                        sample_by_feature=sample_by_feature,
+                    )
+
+                    if batch_mode and is_temporal_layer:
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
 
@@ -2379,10 +2305,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
                                 max_level_rdd, save_directory, tile_grid, compression, gtiff_options))
                         elif sample_by_feature:
-                            if separate_asset_per_band:
-                                raise OpenEOApiException(
-                                    message="separate_asset_per_band is not supported with sample_by_feature"
-                                )
+                            format_opts.validate_sample_by_feature_with_separate_asset_per_band()
                             # EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
                             geometries = format_options['geometries']
@@ -2405,56 +2328,21 @@ class GeopysparkDataCube(DriverDataCube):
                             )
 
                         # TODO: introduce feature flag
-                        items = {}
-
-                        for java_item in java_items:
-                            assets = {}
-
-                            stac_datetime = java_item.datetime()
-                            geometry = to_latlng_geometry(java_item.bbox())
-
-                            for asset_key, asset in java_item.assets().items():
-                                path = asset.path()
-                                band_indices = asset.bandIndices()
-
-                                assets[asset_key] = {
-                                    "href": str(path),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    "bands": (
-                                        [band for i, band in enumerate(bands) if i in band_indices]
-                                        if band_indices
-                                        else bands
-                                    ),
-                                    "nodata": nodata,
-                                    "datetime": stac_datetime,
-                                    "geometry": mapping(geometry),
-                                    "bbox": geometry.bounds,
-                                }
-                                if asset_metadata := asset.metadata():
-                                    assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
-                                    assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
-                                    assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                                assets[asset_key] = dict_no_none(assets[asset_key])
-
-                            assets = add_gdalinfo_objects(assets)
-
-                            item = {
-                                "id": java_item.id(),
-                                "properties": {"datetime": stac_datetime},
-                                "geometry": mapping(geometry),
-                                "bbox": geometry.bounds,
-                                "assets": assets,
-                            }
-
-                            items[java_item.id()] = item
-
-                        return items
-                    elif batch_mode and max_level.layer_type == gps.LayerType.SPATIAL and sample_by_feature:
-                        if separate_asset_per_band:
-                            raise OpenEOApiException(
-                                message="separate_asset_per_band is not supported with sample_by_feature"
+                        written = [
+                            job_items.WrittenItem(
+                                id=java_item.id(),
+                                datetime=java_item.datetime(),
+                                bbox=to_native_bbox(java_item.bbox()),
+                                crs=max_level.layer_metadata.crs,
+                                assets=[to_written_asset_guarded(k, a) for k, a in java_item.assets().items()],
                             )
+                            for java_item in java_items
+                        ]
+                        return with_gdalinfo(
+                            job_items.build_items(written, variant=variant, bands=bands, nodata=nodata)
+                        )
+                    elif batch_mode and not is_temporal_layer and sample_by_feature:
+                        format_opts.validate_sample_by_feature_with_separate_asset_per_band()
                         # EP-3874 user requests to output data by polygon
                         _log.info("Output one tiff file per feature.")
                         geometries = format_options['geometries']
@@ -2467,50 +2355,22 @@ class GeopysparkDataCube(DriverDataCube):
                         java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamplesSpatial(
                             max_level_rdd, save_directory, projected_polygons, labels, compression,
                             gtiff_options)
-                        items = {}
-
-                        for java_item in java_items:
-                            assets = {}
-
-                            stac_datetime = java_item.datetime()
-                            geometry = to_latlng_geometry(java_item.bbox())
-
-                            for asset_key, asset in java_item.assets().items():
-                                path = asset.path()
-                                band_indices = asset.bandIndices()
-                                assets[asset_key] = {
-                                    "href": str(path),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    "bands": (
-                                        [band for i, band in enumerate(bands) if i in band_indices]
-                                        if band_indices
-                                        else bands
-                                    ),
-                                    "nodata": nodata,
-                                    "datetime": stac_datetime,
-                                    "geometry": mapping(geometry),
-                                    "bbox": geometry.bounds,
-                                }
-                                asset_metadata = asset.metadata()
-                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
-                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
-                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                                assets[asset_key] = dict_no_none(assets[asset_key])
-
-                            assets = add_gdalinfo_objects(assets)
-
-                            item = {
-                                "id": java_item.id(),
-                                "properties": {"datetime": stac_datetime},
-                                "geometry": mapping(geometry),
-                                "bbox": geometry.bounds,
-                                "assets": assets,
-                            }
-
-                            items[java_item.id()] = item
-
-                        return items  # TODO: retain backwards compatibility
+                        written = [
+                            job_items.WrittenItem(
+                                id=java_item.id(),
+                                datetime=java_item.datetime(),
+                                bbox=to_native_bbox(java_item.bbox()),
+                                crs=max_level.layer_metadata.crs,
+                                assets=[
+                                    to_written_asset(k, a, with_band_indices=True)
+                                    for k, a in java_item.assets().items()
+                                ],
+                            )
+                            for java_item in java_items
+                        ]
+                        return with_gdalinfo(
+                            job_items.build_items(written, variant=variant, bands=bands, nodata=nodata)
+                        )  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
                             java_items = self._save_stitched_tile_grid(
@@ -2531,45 +2391,21 @@ class GeopysparkDataCube(DriverDataCube):
                                 gtiff_options,
                             )
 
-                        items = {}
-                        for java_item in java_items:
-                            assets = {}
-
-                            geometry = to_latlng_geometry(java_item.bbox())
-
-                            for asset_key, asset in java_item.assets().items():
-                                path = asset.path()
-                                band_indices = asset.bandIndices()
-
-                                assets[asset_key] = {
-                                    "href": str(path),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    "nodata": nodata,
-                                }
-                                asset_metadata = asset.metadata()
-                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
-                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
-                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                                assets[asset_key] = dict_no_none(assets[asset_key])
-                                if band_indices is not None:
-                                    assets[asset_key]["bands"] = [
-                                        band for i, band in enumerate(bands) if i in band_indices
-                                    ]
-                                assets[asset_key]["geometry"] = mapping(geometry)
-                                assets[asset_key]["bbox"] = geometry.bounds
-
-                            assets = add_gdalinfo_objects(assets)
-                            item = {
-                                "id": java_item.id(),
-                                "geometry": mapping(geometry),
-                                "bbox": geometry.bounds,
-                                "assets": assets,
-                            }
-
-                            items[java_item.id()] = item
-
-                        return items
+                        written = [
+                            job_items.WrittenItem(
+                                id=java_item.id(),
+                                bbox=to_native_bbox(java_item.bbox()),
+                                crs=max_level.layer_metadata.crs,
+                                assets=[
+                                    to_written_asset(k, a, with_band_indices=True)
+                                    for k, a in java_item.assets().items()
+                                ],
+                            )
+                            for java_item in java_items
+                        ]
+                        return with_gdalinfo(
+                            job_items.build_items(written, variant=variant, bands=bands, nodata=nodata)
+                        )
             else:
                 if not save_filename.endswith(".png"):
                     save_filename = save_filename + ".png"
@@ -2584,19 +2420,9 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
 
-                item_id = str(uuid.uuid4())
-                return {
-                    item_id: {
-                        "id": item_id,
-                        "assets": {
-                            "openEO": {
-                                "href": save_filename,
-                                "type": "image/png",
-                                "roles": ["data"]
-                            }
-                        }
-                    }
-                }
+                return job_items.single_asset_item(
+                    asset_key="openEO", asset={"href": save_filename, "type": "image/png", "roles": ["data"]}
+                )
 
         elif format == "NETCDF":
             band_names = ["var"]
@@ -2609,12 +2435,44 @@ class GeopysparkDataCube(DriverDataCube):
             if self.metadata.has_temporal_dimension():
                 dim_names['t'] = self.metadata.temporal_dimension.name
             nodata = max_level.layer_metadata.no_data_value
-            global_metadata = format_options.get("file_metadata",{})
-            zlevel = format_options.get("ZLEVEL", 6)
-            add_bands_statistics = format_options.get("add_bands_statistics",False)
+            global_metadata = format_opts.file_metadata
+            zlevel = format_opts.zlevel
+            add_bands_statistics = format_opts.add_bands_statistics
             for band_name, band_metadata in bands_metadata.items():
                 for tag, value in band_metadata.items():
                     bands_metadata[band_name][tag] = str(value)
+
+            def netcdf_items(java_items) -> dict:
+                written = []
+                for java_item in java_items:
+                    written_assets = []
+                    for asset_key, asset in java_item.assets().items():
+                        asset_metadata = asset.metadata()
+                        nc_bands = []
+                        for band in asset_metadata.get("bands"):
+                            band = dict(band)
+                            if "statistics" in band:
+                                band["statistics"] = dict(band.get("statistics"))
+                            nc_bands.append(band)
+                        written_assets.append(
+                            job_items.WrittenAsset(
+                                key=asset_key,
+                                path=asset.path(),
+                                proj_bbox=tuple(asset_metadata.get("proj:bbox")),
+                                proj_shape=tuple(asset_metadata.get("proj:shape")),
+                                proj_epsg=asset_metadata.get("proj:epsg"),
+                                nc_bands=nc_bands,
+                            )
+                        )
+                    written.append(
+                        job_items.WrittenItem(
+                            id=java_item.id(),
+                            bbox=to_native_bbox(java_item.bbox()),
+                            crs=max_level.layer_metadata.crs,
+                            assets=written_assets,
+                        )
+                    )
+                return job_items.build_items(written, variant=job_items.Variant.NETCDF, nodata=nodata)
 
             if batch_mode and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
@@ -2623,13 +2481,13 @@ class GeopysparkDataCube(DriverDataCube):
                     geometries = GeometryCollection(geometries.geoms)
                 projected_polygons = to_projected_polygons(get_jvm(), geometries)
                 labels = self.get_labels(geometries,feature_id_property)
-                options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
-                options.setBandNames(band_names)
-                options.setDimensionNames(dim_names)
-                options.setAttributes(global_metadata)
-                options.setBandsMetadata(bands_metadata)
-                options.setAddBandStatistics(add_bands_statistics)
-                options.setRetainNoDataTiles(retain_nodata_tiles)
+                netcdf_options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                netcdf_options.setBandNames(band_names)
+                netcdf_options.setDimensionNames(dim_names)
+                netcdf_options.setAttributes(global_metadata)
+                netcdf_options.setBandsMetadata(bands_metadata)
+                netcdf_options.setAddBandStatistics(add_bands_statistics)
+                netcdf_options.setRetainNoDataTiles(retain_nodata_tiles)
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
@@ -2637,7 +2495,7 @@ class GeopysparkDataCube(DriverDataCube):
                         save_directory,
                         projected_polygons,
                         labels,
-                        options,
+                        netcdf_options,
                         filename_prefix,
                     )
                 else:
@@ -2646,44 +2504,44 @@ class GeopysparkDataCube(DriverDataCube):
                         save_directory,
                         projected_polygons,
                         labels,
-                        options,
+                        netcdf_options,
                         filename_prefix,
                     )
 
-                return return_netcdf_items(java_items, nodata)
+                return netcdf_items(java_items)
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = format_options.get("filename_prefix", "openEO") + ".nc" if originalName.name == "out" else originalName.name
                 if not stitch:
                     filename = save_directory + "/" + filename_tmp
-                    options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
-                    options.setBandNames(band_names)
-                    options.setDimensionNames(dim_names)
-                    options.setAttributes(global_metadata)
-                    options.setBandsMetadata(bands_metadata)
-                    options.setZLevel(zlevel)
-                    options.setAddBandStatistics(add_bands_statistics)
-                    options.setRetainNoDataTiles(retain_nodata_tiles)
+                    netcdf_options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                    netcdf_options.setBandNames(band_names)
+                    netcdf_options.setDimensionNames(dim_names)
+                    netcdf_options.setAttributes(global_metadata)
+                    netcdf_options.setBandsMetadata(bands_metadata)
+                    netcdf_options.setZLevel(zlevel)
+                    netcdf_options.setAddBandStatistics(add_bands_statistics)
+                    netcdf_options.setRetainNoDataTiles(retain_nodata_tiles)
                     if strict_cropping:
-                        options.setCropBounds(crop_extent)
+                        netcdf_options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
                             max_level.srdd.rdd(),
-                            filename,options
+                            filename,netcdf_options
                         )
                     else:
                         if max_level.layer_type != gps.LayerType.SPATIAL:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
                                 max_level.srdd.rdd(),
                                 filename,
-                                options,
+                                netcdf_options,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
                                 max_level.srdd.rdd(),
                                 filename,
-                                options,
+                                netcdf_options,
                             )
-                    return return_netcdf_items(java_items, nodata)
+                    return netcdf_items(java_items)
 
                 else:
                     if not tiled:
@@ -2701,15 +2559,7 @@ class GeopysparkDataCube(DriverDataCube):
                         if bands is not None:
                             asset["bands"] = bands
 
-                        item_id = str(uuid.uuid4())
-                        return {
-                            item_id: {
-                                "id": item_id,
-                                "assets": {
-                                    "openEO": asset,
-                                },
-                            }
-                        }
+                        return job_items.single_asset_item(asset_key="openEO", asset=asset)
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
@@ -2738,7 +2588,7 @@ class GeopysparkDataCube(DriverDataCube):
                 zarr_options.setBands(1)
 
             self._save_zarr_executors(max_level.srdd.rdd(),zarr_file,zarr_options)
-            to_zip = format_options.get("to_zip", True)
+            to_zip = format_opts.to_zip
             if to_zip:
                 shutil.make_archive(zarr_file, 'zip', zarr_file)
                 return {str(os.path.basename(zarr_file + ".zip")):{
@@ -2766,27 +2616,13 @@ class GeopysparkDataCube(DriverDataCube):
                 debug_output["cube_metadata"] = self.metadata.to_dict()
             with open(filename, "w") as f:
                 json.dump(debug_output, f, indent=4, default=str)
-        else:
-            raise OpenEOApiException(
-                message="Format {f!r} is not supported".format(f=format),
-                code="FormatUnsupported", status_code=400
-            )
+        # Unsupported formats are rejected eagerly in SaveResultFormatOptions.parse().
 
-        item_id = str(uuid.uuid4())
-        return {
-            item_id: {
-                "id": item_id,
-                "properties": {"datetime": None},
-                "geometry": None,
-                "bbox": None,
-                "assets": {
-                    "openEO": {
-                        "href": filename,
-                        "roles": ["data"],
-                    },
-                },
-            },
-        }
+        return job_items.single_asset_item(
+            asset_key="openEO",
+            asset={"href": filename, "roles": ["data"]},
+            item_extra={"properties": {"datetime": None}, "geometry": None, "bbox": None},
+        )
 
     def get_labels(self, geometries, feature_id_property=None):
         # TODO: return more descriptive labels/ids than these autoincrement strings (when possible)?
