@@ -29,6 +29,7 @@ def _settings(**overrides) -> JobResultsSettings:
         s3_bucket_name="openeo-test-bucket",
         gdalinfo_from_file=True,
         gdalinfo_use_subprocess=False,
+        item_collection_glob="items_*.json",
     )
     values.update(overrides)
     return JobResultsSettings(**values)
