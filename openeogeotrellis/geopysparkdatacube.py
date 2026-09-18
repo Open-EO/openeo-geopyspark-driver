@@ -56,13 +56,13 @@ from openeogeotrellis.util.datetime import normalize_temporal_extent, to_datetim
 from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.job_results import items as job_items
 from openeogeotrellis.job_results.util import reproject_geometry
+from openeogeotrellis.util.projection import reproject_cellsize
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
     ensure_executor_logging,
     get_jvm,
     temp_csv_dir,
-    reproject_cellsize,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion

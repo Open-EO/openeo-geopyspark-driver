@@ -48,10 +48,10 @@ from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisi
 from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.util.datetime import normalize_temporal_extent, parse_approximate_isoduration
 from openeogeotrellis.util.geometry import calculate_rough_area, health_check_extent
+from openeogeotrellis.util.projection import reproject_cellsize
 from openeogeotrellis.utils import (
     to_projected_polygons,
     get_jvm,
-    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
