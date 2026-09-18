@@ -26,7 +26,7 @@ from pyspark import SparkContext
 from shapely.geometry import Point
 
 from openeogeotrellis.geopysparkdatacube import (
-    GeopysparkCubeMetadata,
+    CollectionCubeMetadata,
     GeopysparkDataCube,
 )
 from tests.datacube_fixtures import layer_with_one_band_and_three_dates
@@ -95,7 +95,7 @@ class TestMultipleDates(TestCase):
                 'layoutDefinition': {
                     'extent': extent,
                     'tileLayout': layout.copy()}}
-    collection_metadata = GeopysparkCubeMetadata({
+    collection_metadata = CollectionCubeMetadata({
         "cube:dimensions": {
             "t": {"type": "temporal"},
         }
@@ -400,7 +400,7 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeopysparkDataCube(
             pyramid=input,
-            metadata=GeopysparkCubeMetadata({
+            metadata=CollectionCubeMetadata({
                 "cube:dimensions": {
                     # TODO: also specify other dimensions?
                     "bands": {"type": "bands", "values": ["2"]}
@@ -559,7 +559,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         )
         from tests.test_views import TestCollections
 
-        m = GeopysparkCubeMetadata(
+        m = CollectionCubeMetadata(
             {
                 "cube:dimensions": {
                     "x": {"type": "spatial", "axis": "x", "reference_system": TestCollections._CRS_AUTO_42001},
@@ -649,7 +649,7 @@ def test_apply_spatiotemporal(udf_code):
 
     imagecollection = GeopysparkDataCube(
         pyramid=input,
-        metadata=GeopysparkCubeMetadata({
+        metadata=CollectionCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["2"]}

@@ -6,7 +6,7 @@ import logging
 from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import FeatureUnsupportedException
-from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
+from openeogeotrellis.geopysparkdatacube import CollectionCubeMetadata
 
 OG_BATCH_RESULTS_BUCKET = "openeo-sentinelhub"
 
@@ -49,7 +49,7 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
     )
 
 
-def assure_polarization_from_sentinel_bands(metadata: GeopysparkCubeMetadata, metadata_properties: Dict[str, object],
+def assure_polarization_from_sentinel_bands(metadata: CollectionCubeMetadata, metadata_properties: Dict[str, object],
                                             job_id: str = None):
     """
     @param metadata:

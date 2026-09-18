@@ -1,9 +1,9 @@
 import pytest
 
-from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import CollectionCubeMetadata
 
 
-class TestGeopysparkCubeMetadata:
+class TestCollectionCubeMetadata:
 
     @pytest.mark.parametrize(
         ["this_temporal_extent", "that_temporal_extent", "expected"],
@@ -58,7 +58,7 @@ class TestGeopysparkCubeMetadata:
         ],
     )
     def test_filter_temporal_overlapping_extents(self, this_temporal_extent, that_temporal_extent, expected):
-        metadata = GeopysparkCubeMetadata(metadata={}, temporal_extent=this_temporal_extent)
+        metadata = CollectionCubeMetadata(metadata={}, temporal_extent=this_temporal_extent)
         that_start, that_end = that_temporal_extent
         if isinstance(expected, tuple):
             assert metadata.filter_temporal(start=that_start, end=that_end).temporal_extent == expected

@@ -135,9 +135,9 @@ def layer_with_two_bands_and_one_date():
 @pytest.fixture
 def imagecollection_with_two_bands_and_one_date(request) -> GeopysparkDataCube:
     import geopyspark as gps
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, CollectionCubeMetadata
     geopyspark_layer = layer_with_two_bands_and_one_date()
-    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata))
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=CollectionCubeMetadata(openeo_metadata))
 
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_one_date = datacube
@@ -151,7 +151,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
     from geopyspark.geotrellis.layer import TiledRasterLayer
     import geopyspark as gps
 
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, CollectionCubeMetadata
 
     date1, date3, rdd = numpy_rdd_two_bands_and_three_dates()
 
@@ -174,7 +174,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
     openeo_metadata_copy = copy.deepcopy(openeo_metadata)
     openeo_metadata_copy["cube:dimensions"]["t"]["extent"] = [date1,date3]
 
-    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata_copy))
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=CollectionCubeMetadata(openeo_metadata_copy))
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube
@@ -215,7 +215,7 @@ def imagecollection_with_two_bands_and_three_dates_webmerc(request):
     from geopyspark.geotrellis.layer import TiledRasterLayer
     import geopyspark as gps
 
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube,GeopysparkCubeMetadata
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube,CollectionCubeMetadata
 
     date1, date3, rdd = numpy_rdd_two_bands_and_three_dates()
 
@@ -234,7 +234,7 @@ def imagecollection_with_two_bands_and_three_dates_webmerc(request):
 
     geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata))
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=CollectionCubeMetadata(openeo_metadata))
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube
@@ -247,7 +247,7 @@ def imagecollection_with_two_bands_spatial_only(request):
     from geopyspark.geotrellis.constants import LayerType
     from geopyspark.geotrellis.layer import TiledRasterLayer
     from pyspark import SparkContext
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, CollectionCubeMetadata
 
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     tile = Tile.from_numpy_array(two_band_one_two, -1)
@@ -276,7 +276,7 @@ def imagecollection_with_two_bands_spatial_only(request):
     input_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPATIAL, rdd, metadata)
     datacube = GeopysparkDataCube(
         pyramid=gps.Pyramid({0: input_layer}),
-        metadata=GeopysparkCubeMetadata(openeo_metadata_spatial())
+        metadata=CollectionCubeMetadata(openeo_metadata_spatial())
     )
 
     if request.instance:

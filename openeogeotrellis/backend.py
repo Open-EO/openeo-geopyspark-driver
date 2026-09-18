@@ -88,7 +88,7 @@ from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL, WHITELIST
 from openeogeotrellis.catalog.collection_metadata import Band
-from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
+from openeogeotrellis.geopysparkdatacube import CollectionCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.credit_check import ExecutionDetails
 from openeogeotrellis.integrations.credit_check_registry import get_batch_execution_details
 from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
@@ -761,7 +761,7 @@ Example usage:
             job_results_epsg = job_info.epsg
             logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
-        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
+        metadata = CollectionCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
             SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
             TemporalDimension(name='t', extent=[]),
@@ -991,7 +991,7 @@ Example usage:
         if time_dim:
             dimensions.append(time_dim)
 
-        metadata: GeopysparkCubeMetadata = GeopysparkCubeMetadata(
+        metadata: CollectionCubeMetadata = CollectionCubeMetadata(
             metadata={},
             dimensions=dimensions,
             spatial_extent=target.metadata.spatial_extent,

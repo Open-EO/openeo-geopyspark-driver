@@ -1,5 +1,5 @@
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
+from openeogeotrellis.geopysparkdatacube import CollectionCubeMetadata
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
@@ -8,7 +8,7 @@ class TestSentinelHub:
         metadata_properties = {}
         all_metadata = get_layer_catalog(vault, opensearch_enrich=False)
         collection_id = "SENTINEL1_GRD"
-        metadata = GeopysparkCubeMetadata(all_metadata.get_collection_metadata(collection_id))
+        metadata = CollectionCubeMetadata(all_metadata.get_collection_metadata(collection_id))
         metadata = metadata.filter_bands(["VV", "VH"])
         sentinel_hub.assure_polarization_from_sentinel_bands(metadata, metadata_properties)
         assert metadata_properties["polarization"] == {'eq': 'DV'}
@@ -17,7 +17,7 @@ class TestSentinelHub:
         metadata_properties = {}
         all_metadata = get_layer_catalog(vault, opensearch_enrich=False)
         collection_id = "SENTINEL1_GRD"
-        metadata = GeopysparkCubeMetadata(all_metadata.get_collection_metadata(collection_id))
+        metadata = CollectionCubeMetadata(all_metadata.get_collection_metadata(collection_id))
         metadata = metadata.filter_bands(["VV"])
         sentinel_hub.assure_polarization_from_sentinel_bands(metadata, metadata_properties)
         assert "polarization" not in metadata_properties
@@ -26,7 +26,7 @@ class TestSentinelHub:
         metadata_properties = {}
         all_metadata = get_layer_catalog(vault, opensearch_enrich=False)
         collection_id = "SENTINEL1_CARD4L"
-        metadata = GeopysparkCubeMetadata(all_metadata.get_collection_metadata(collection_id))
+        metadata = CollectionCubeMetadata(all_metadata.get_collection_metadata(collection_id))
         metadata = metadata.filter_bands(["VV", "VH"])
         sentinel_hub.assure_polarization_from_sentinel_bands(metadata, metadata_properties)
         assert "polarization" not in metadata_properties
