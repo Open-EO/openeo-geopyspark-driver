@@ -4,7 +4,7 @@ import numpy as np
 from geopyspark import Tile
 
 from openeogeotrellis.geopysparkdatacube import (
-    CollectionCubeMetadata,
+    GeopysparkCubeMetadata,
     GeopysparkDataCube,
     SpatialExtent,
 )
@@ -35,7 +35,7 @@ class TestMultiBandUDF(TestCase):
     tile = Tile.from_numpy_array(bands,np.nan)
 
     def test_convert_multiband_tile_hypercube(self):
-        metadata = CollectionCubeMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["2", "3", "4"]}
@@ -68,7 +68,7 @@ class TestMultiBandUDF(TestCase):
 
 
     def test_multiband_with_tile_coordinates(self):
-        metadata = CollectionCubeMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["2", "3", "4"]}

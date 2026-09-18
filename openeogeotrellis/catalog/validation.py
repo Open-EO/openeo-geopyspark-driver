@@ -20,7 +20,7 @@ from openeogeotrellis.util.datetime import normalize_temporal_extent
 from openeogeotrellis.util.geometry import calculate_rough_area, health_check_extent
 from openeogeotrellis.util.projection import reproject_cellsize
 
-from .collection_metadata import CollectionCubeMetadata
+from .collection_metadata import GeopysparkCubeMetadata
 
 if TYPE_CHECKING:
     # imported lazily to avoid a validation.py <-> layer_catalog.py import cycle at runtime
@@ -37,7 +37,7 @@ GlobalExtentProvider = Callable[..., object]
 
 def potential_sentinelhub(catalog: "LayerCatalog", collection_id) -> bool:
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-    metadata = CollectionCubeMetadata(metadata_json)
+    metadata = GeopysparkCubeMetadata(metadata_json)
     if metadata.provider_backend() == "sentinelhub":
         return True
     for col in metadata.get("_vito", "data_source", "merged_collections", default=[]):
@@ -47,15 +47,15 @@ def potential_sentinelhub(catalog: "LayerCatalog", collection_id) -> bool:
 
 
 def check_missing_products(
-        collection_metadata: Union[CollectionCubeMetadata, dict],
+        collection_metadata: Union[GeopysparkCubeMetadata, dict],
         temporal_extent: Tuple[str, str], spatial_extent: dict,
         properties: Optional[dict] = None,
 ) -> Union[List[str], None]:
     """
     Query catalogs to figure out if the data provider/source does not fully cover the desired spatiotemporal extent.
     """
-    if not isinstance(collection_metadata, CollectionCubeMetadata):
-        collection_metadata = CollectionCubeMetadata(collection_metadata)
+    if not isinstance(collection_metadata, GeopysparkCubeMetadata):
+        collection_metadata = GeopysparkCubeMetadata(collection_metadata)
     check_data = collection_metadata.get("_vito", "data_source", "check_missing_products", default=None)
 
     if check_data:
@@ -120,7 +120,7 @@ def extra_validation_load_collection(
     allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
     sync_job = smart_bool(env.get("sync_job", False))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-    metadata = CollectionCubeMetadata(metadata_json)
+    metadata = GeopysparkCubeMetadata(metadata_json)
     large_layer_threshold_in_pixels = int(
         float(
             env.get(

@@ -13,7 +13,7 @@ from openeo_driver.utils import EvalEnv
 
 import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.catalog.collection_metadata import CollectionCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 from openeogeotrellis.catalog.load_request import CollectionLoadRequest
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.testing import load_test_collection
@@ -54,7 +54,7 @@ class JvmLoadContext:
 @dataclasses.dataclass
 class PyramidSourceResult:
     pyramid: Any  # dict of levels, or a Scala Seq
-    metadata: Optional[CollectionCubeMetadata] = None  # sentinel-hub appends bands
+    metadata: Optional[GeopysparkCubeMetadata] = None  # sentinel-hub appends bands
     still_needs_band_filter: bool = False  # accumulo
 
 

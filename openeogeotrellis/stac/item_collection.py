@@ -562,7 +562,7 @@ def construct_item_collection(
     Construct a `StacSource` (an `ItemCollection` plus its collection-level metadata)
     from a given load_stac URL.
 
-    It is up to the caller to turn `collection_summary` into a `CollectionCubeMetadata`
+    It is up to the caller to turn `collection_summary` into a `GeopysparkCubeMetadata`
     (or equivalent) — this module intentionally has no engine-specific metadata coupling.
     """
     spatiotemporal_extent = spatiotemporal_extent or SpatioTemporalExtent()

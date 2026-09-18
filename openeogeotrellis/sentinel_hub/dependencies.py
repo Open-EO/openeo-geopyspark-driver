@@ -8,7 +8,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.utm import area_in_square_meters
-from openeogeotrellis.geopysparkdatacube import CollectionCubeMetadata
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 
 
 class SentinelHubDependencies:
@@ -37,7 +37,7 @@ class SentinelHubDependencies:
         """
         band_names = constraints.get('bands')
 
-        metadata = CollectionCubeMetadata(catalog.get_collection_metadata(collection_id))
+        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id))
         if band_names:
             metadata = metadata.filter_bands(band_names)
 

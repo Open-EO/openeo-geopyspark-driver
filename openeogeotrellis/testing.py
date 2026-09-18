@@ -295,7 +295,7 @@ class DummyCubeBuilder:
                 )
             }
         )
-        # TODO: customize CollectionCubeMetadata
+        # TODO: customize GeopysparkCubeMetadata
         return GeopysparkDataCube(pyramid=pyramid)
 
 

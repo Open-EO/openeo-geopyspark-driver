@@ -11,7 +11,7 @@ from geopyspark.geotrellis import SpaceTimeKey, Tile, Metadata, Bounds, CellType
 from pyspark import SparkContext
 
 from openeo.util import rfc3339
-from openeogeotrellis.geopysparkdatacube import CollectionCubeMetadata
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 
 _log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def dates_between(start: datetime, end: datetime) -> List[datetime]:
 
 def load_test_collection(
     tile_size: int,
-    collection_metadata: CollectionCubeMetadata,
+    collection_metadata: GeopysparkCubeMetadata,
     extent,
     srs: str,
     from_date: str,

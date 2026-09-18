@@ -5,7 +5,7 @@ import numpy as np
 from numpy.testing import assert_equal
 
 from openeogeotrellis.collections.testing import (
-    CollectionCubeMetadata,
+    GeopysparkCubeMetadata,
     TestCollectionLonLat,
     load_test_collection,
 )
@@ -48,7 +48,7 @@ def test_test_collection():
 
 def test_load_test_collection():
     bands = ["Flat:1", "TileCol", "TileRow", "Longitude", "Latitude", "Day"]
-    collection_metadata = CollectionCubeMetadata({"cube:dimensions": {
+    collection_metadata = GeopysparkCubeMetadata({"cube:dimensions": {
         "x": {"type": "spatial", "axis": "x"},
         "y": {"type": "spatial", "axis": "y"},
         "t": {"type": "temporal"},
