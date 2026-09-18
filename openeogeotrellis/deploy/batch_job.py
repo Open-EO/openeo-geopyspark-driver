@@ -648,27 +648,18 @@ def run_job(
         assert len(results) == len(assets_metadata)
         assert len(results) == len(results_items)
         for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
-            if stac11_mode:
-                _export_to_workspaces_item(
-                    result,
-                    result_metadata,
-                    result_items_metadata=result_items_metadata,
-                    job_dir=job_dir,
-                    remove_exported_assets=job_options.get("remove-exported-assets", False),
-                    enable_merge=job_options.get("export-workspace-enable-merge", False),
-                    omit_derived_from_links=omit_derived_from_links,
-                    attach_derived_from_document=stac11_mode,
-                )
-            else:
-                _export_to_workspaces(
-                    result,
-                    result_metadata,
-                    result_assets_metadata=result_assets_metadata,
-                    job_dir=job_dir,
-                    remove_exported_assets=job_options.get("remove-exported-assets", False),
-                    enable_merge=job_options.get("export-workspace-enable-merge", False),
-                    omit_derived_from_links=omit_derived_from_links,
-                )
+            _export_to_workspaces(
+                result,
+                result_metadata,
+                stac11_mode=stac11_mode,
+                result_assets_metadata=result_assets_metadata,
+                result_items_metadata=result_items_metadata,
+                job_dir=job_dir,
+                remove_exported_assets=job_options.get("remove-exported-assets", False),
+                enable_merge=job_options.get("export-workspace-enable-merge", False),
+                omit_derived_from_links=omit_derived_from_links,
+                attach_derived_from_document=stac11_mode,
+            )
     finally:
         if len(tracker_metadata) == 0:
             tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
@@ -763,119 +754,18 @@ def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path, for_
     return copied_auxiliary_links
 
 
-def _export_to_workspaces_item(
-    result: SaveResult,
-    result_metadata: dict,
-    *,
-    result_items_metadata: dict,
-    job_dir: Path,
-    remove_exported_assets: bool,
-    enable_merge: bool,
-    omit_derived_from_links: bool,
-    attach_derived_from_document: bool,
-):
-    workspace_repository: WorkspaceRepository = backend_config_workspace_repository
-    workspace_exports = sorted(
-        list(result.workspace_exports),
-        key=lambda export: export.workspace_id + (export.merge or ""),  # arbitrary but deterministic order of hrefs
-    )
-
-    if not workspace_exports:
-        return
-
-    stac_hrefs = [
-        f"file:{path}"
-        for path in _write_exported_stac_collection_from_item(
-            job_dir,
-            result_metadata,
-            item_metadata=result_items_metadata,
-            omit_derived_from_links=omit_derived_from_links,
-            attach_derived_from_document=attach_derived_from_document,
-        )
-    ]
-
-    # TODO: assemble pystac.STACObject and avoid file altogether?
-    collection_href = find_stac_root(stac_hrefs)
-    assert collection_href is not None
-    collection_href_path = urlparse(collection_href).path
-    collection_href_dict = json.loads(Path(collection_href_path).read_text())
-    if pystac.Collection.matches_object_type(collection_href_dict):
-        collection = pystac.Collection.from_file(collection_href_path)
-    else:
-        collection = pystac.Catalog.from_file(collection_href_path)
-
-    workspace_uris = {}
-
-    for i, workspace_export in enumerate(workspace_exports):
-        workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
-        merge = workspace_export.merge
-
-        if merge is None:
-            merge = get_job_id(default="unknown-job")
-        elif merge == "":  # TODO: puts it in root of workspace? move it there?
-            merge = "."
-
-        final_export = i >= len(workspace_exports) - 1
-        remove_original = remove_exported_assets and final_export
-
-        if enable_merge or workspace.merges_by_default:
-            imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
-            assert isinstance(imported_collection, pystac.Collection)
-
-            for item in imported_collection.get_items(recursive=True):
-                item_key = item.id
-                for asset_key, asset in item.get_assets().items():
-                    (workspace_uri,) = asset.extra_fields["alternate"].values()
-                    workspace_uris.setdefault((item_key, asset_key), []).append(
-                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
-                    )
-        else:
-            export_to_workspace = partial(
-                _export_to_workspace,
-                common_path=job_dir,
-                target=workspace,
-                merge=merge,
-                remove_original=remove_original,
-            )
-
-            for stac_href in stac_hrefs:
-                export_to_workspace(source_uri=stac_href)
-
-            for item_key, item in result_items_metadata.items():
-                for asset_key, asset in item["assets"].items():
-                    workspace_uri = export_to_workspace(source_uri=asset["href"])
-                    workspace_uris.setdefault((item_key, asset_key), []).append(
-                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
-                    )
-
-    for (item_key, asset_key), workspace_uris in workspace_uris.items():
-        if remove_exported_assets:
-            # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
-            result_metadata["items"][item_key]["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
-            alternate = {
-                f"{workspace_id}/{merge}": {"href": workspace_uri}
-                for workspace_id, merge, workspace_uri in workspace_uris[:-1]
-            }
-        else:
-            # the original href still applies; all workspace URIs become "alternate" hrefs
-            alternate = {
-                f"{workspace_id}/{merge}": {"href": workspace_uri}
-                for workspace_id, merge, workspace_uri in workspace_uris
-            }
-
-        if alternate:
-            result_metadata["items"][item_key]["assets"][asset_key]["alternate"] = alternate
-
-
 def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
     *,
-    result_assets_metadata: dict,
+    stac11_mode: bool,
+    result_assets_metadata: Optional[dict] = None,
+    result_items_metadata: Optional[dict] = None,
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
     omit_derived_from_links: bool = False,
+    attach_derived_from_document: bool = False,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
@@ -886,7 +776,18 @@ def _export_to_workspaces(
     if not workspace_exports:
         return
 
-    if isinstance(result, StacSaveResult):
+    if stac11_mode:
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection_from_item(
+                job_dir,
+                result_metadata,
+                item_metadata=result_items_metadata,
+                omit_derived_from_links=omit_derived_from_links,
+                attach_derived_from_document=attach_derived_from_document,
+            )
+        ]
+    elif isinstance(result, StacSaveResult):
         stac_hrefs_raw = get_files_from_stac_catalog(result.stac_root_local, include_metadata=True)
         stac_hrefs = [href for href in stac_hrefs_raw if href.endswith(".json")] + [result.stac_root_local]
     else:
@@ -929,9 +830,10 @@ def _export_to_workspaces(
             assert isinstance(imported_collection, pystac.Collection)
 
             for item in imported_collection.get_items(recursive=True):
+                item_key = item.id if stac11_mode else None
                 for asset_key, asset in item.get_assets().items():
                     (workspace_uri,) = asset.extra_fields["alternate"].values()
-                    workspace_uris.setdefault(asset_key, []).append(
+                    workspace_uris.setdefault((item_key, asset_key), []).append(
                         (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
                     )
         else:
@@ -948,29 +850,36 @@ def _export_to_workspaces(
                 #  multiple export_workspace to the same workspace and merge within a single process graph will not work
                 export_to_workspace(source_uri=stac_href)
 
-            for asset_key, asset in result_assets_metadata.items():
-                workspace_uri = export_to_workspace(source_uri=asset["href"])
-                workspace_uris.setdefault(asset_key, []).append(
-                    (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
-                )
+            if stac11_mode:
+                for item_key, item in result_items_metadata.items():
+                    for asset_key, asset in item["assets"].items():
+                        workspace_uri = export_to_workspace(source_uri=asset["href"])
+                        workspace_uris.setdefault((item_key, asset_key), []).append(
+                            (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                        )
+            else:
+                for asset_key, asset in result_assets_metadata.items():
+                    workspace_uri = export_to_workspace(source_uri=asset["href"])
+                    workspace_uris.setdefault((None, asset_key), []).append(
+                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                    )
 
-    for asset_key, workspace_uris in workspace_uris.items():
+    for (item_key, asset_key), uris in workspace_uris.items():
+        asset_output = (
+            result_metadata["items"][item_key]["assets"][asset_key]
+            if stac11_mode
+            else result_metadata["assets"][asset_key]
+        )
         if remove_exported_assets:
             # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
-            result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
-            alternate = {
-                f"{workspace_id}/{merge}": {"href": workspace_uri}
-                for workspace_id, merge, workspace_uri in workspace_uris[:-1]
-            }
+            asset_output[BatchJobs.ASSET_PUBLIC_HREF] = uris[-1][2]
+            alternate = {f"{workspace_id}/{merge}": {"href": workspace_uri} for workspace_id, merge, workspace_uri in uris[:-1]}
         else:
             # the original href still applies; all workspace URIs become "alternate" hrefs
-            alternate = {
-                f"{workspace_id}/{merge}": {"href": workspace_uri}
-                for workspace_id, merge, workspace_uri in workspace_uris
-            }
+            alternate = {f"{workspace_id}/{merge}": {"href": workspace_uri} for workspace_id, merge, workspace_uri in uris}
 
         if alternate:
-            result_metadata["assets"][asset_key]["alternate"] = alternate
+            asset_output["alternate"] = alternate
 
 
 def _export_to_workspace(
