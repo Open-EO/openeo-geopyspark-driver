@@ -30,8 +30,9 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImp
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
+from openeogeotrellis.job_results.util import make_set_for_key
 from openeogeotrellis.util.geometry import bbox_to_geojson
-from openeogeotrellis.utils import _make_set_for_key, get_jvm, map_optional, to_s3_url
+from openeogeotrellis.utils import get_jvm, map_optional, to_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -261,13 +262,13 @@ def _extract_asset_metadata(
 
     # Determine if projection metadata should be store at the item level,
     # because they are the same for all assets.
-    epsgs = _make_set_for_key(raster_metadata, "proj:epsg")
+    epsgs = make_set_for_key(raster_metadata, "proj:epsg")
     same_epsg_all_assets = len(epsgs) == 1
 
-    bboxes = _make_set_for_key(raster_metadata, "proj:bbox", tuple)
+    bboxes = make_set_for_key(raster_metadata, "proj:bbox", tuple)
     same_bbox_all_assets = len(bboxes) == 1
 
-    shapes = _make_set_for_key(raster_metadata, "proj:shape", tuple)
+    shapes = make_set_for_key(raster_metadata, "proj:shape", tuple)
     same_shapes_all_assets = len(shapes) == 1
 
     assets_have_same_proj_md = not is_some_raster_md_missing and all(

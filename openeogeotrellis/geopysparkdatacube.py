@@ -55,6 +55,7 @@ from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisi
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.util.datetime import to_datetime_utc
 from openeogeotrellis.util.geometry import bbox_to_geojson
+from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, reproject_geometry
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -63,9 +64,7 @@ from openeogeotrellis.utils import (
     map_optional,
     temp_csv_dir,
     reproject_cellsize,
-    reproject_geometry,
     normalize_temporal_extent,
-    GDALINFO_SUFFIX,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion

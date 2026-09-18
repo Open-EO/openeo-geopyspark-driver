@@ -16,13 +16,9 @@ from openeo.util import dict_no_none
 
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, make_set_for_key, parse_json_from_output
 from openeogeotrellis.util.runtime import get_job_id
-from openeogeotrellis.utils import (
-    stream_s3_binary_file_contents,
-    _make_set_for_key,
-    parse_json_from_output,
-    GDALINFO_SUFFIX,
-)
+from openeogeotrellis.utils import stream_s3_binary_file_contents
 
 
 def poorly_log(message: str, level=logging.INFO):
@@ -355,15 +351,15 @@ def _process_gdalinfo_for_netcdf_subdatasets(
             sub_datasets_stats[sub_ds_uri] = stats_info
 
     proj_info = {}
-    shapes = _make_set_for_key(sub_datasets_proj, "proj:shape", tuple)
+    shapes = make_set_for_key(sub_datasets_proj, "proj:shape", tuple)
     if len(shapes) == 1:
         proj_info["proj:shape"] = list(shapes.pop())
 
-    bboxes = _make_set_for_key(sub_datasets_proj, "proj:bbox", tuple)
+    bboxes = make_set_for_key(sub_datasets_proj, "proj:bbox", tuple)
     if len(bboxes) == 1:
         proj_info["proj:bbox"] = list(bboxes.pop())
 
-    epsg_codes = _make_set_for_key(sub_datasets_proj, "proj:epsg")
+    epsg_codes = make_set_for_key(sub_datasets_proj, "proj:epsg")
     if len(epsg_codes) == 1:
         proj_info["proj:epsg"] = epsg_codes.pop()
 
