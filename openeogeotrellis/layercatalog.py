@@ -1,12 +1,9 @@
 import logging
-from copy import deepcopy
 from functools import lru_cache
 from typing import List, Dict, Optional
 
 import geopyspark
-import py4j.protocol
 
-from openeo.metadata import Band
 from openeo.util import TimingLogger
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
@@ -14,20 +11,16 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, ProcessGraphComplexityException
 from openeo_driver.utils import EvalEnv, WhiteListEvalEnv, smart_bool
 
-from openeogeotrellis import sentinel_hub, datacube_parameters
+from openeogeotrellis import datacube_parameters
 from openeogeotrellis.catalog.files import dump_layer_catalog, load_catalog_files
 from openeogeotrellis.catalog.layer_catalog import LayerCatalog
 from openeogeotrellis.catalog.load_request import resolve_load_request
 from openeogeotrellis.catalog.validation import extra_validation_load_collection
 from openeogeotrellis._backend import post_dry_run
-from openeogeotrellis.catalogs.creo import CreoCatalogClient
-import openeogeotrellis.collections.s1backscatter_orfeo
-from openeogeotrellis.collections.testing import load_test_collection
+from openeogeotrellis.collections.pyramid_sources import SOURCE_BUILDERS, JvmLoadContext
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY, WHITELIST
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import (
     to_projected_polygons,
@@ -98,62 +91,40 @@ class GeoPySparkLayerCatalog(LayerCatalog):
             catalog=self,
             default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint,
         )
-
         collection_id = request.collection_id
         metadata = request.metadata
-        layer_source_info = request.source_info
-        layer_source_type = request.source_type
-        is_utm = request.is_utm
-        catalog_type = request.catalog_type  # E.g. STAC, Opensearch, Creodias
-        postprocessing_band_graph = request.postprocessing_band_graph
-        cell_width = request.cell_width
-        cell_height = request.cell_height
-        bands = request.bands
-        band_indices = request.band_indices
-        normalized_band_selection = request.normalized_band_selection
-        from_date, to_date = request.from_date, request.to_date
-        west, south, east, north, srs = request.west, request.south, request.east, request.north, request.srs
-        correlation_id = request.correlation_id
-        feature_flags = request.feature_flags
-        experimental = request.experimental
-        max_soft_errors_ratio = request.max_soft_errors_ratio
-        opensearch_endpoint = request.opensearch_endpoint
-        sar_backscatter_compatible = request.sar_backscatter_compatible
-
-        # TODO: avoid this `still_needs_band_filter` ugliness.
-        #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        still_needs_band_filter = False
 
         pysc = geopyspark.get_spark_context()
         description = f"load_collection_{collection_id}"
-        if bands:
-            description += f"_{'-'.join(bands)}"
+        if request.bands:
+            description += f"_{'-'.join(request.bands)}"
         pysc.setJobDescription(description)
 
         jvm = get_jvm()
 
-        extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
+        extent = jvm.geotrellis.vector.Extent(
+            float(request.west), float(request.south), float(request.east), float(request.north)
+        )
 
         geometries = load_params.aggregate_spatial_geometries
         empty_geometries = isinstance(geometries, DriverVectorCube) and len(geometries.get_geometries()) == 0
         geometries = None if empty_geometries else geometries  # TODO: ensure that driver vector cube can not have empty geometries.
         if not geometries:
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, request.srs)
         else:
             projected_polygons = to_projected_polygons(
-                jvm, geometries, crs=srs, buffer_points=True
+                jvm, geometries, crs=request.srs, buffer_points=True
             )
 
-        target_epsg_code = request.target_epsg
-
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
-                                         .reproject(projected_polygons, target_epsg_code))
+                                         .reproject(projected_polygons, request.target_epsg))
         logger.debug(projected_polygons_native_crs)
         logger.debug(projected_polygons_native_crs.geometries())
         logger.debug(projected_polygons_native_crs.extent())
         logger.debug(projected_polygons_native_crs.polygons()[0].toString())
 
         datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
+        feature_flags = request.feature_flags
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
@@ -169,491 +140,33 @@ class GeoPySparkLayerCatalog(LayerCatalog):
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             return request.property_filters.flattened() if flatten_eqs else request.property_filters.conditions()
 
-        def accumulo_pyramid():
-            pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
-                                                                              ','.join(ConfigParams().zookeepernodes))
-            if layer_source_info.get("split", False):
-                pyramidFactory.setSplitRanges(True)
+        ctx = JvmLoadContext(
+            jvm=jvm,
+            extent=extent,
+            geometries=geometries,
+            projected_polygons=projected_polygons,
+            projected_polygons_native_crs=projected_polygons_native_crs,
+            datacube_params=datacubeParams,
+            single_level=single_level,
+            load_params=load_params,
+            env=env,
+            pg_node_id=pg_node_id,
+            metadata_properties=metadata_properties,
+            get_sar_backscatter_arguments=lambda: _get_sar_backscatter_arguments(load_params=load_params, env=env),
+            sentinel_hub_client_id=self._default_sentinel_hub_client_id,
+            sentinel_hub_client_secret=self._default_sentinel_hub_client_secret,
+            vault=self._vault,
+            geotiff_pyramid_factories=self._geotiff_pyramid_factories,
+        )
 
-            accumulo_layer_name = layer_source_info['data_id']
-            nonlocal still_needs_band_filter
-            still_needs_band_filter = bool(band_indices)
+        builder = SOURCE_BUILDERS.get(request.source_type)
+        if builder is None:
+            raise OpenEOApiException(message="Invalid layer source type {t!r}".format(t=request.source_type))
+        result = builder(request, ctx)
 
-            polygons = load_params.aggregate_spatial_geometries
-
-            if polygons:
-                projected_polygons = to_projected_polygons(jvm, polygons)
-                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(),
-                                                  projected_polygons.crs(), from_date, to_date)
-            else:
-                return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
-
-
-        def file_s2_pyramid():
-            def pyramid_factory(
-                opensearch_endpoint: str,
-                opensearch_collection_id: str,
-                opensearch_link_titles,
-                root_path: str,
-            ):
-                opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint,
-                    is_utm,
-                    "",
-                    metadata.band_names,
-                    catalog_type,
-                    metadata.parallel_query(),
-                    metadata.select_one_orbit_per_day(),
-                )
-
-                return jvm.org.openeo.geotrellis.file.PyramidFactory(
-                    opensearch_client,
-                    opensearch_collection_id,
-                    opensearch_link_titles,
-                    root_path,
-                    jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-                    experimental,
-                    max_soft_errors_ratio,
-                )
-
-            return file_pyramid(pyramid_factory)
-
-
-        def file_probav_pyramid():
-            cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
-            cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
-            factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
-                opensearch_endpoint,
-                layer_source_info.get('opensearch_collection_id'),
-                metadata.opensearch_link_titles,
-                layer_source_info.get('root_path'),
-                jvm.geotrellis.raster.CellSize(cell_width, cell_height)
-            )
-            return factory.pyramid_seq(extent, srs, from_date, to_date, correlation_id)
-
-
-        def create_pyramid(factory):
-            try:
-                if single_level:
-                    # TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
-                    return factory.datacube_seq(
-                        projected_polygons_native_crs, from_date, to_date,
-                        metadata_properties(), correlation_id, datacubeParams
-                    )
-                else:
-                    if geometries:
-                        return factory.pyramid_seq(
-                            projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date,
-                            metadata_properties(), correlation_id
-                        )
-                    else:
-                        return factory.pyramid_seq(
-                            extent, srs, from_date, to_date,
-                            metadata_properties(), correlation_id
-                        )
-            except Exception as e:
-                if isinstance(e, py4j.protocol.Py4JJavaError):
-                    msg = e.java_exception.getMessage()
-                else:
-                    msg = str(e)
-                if msg and "Could not find data for your load_collection request with catalog ID" in msg:
-                    logger.error(f"create_pyramid failed: {msg}", exc_info=True)
-                    raise OpenEOApiException(
-                        code="NoDataAvailable", status_code=400,
-                        message=f"There is no data available for the given extents. {msg}",
-                    )
-                raise
-
-
-        def file_pyramid(pyramid_factory):
-            opensearch_collection_id = layer_source_info['opensearch_collection_id']
-            opensearch_link_titles = metadata.opensearch_link_titles
-            root_path = layer_source_info.get('root_path',None)
-            factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
-            return create_pyramid(factory)
-
-
-        def geotiff_pyramid():
-            glob_pattern = layer_source_info['glob_pattern']
-            date_regex = layer_source_info['date_regex']
-
-            new_pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
-
-            return self._geotiff_pyramid_factories.setdefault(collection_id, new_pyramid_factory) \
-                .pyramid_seq(extent, srs, from_date, to_date)
-
-        def sentinel_hub_pyramid():
-            # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
-            nonlocal metadata
-
-            dependencies = env.get(EVAL_ENV_KEY.DEPENDENCIES, [])
-            sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
-                _get_sar_backscatter_arguments(load_params=load_params, env=env) if sar_backscatter_compatible else None
-            )
-
-            if dependencies:
-                dependency = dependencies.pop(0)
-                source_location = dependency['source_location']
-                card4l = dependency['card4l']
-
-                # date_regex supports:
-                #  - original: _20210223.tif
-                #  - CARD4L: s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
-                #  - tiles assembled from cache: 31UDS_7_2-20190921.tif
-                date_regex = r".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
-                interpret_as_cell_type = "float32ud0"
-                lat_lon = card4l
-
-                if source_location.startswith("file:"):
-                    assembled_uri = source_location
-                    glob_pattern = f"{assembled_uri}/*.tif"
-
-                    logger.info(f"Sentinel Hub pyramid from {glob_pattern}")
-
-                    pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(
-                        glob_pattern,
-                        date_regex,
-                        interpret_as_cell_type,
-                        lat_lon
-                    )
-                else:
-                    s3_uri = source_location
-                    key_regex = r".+\.tif"
-                    recursive = True
-
-                    logger.info(f"Sentinel Hub pyramid from {s3_uri}")
-
-                    pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                        s3_uri,
-                        key_regex,
-                        date_regex,
-                        recursive,
-                        interpret_as_cell_type,
-                        lat_lon
-                    )
-
-                if sar_backscatter_arguments and sar_backscatter_arguments.mask:
-                    metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
-
-                if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
-                    metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
-                                                         wavelength_um=None))
-
-                return (pyramid_factory.datacube_seq(projected_polygons_native_crs, from_date, to_date,metadata_properties(),collection_id,datacubeParams) if single_level
-                        else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date))
-            else:
-                shub_band_names = metadata.band_names
-
-                if collection_id == 'SENTINEL_5P_L2':
-                    if shub_band_names == ["dataMask"]:
-                        raise OpenEOApiException(
-                            f"Can not load collection '{collection_id}' with only 'dataMask' band. Add 1 other band to make it work.",
-                            status_code=400)
-                    pruned_bands = shub_band_names.copy()
-                    if "dataMask" in pruned_bands:
-                        pruned_bands.remove("dataMask")
-                    if len(pruned_bands) != 1:
-                        raise OpenEOApiException(
-                            f"Collection '{collection_id}' got requested with multiple bands: {pruned_bands}. Only one band is supported, with or without the 'dataMask' band.",
-                            status_code=400)
-
-
-                if collection_id == 'PLANETSCOPE':
-                    if 'byoc_collection_id' in feature_flags:
-                        shub_collection_id = dataset_id = feature_flags['byoc_collection_id']
-                    else:
-                        (condition, byoc_id) = metadata_properties(flatten_eqs=False).get('byoc_id', (None, None))
-                        if condition == "eq":
-                            # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
-                            shub_collection_id = dataset_id = byoc_id
-                            del load_params.properties['byoc_id']
-                        else:
-                            raise OpenEOApiException(code="MissingByocId", status_code=400,
-                                                     message="Collection id is PLANETSCOPE but properties parameter does "
-                                                             "not specify a byoc id.")
-                else:
-                    shub_collection_id = layer_source_info.get('collection_id')
-                    dataset_id = layer_source_info['dataset_id']
-
-                endpoint = layer_source_info['endpoint']
-                sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
-                    layer_source_info.get('sample_type', 'UINT16'))
-
-
-                if sar_backscatter_arguments and sar_backscatter_arguments.mask:
-                    metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
-                    shub_band_names.append('dataMask')
-
-                if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
-                    metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
-                                                         wavelength_um=None))
-                    shub_band_names.append('localIncidenceAngle')
-
-                cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
-                no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
-
-                if ConfigParams().is_kube_deploy:
-                    access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
-
-                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(
-                        endpoint,
-                        shub_collection_id,
-                        dataset_id,
-                        access_token,
-                        sentinel_hub.processing_options(collection_id,
-                                                        sar_backscatter_arguments) if sar_backscatter_arguments else {},
-                        sample_type,
-                        cell_size,
-                        max_soft_errors_ratio,
-                        no_data_value,
-                    )
-                else:
-                    sentinel_hub_client_alias = env.get(EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS, "default")
-                    logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
-
-                    if sentinel_hub_client_alias == 'default':
-                        sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                        sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
-                    else:
-                        vault_token = env[EVAL_ENV_KEY.VAULT_TOKEN]
-                        sentinel_hub_client_id, sentinel_hub_client_secret = (
-                            self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
-
-                    if not sentinel_hub_client_id or not sentinel_hub_client_secret:
-                        raise ValueError(
-                            f"Sentinel Hub credentials for alias '{sentinel_hub_client_alias}' are not configured."
-                        )
-
-                    zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
-                    zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
-
-                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(
-                        endpoint,
-                        shub_collection_id,
-                        dataset_id,
-                        sentinel_hub_client_id,
-                        sentinel_hub_client_secret,
-                        zookeeper_connection_string,
-                        zookeeper_access_token_path,
-                        sentinel_hub.processing_options(collection_id,
-                                                        sar_backscatter_arguments) if sar_backscatter_arguments else {},
-                        sample_type,
-                        cell_size,
-                        max_soft_errors_ratio,
-                        no_data_value,
-                    )
-
-                unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
-                sentinel_hub.assure_polarization_from_sentinel_bands(metadata, unflattened_metadata_properties)
-
-                return (
-                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
-                                                 projected_polygons_native_crs.crs(), from_date, to_date,
-                                                 shub_band_names, unflattened_metadata_properties,
-                                                 datacubeParams, correlation_id) if single_level
-                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
-                                                     unflattened_metadata_properties, correlation_id))
-
-        def creo_pyramid():
-            mission = layer_source_info['mission']
-            level = layer_source_info['level']
-            catalog = CreoCatalogClient(mission=mission, level=level)
-            product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
-                                                        datetime.strptime(to_date[:10], "%Y-%m-%d"),
-                                                        ulx=west, uly=north,
-                                                        brx=east, bry=south)
-            # TODO: geotrelliss3.CreoPyramidFactory no longer exists.
-            return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
-                .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
-
-
-        def globspatialonly_pyramid():
-            if len(metadata.band_names) != 1:
-                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
-                    cid=collection_id, bs=metadata.band_names))
-
-            data_glob = layer_source_info['data_glob']
-            band_names = metadata.band_names
-            client_type = catalog_type if catalog_type != "" else "globspatialonly"
-            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, None, band_names, client_type
-            )
-            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
-                opensearch_client,
-                "",
-                band_names,
-                "",
-                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-                False,
-                max_soft_errors_ratio,
-            )
-            return create_pyramid(factory)
-
-        def file_cgls_pyramid():
-            data_glob = layer_source_info['data_glob']
-            date_regex = layer_source_info['date_regex']
-            band_names = metadata.band_names
-
-            client_type = catalog_type if catalog_type != "" else "cgls"
-            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, client_type
-            )
-            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
-                opensearch_client,
-                "",
-                band_names,
-                "",
-                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-                False,
-                max_soft_errors_ratio,
-            )
-            return create_pyramid(factory)
-
-        def file_agera5_pyramid():
-            data_glob = layer_source_info['data_glob']
-            date_regex = layer_source_info['date_regex']
-            band_marker = layer_source_info.get('band_marker','dewpoint-temperature')
-            band_names = metadata.band_names
-
-            opensearch_client = jvm.org.openeo.opensearch.backends.Agera5SearchClient.apply(
-                data_glob, False, date_regex, band_names, band_marker
-            )
-            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
-                opensearch_client,
-                "",
-                band_names,
-                "",
-                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-                False,
-                max_soft_errors_ratio,
-            )
-            return create_pyramid(factory)
-
-
-        if layer_source_type == 'file-s2':
-            pyramid = file_s2_pyramid()
-        elif layer_source_type == 'file-probav':
-            pyramid = file_probav_pyramid()
-        elif layer_source_type == 'geotiff':
-            pyramid = geotiff_pyramid()
-        elif layer_source_type == 'file-s1-coherence':
-            pyramid = file_s2_pyramid()
-        elif layer_source_type == 'sentinel-hub':
-            pyramid = sentinel_hub_pyramid()
-        elif layer_source_type == 'creo':
-            pyramid = creo_pyramid()
-        elif layer_source_type == "file-cgls2":
-            pyramid = file_cgls_pyramid()
-        elif layer_source_type == 'file-agera5' or layer_source_type == 'file-glob':
-            pyramid = file_agera5_pyramid()
-        elif layer_source_type == 'file-globspatialonly':
-            pyramid = globspatialonly_pyramid()
-        elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
-            pyramid = file_s2_pyramid()
-        elif layer_source_type == 'creodias-s1-backscatter':
-            sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
-            #make a copy before modifying: it is used as a cache key
-            sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
-            sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
-            s1_backscatter_orfeo = openeogeotrellis.collections.s1backscatter_orfeo.get_implementation(
-                version=sar_backscatter_arguments.options.get("implementation_version", "2"),
-                jvm=jvm
-            )
-            pyramid = s1_backscatter_orfeo.creodias(
-                projected_polygons=projected_polygons_native_crs,
-                from_date=from_date, to_date=to_date,
-                collection_id=collection_id,
-                correlation_id=correlation_id,
-                sar_backscatter_arguments=sar_backscatter_arguments,
-                bands=bands,
-                extra_properties=metadata_properties(),
-                datacubeParams = datacubeParams,
-                max_soft_errors_ratio=max_soft_errors_ratio,
-                spatial_extent=load_params.spatial_extent,
-                use_stac_client=layer_source_info.get("use_stac_client", False),
-                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
-            )
-        elif layer_source_type == 'file-s3':
-            native_cell_size = jvm.geotrellis.raster.CellSize(
-                float(metadata.get("cube:dimensions", "x", "step")),
-                float(metadata.get("cube:dimensions", "y", "step"))
-            )
-            # Local import to save some RAM and avoid potential confusing error:
-            from openeogeotrellis.collections import sentinel3
-
-            pyramid = sentinel3.pyramid(
-                metadata_properties(),
-                projected_polygons_native_crs,
-                from_date,
-                to_date,
-                metadata.opensearch_link_titles,
-                datacubeParams,
-                native_cell_size,
-                {**feature_flags, "load_stac_feature_flags": layer_source_info.get("load_stac_feature_flags", {})},
-                jvm,
-                spatial_extent=load_params.spatial_extent,
-                use_stac_client=layer_source_info.get("use_stac_client", False),
-            )
-        elif layer_source_type == "file-s5p":
-            native_cell_size = jvm.geotrellis.raster.CellSize(
-                float(metadata.get("cube:dimensions", "x", "step")), float(metadata.get("cube:dimensions", "y", "step"))
-            )
-            # Local import to save some RAM and avoid potential confusing error:
-            from openeogeotrellis.collections.load_sentinel5p import pyramid as s5p_pyramid
-
-            load_stac_feature_flags = layer_source_info.get("load_stac_feature_flags", {})
-            if not "url" in load_stac_feature_flags and layer_source_info.get("opensearch_endpoint"):
-                logger.warning(
-                    "Using legacy opensearch_endpoint for S5P collection. Please use load_stac_feature_flags.url instead."
-                )
-                load_stac_feature_flags["url"] = layer_source_info["opensearch_endpoint"]
-            pyramid = s5p_pyramid(
-                metadata_properties(),
-                projected_polygons_native_crs,
-                from_date,
-                to_date,
-                normalized_band_selection,
-                datacubeParams,
-                native_cell_size,
-                {**feature_flags, "load_stac_feature_flags": load_stac_feature_flags},
-                jvm,
-                spatial_extent=load_params.spatial_extent,
-                collection_id=collection_id,
-            )
-        elif layer_source_type == "stac":
-            cube = load_stac(
-                url=layer_source_info["url"],
-                load_params=load_params,
-                env=env,
-                layer_properties=metadata.get("_vito", "properties", default={}),
-                batch_jobs=None,
-                normalized_band_selection=normalized_band_selection,
-                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
-                data_cube_parameters=datacubeParams,
-                pg_node_id=pg_node_id,
-            )
-            pyramid = cube.pyramid.levels
-            metadata = cube.metadata
-        elif layer_source_type == 'accumulo':
-            pyramid = accumulo_pyramid()
-        elif layer_source_type == 'testing':
-            import re
-
-            tile_cols, tile_rows = map(int, re.match(r".*?(\d+)x(\d+)", collection_id).groups())
-            assert tile_cols == tile_rows
-
-            pyramid = load_test_collection(
-                tile_size=tile_cols,
-                collection_metadata=metadata,
-                extent=extent,
-                srs=srs,
-                from_date=from_date,
-                to_date=to_date,
-                bands=bands,
-                correlation_id=correlation_id
-            )
-        else:
-            raise OpenEOApiException(message="Invalid layer source type {t!r}".format(t=layer_source_type))
+        pyramid = result.pyramid
+        metadata = result.metadata or metadata
+        still_needs_band_filter = result.still_needs_band_filter
 
         if isinstance(pyramid, dict):
             levels = pyramid
@@ -678,10 +191,10 @@ class GeoPySparkLayerCatalog(LayerCatalog):
             metadata=metadata
         )
 
-        if postprocessing_band_graph != None:
+        if request.postprocessing_band_graph != None:
             visitor = GeotrellisTileProcessGraphVisitor()
             image_collection = image_collection.apply_dimension(
-                process=visitor.accept_process_graph(postprocessing_band_graph),
+                process=visitor.accept_process_graph(request.postprocessing_band_graph),
                 dimension=image_collection.metadata.band_dimension.name,
                 context={},
                 env=EvalEnv(),
@@ -690,7 +203,7 @@ class GeoPySparkLayerCatalog(LayerCatalog):
         if still_needs_band_filter:
             # TODO: avoid this `still_needs_band_filter` ugliness.
             #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-            image_collection = image_collection.filter_bands(band_indices)
+            image_collection = image_collection.filter_bands(request.band_indices)
 
         pysc.setJobDescription("")
 
