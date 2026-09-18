@@ -146,8 +146,8 @@ from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
 )
 from openeogeotrellis.util.byteunit import byte_string_as
+from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.utils import (
-    dict_merge_recursive,
     get_jvm,
     get_s3_file_contents,
     map_optional,

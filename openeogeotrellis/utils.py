@@ -92,35 +92,6 @@ def mdc_remove(sc, jvm, *mdc_keys):
 
 
 
-def dict_merge_recursive(a: collections.abc.Mapping, b: collections.abc.Mapping, overwrite=False) -> collections.abc.Mapping:
-    """
-    Merge two dictionaries recursively
-
-    :param a: first dictionary
-    :param b: second dictionary
-    :param overwrite: whether values of b can overwrite values of a
-    :return: merged dictionary
-
-    # TODO move this to utils module in openeo-python-driver or openeo-python-client?
-    """
-    # Start with shallow copy, we'll copy deeper parts where necessary through recursion.
-    result = dict(a)
-    for key, value in b.items():
-        if key in result:
-            if isinstance(value, collections.abc.Mapping) and isinstance(result[key], collections.abc.Mapping):
-                result[key] = dict_merge_recursive(result[key], value, overwrite=overwrite)
-            elif overwrite:
-                result[key] = value
-            elif result[key] == value:
-                pass
-            else:
-                raise ValueError("Can not automatically merge values {a!r} and {b!r} for key {k!r}"
-                                 .format(a=result[key], b=value, k=key))
-        else:
-            result[key] = value
-    return result
-
-
 def normalize_date(date_string: Union[str, None]) -> Union[str, None]:
     if date_string is not None:
         date = dateutil.parser.parse(date_string)

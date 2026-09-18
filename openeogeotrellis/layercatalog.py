@@ -45,8 +45,8 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.util.datastructures import dict_merge_recursive
 from openeogeotrellis.utils import (
-    dict_merge_recursive,
     to_projected_polygons,
     get_jvm,
     normalize_temporal_extent,

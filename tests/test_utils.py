@@ -1,4 +1,3 @@
-import collections
 import getpass
 import json
 import logging
@@ -15,7 +14,6 @@ from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import (
     StatsReporter,
     describe_path,
-    dict_merge_recursive,
     json_default,
     lonlat_to_mercator_tile_indices,
     map_optional,
@@ -34,73 +32,6 @@ from openeogeotrellis.utils import (
     partition,
     get_s3_file_contents,
 )
-
-
-@pytest.mark.parametrize(["a", "b", "expected"], [
-    ({}, {}, {}),
-    ({1: 2}, {}, {1: 2}),
-    ({}, {1: 2}, {1: 2}),
-    ({1: 2}, {3: 4}, {1: 2, 3: 4}),
-    ({1: {2: 3}}, {1: {4: 5}}, {1: {2: 3, 4: 5}}),
-    ({1: {2: 3, 4: 5}, 6: 7}, {1: {8: 9}, 10: 11}, {1: {2: 3, 4: 5, 8: 9}, 6: 7, 10: 11}),
-    ({1: {2: {3: {4: 5, 6: 7}}}}, {1: {2: {3: {8: 9}}}}, {1: {2: {3: {4: 5, 6: 7, 8: 9}}}}),
-    ({1: {2: 3}}, {1: {2: 3}}, {1: {2: 3}})
-])
-def test_merge_recursive_default(a, b, expected):
-    assert dict_merge_recursive(a, b) == expected
-
-
-@pytest.mark.parametrize(["a", "b", "expected"], [
-    ({1: 2}, {1: 3}, {1: 3}),
-    ({1: 2, 3: 4}, {1: 5}, {1: 5, 3: 4}),
-    ({1: {2: {3: {4: 5}}, 6: 7}}, {1: {2: "foo"}}, {1: {2: "foo", 6: 7}}),
-    ({1: {2: {3: {4: 5}}, 6: 7}}, {1: {2: {8: 9}}}, {1: {2: {3: {4: 5}, 8: 9}, 6: 7}}),
-])
-def test_merge_recursive_overwrite(a, b, expected):
-    result = dict_merge_recursive(a, b, overwrite=True)
-    assert result == expected
-
-
-@pytest.mark.parametrize(["a", "b", "expected"], [
-    ({1: 2}, {1: 3}, {1: 3}),
-    ({1: "foo"}, {1: {2: 3}}, {1: {2: 3}}),
-    ({1: {2: 3}}, {1: "bar"}, {1: "bar"}),
-    ({1: "foo"}, {1: "bar"}, {1: "bar"}),
-])
-def test_merge_recursive_overwrite_conflict(a, b, expected):
-    with pytest.raises(ValueError) as e:
-        dict_merge_recursive(a, b)
-    assert "key 1" in str(e)
-
-    result = dict_merge_recursive(a, b, overwrite=True)
-    assert result == expected
-
-
-def test_merge_recursive_preserve_input():
-    a = {1: {2: 3}}
-    b = {1: {4: 5}}
-    result = dict_merge_recursive(a, b)
-    assert result == {1: {2: 3, 4: 5}}
-    assert a == {1: {2: 3}}
-    assert b == {1: {4: 5}}
-
-
-def test_dict_merge_recursive_accepts_arbitrary_mapping():
-    class EmptyMapping(collections.abc.Mapping):
-        def __getitem__(self, key):
-            raise KeyError(key)
-
-        def __len__(self) -> int:
-            return 0
-
-        def __iter__(self):
-            return iter(())
-
-    a = EmptyMapping()
-    b = {1: 2}
-    assert dict_merge_recursive(a, b) == {1: 2}
-    assert dict_merge_recursive(b, a) == {1: 2}
-    assert dict_merge_recursive(a, a) == {}
 
 
 def test_describe_path(tmp_path):
