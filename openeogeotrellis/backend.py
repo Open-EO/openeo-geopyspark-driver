@@ -144,6 +144,7 @@ from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
 )
+from openeogeotrellis.job_results.util import BadlyHashable
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -157,7 +158,6 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    BadlyHashable,
 )
 from openeogeotrellis.vault import Vault
 

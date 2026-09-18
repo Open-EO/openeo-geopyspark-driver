@@ -75,20 +75,16 @@ from openeogeotrellis.udf import (
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
 )
-from openeogeotrellis.util.datastructures import AnnotatedDict
+from openeogeotrellis.job_results.util import AnnotatedDict, BadlyHashable, json_default, to_jsonable, unzip
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
-    BadlyHashable,
     S3ClientBuilder,
     add_permissions,
     add_permissions_with_failsafe,
     describe_path,
     get_jvm,
-    json_default,
     log_memory,
-    to_jsonable,
     to_s3_url,
-    unzip,
     wait_till_path_available,
 )
 

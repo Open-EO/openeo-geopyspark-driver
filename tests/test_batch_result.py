@@ -36,8 +36,9 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, reproject_geometry
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import GDALINFO_SUFFIX, S3ClientBuilder, equals_approximately, reproject_geometry
+from openeogeotrellis.utils import S3ClientBuilder, equals_approximately
 from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 

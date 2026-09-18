@@ -53,7 +53,8 @@ from openeogeotrellis.job_costs_calculator import (
     NoJobCostsCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry
-from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
+from openeogeotrellis.job_results.util import to_jsonable
+from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
 _log = logging.getLogger("openeogeotrellis.job_tracker_v2")
