@@ -21,7 +21,7 @@ from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 
 from openeogeotrellis.backend import GpsProcessing
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.geopysparkdatacube import CollectionCubeMetadata
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import (
     _get_sar_backscatter_arguments,
     get_layer_catalog,
@@ -68,7 +68,7 @@ def test_layer_metadata(id, layer):
         "temporal": {"interval": [[schema.Or(str, None)]]}
     }).validate(layer["extent"])
 
-    gps_metadata = CollectionCubeMetadata(layer)
+    gps_metadata = GeopysparkCubeMetadata(layer)
     gps_metadata = gps_metadata.filter_bands([ cube_dimension_bands[0] ])
     titles = gps_metadata.opensearch_link_titles
     if gps_metadata.band_dimension.band_aliases[0] is not None and len(gps_metadata.band_dimension.band_aliases[0])>0:
@@ -255,7 +255,7 @@ def test_layer_catalog_step_resolution(vault):
 
     warnings = ""
     for layer in all_metadata:
-        metadata = CollectionCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
+        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
         warn_str = f"\n{layer['id']=}\n"
 
         gsd_in_meter = metadata.get_GSD_in_meters()

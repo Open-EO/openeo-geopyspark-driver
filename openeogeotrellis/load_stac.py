@@ -22,7 +22,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.constants import EVAL_ENV_KEY
-from openeogeotrellis.catalog.collection_metadata import CollectionCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 from openeogeotrellis.util.datetime import normalize_temporal_extent
 from openeogeotrellis.utils import get_jvm, map_optional, to_projected_polygons
 
@@ -78,7 +78,7 @@ class _LoadStacContext:
     extent_crs: Any
     netcdf_with_time_dimension: bool
     requested_bbox: Optional[BoundingBox]
-    metadata: CollectionCubeMetadata
+    metadata: GeopysparkCubeMetadata
     spatiotemporal_extent: SpatioTemporalExtent
     target_grid: TargetGrid
     url: str
@@ -337,8 +337,8 @@ def _prepare_context(
         )
 
     # Adapt the plain `collection_summary` dict returned by `construct_item_collection`
-    # into a `CollectionCubeMetadata`.
-    metadata = CollectionCubeMetadata(metadata=collection_summary)
+    # into a `GeopysparkCubeMetadata`.
+    metadata = GeopysparkCubeMetadata(metadata=collection_summary)
 
     if "x" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="x", extent=[])

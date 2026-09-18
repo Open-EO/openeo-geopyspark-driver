@@ -49,7 +49,7 @@ from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.sentinel3 import _instant_ms_to_minute
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.catalog.collection_metadata import CollectionCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
@@ -107,16 +107,16 @@ def callsite(func):
 
 class GeopysparkDataCube(DriverDataCube):
 
-    metadata: CollectionCubeMetadata = None
+    metadata: GeopysparkCubeMetadata = None
 
     # Set to True once CubeProcessRegistry methods have been injected (class-level, done once per JVM).
     _registry_extended: bool = False
 
     def __init__(
             self, pyramid: Pyramid,
-            metadata: CollectionCubeMetadata = None
+            metadata: GeopysparkCubeMetadata = None
     ):
-        super().__init__(metadata=metadata or CollectionCubeMetadata({}))
+        super().__init__(metadata=metadata or GeopysparkCubeMetadata({}))
         self.pyramid = pyramid
         if not GeopysparkDataCube._registry_extended:
             GeopysparkDataCube._extend_from_cube_process_registry(get_jvm())
@@ -178,7 +178,7 @@ class GeopysparkDataCube(DriverDataCube):
     def _is_spatial(self):
         return self.get_max_level().layer_type == gps.LayerType.SPATIAL
 
-    def apply_to_levels(self, func, metadata: CollectionCubeMetadata = None) -> 'GeopysparkDataCube':
+    def apply_to_levels(self, func, metadata: GeopysparkCubeMetadata = None) -> 'GeopysparkDataCube':
         """
         Applies a function to each level of the pyramid. The argument provided to the function is of type TiledRasterLayer
 
@@ -206,7 +206,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return gps.TiledRasterLayer(layer_type, srdd)
 
-    def _apply_to_levels_geotrellis_rdd(self, func, metadata: CollectionCubeMetadata = None, target_type = None):
+    def _apply_to_levels_geotrellis_rdd(self, func, metadata: GeopysparkCubeMetadata = None, target_type = None):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD.
 
@@ -638,7 +638,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         @ensure_executor_logging
         def tile_function(metadata:Metadata,
-                          openeo_metadata: CollectionCubeMetadata,
+                          openeo_metadata: GeopysparkCubeMetadata,
                           tiles: Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]
             ) -> 'List[Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]]':
             tile_list = list(tiles[1])
@@ -692,7 +692,7 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                 ]
 
-        def rdd_function(openeo_metadata: CollectionCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
+        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
             converted = rdd.convert_data_type(CellType.FLOAT32)
             float_rdd = converted.to_numpy_rdd()
 
@@ -868,7 +868,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             return ret
         else:
-            def rdd_function(openeo_metadata: CollectionCubeMetadata, rdd: TiledRasterLayer):
+            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer):
                 """
                 Apply a user defined function to every tile in a TiledRasterLayer
                 and return the transformed TiledRasterLayer.
@@ -876,7 +876,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 @ensure_executor_logging
                 def tile_function(metadata: Metadata,
-                                  openeo_metadata: CollectionCubeMetadata,
+                                  openeo_metadata: GeopysparkCubeMetadata,
                                   geotrellis_tile: Tuple[SpaceTimeKey, Tile]
                                   ) -> 'Tuple[SpaceTimeKey, Tile]':
                     """
@@ -1300,12 +1300,12 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 raise ValueError("run_udf: apply_metadata function not found in the provided code.")
         metadata_list = pysc.parallelize([0]).map(get_metadata).collect()
-        result_metadata: CollectionCubeMetadata = metadata_list[0]
+        result_metadata: GeopysparkCubeMetadata = metadata_list[0]
 
         _log.info(f"run_udf: apply_metadata resulted in {result_metadata}")
         if metadata.has_band_dimension() and not result_metadata.has_band_dimension():
             raise ValueError(f"run_udf: apply_metadata function should not remove the band dimension, received metadata: {result_metadata}.")
-        if not isinstance(result_metadata, CollectionCubeMetadata):
+        if not isinstance(result_metadata, GeopysparkCubeMetadata):
             raise ValueError(f"run_udf: apply_metadata function should retain the type of the input metadata object, received: {result_metadata}.")
 
         return result_metadata
