@@ -41,7 +41,7 @@ import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import EVAL_ENV_KEY
+from openeogeotrellis.constants import EVAL_ENV_KEY, WHITELIST
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
@@ -55,24 +55,6 @@ from openeogeotrellis.utils import (
 )
 from openeogeotrellis.vault import Vault
 
-WHITELIST = [
-    EVAL_ENV_KEY.VAULT_TOKEN,
-    EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS,
-    EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO,
-    EVAL_ENV_KEY.DEPENDENCIES,
-    EVAL_ENV_KEY.PYRAMID_LEVELS,
-    EVAL_ENV_KEY.REQUIRE_BOUNDS,
-    EVAL_ENV_KEY.CORRELATION_ID,
-    EVAL_ENV_KEY.USER,
-    EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
-    EVAL_ENV_KEY.DO_EXTENT_CHECK,
-    EVAL_ENV_KEY.PARAMETERS,
-    EVAL_ENV_KEY.OPENEO_API_VERSION,
-    EVAL_ENV_KEY.GLOBAL_EXTENT,
-    EVAL_ENV_KEY.JOB_DIR,
-    # TODO: this linking/allow-listing of job options and eval env keys feels quite cumbersome
-    EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY,
-]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
 
