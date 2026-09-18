@@ -148,13 +148,13 @@ from openeogeotrellis.user_defined_process_repository import (
 from openeogeotrellis.job_results.util import BadlyHashable
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.datastructures import dict_merge_recursive
+from openeogeotrellis.util.datetime import normalize_temporal_extent
 from openeogeotrellis.utils import (
     get_jvm,
     get_s3_file_contents,
     map_optional,
     mdc_include,
     mdc_remove,
-    normalize_temporal_extent,
     S3ClientBuilder,
     single_value,
     to_projected_polygons,

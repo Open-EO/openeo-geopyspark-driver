@@ -52,7 +52,7 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
-from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.datetime import normalize_temporal_extent, to_datetime_utc
 from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.job_results import items as job_items
 from openeogeotrellis.job_results.util import reproject_geometry
@@ -63,7 +63,6 @@ from openeogeotrellis.utils import (
     get_jvm,
     temp_csv_dir,
     reproject_cellsize,
-    normalize_temporal_extent,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion

@@ -29,7 +29,6 @@ import pytz
 from epsel import on_first_time
 from kazoo.client import KazooClient
 
-from openeo.util import rfc3339
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
@@ -88,23 +87,6 @@ def mdc_remove(sc, jvm, *mdc_keys):
         jvm.org.slf4j.MDC.remove(key)
         sc.setLocalProperty(key, None)
 
-
-
-def normalize_date(date_string: Union[str, None]) -> Union[str, None]:
-    if date_string is not None:
-        date = dateutil.parser.parse(date_string)
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=pytz.UTC)
-        return date.isoformat()
-    return None
-
-
-def normalize_temporal_extent(temporal_extent: Tuple[Union[str, None], Union[str, None]]) -> Tuple[str, str]:
-    start, end = temporal_extent
-    return (
-        normalize_date(start or "2000-01-01"),  # TODO: better fallback start date?
-        normalize_date(end or rfc3339.now_utc()),
-    )
 
 
 def describe_path(path: Union[Path, str]) -> dict:
@@ -656,43 +638,18 @@ def health_check_extent(extent):
     return True
 
 
-def parse_approximate_isoduration(s):
+def _make_set_for_key(
+    data: Dict[str, Dict[str, Any]],
+    key: str,
+    func: callable = lambda x: x,
+) -> set:
     """
-    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.
-    Approximate, because it does not care about leap years, months with different number of days, etc.
-    Examples: "PT1H30M15.460S", "P5DT4M", "P2WT3H", "P1D"
-    Based on: https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
+    Create a set containing only the values for `key` from the dicts in data.values().
+
+    Optionally apply func() to that value, for example to allow converting lists,
+    which are not hashable and cannot be a set element, to tuples.
     """
-
-    def get_isosplit(s_arg, split):
-        if split in s_arg:
-            n, s_arg = s_arg.split(split, 1)
-        else:
-            n = '0'
-        return float(n.replace(',', '.')), s_arg  # to handle like "P0,5Y"
-
-    s = s.split('P', 1)[-1]  # Remove prefix
-    # M can mean month or minute, so we split the day and time part:
-    if 'T' in s:
-        s_date0, s_time0 = s.split('T', 1)
-    else:
-        s_date0 = s
-        s_time0 = ''
-    s_date, s_time = s_date0, s_time0
-    s_yr, s_date = get_isosplit(s_date, 'Y')  # Step through letter dividers
-    s_mo, s_date = get_isosplit(s_date, 'M')
-    s_wk, s_date = get_isosplit(s_date, 'W')
-    s_dy, s_date = get_isosplit(s_date, 'D')
-
-    s_hr, s_time = get_isosplit(s_time, 'H')
-    s_mi, s_time = get_isosplit(s_time, 'M')
-    s_sc, s_time = get_isosplit(s_time, 'S')
-    n_yr = s_yr * 365  # approx days for year, month, week
-    n_mo = s_mo * 30.4  # Average days per month
-    n_wk = s_wk * 7
-    dt = datetime.timedelta(days=n_yr + n_mo + n_wk + s_dy, hours=s_hr, minutes=s_mi,
-                            seconds=s_sc)
-    return dt
+    return {func(val.get(key)) for val in data.values() if key in val}
 
 
 T = TypeVar("T")

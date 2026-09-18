@@ -46,12 +46,11 @@ from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCu
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.util.datastructures import dict_merge_recursive
+from openeogeotrellis.util.datetime import normalize_temporal_extent, parse_approximate_isoduration
 from openeogeotrellis.utils import (
     to_projected_polygons,
     get_jvm,
-    normalize_temporal_extent,
     calculate_rough_area,
-    parse_approximate_isoduration,
     reproject_cellsize,
     health_check_extent,
 )
