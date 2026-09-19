@@ -1,13 +1,34 @@
 import datetime
 from unittest import mock
 
+import geopyspark as gps
 import pytest
 from pyproj import CRS
 from shapely.geometry import Point, box
 
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.testing import DummyCubeBuilder
 from openeogeotrellis.util.datetime import to_datetime_naive
+
+
+def _build_metadata():
+    return GeopysparkCubeMetadata(
+        {
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B01"]}},
+            "summaries": {"eo:bands": [{"name": "B01", "common_name": "commonB01"}]},
+        }
+    )
+
+
+def _mock_cube(layer_type, metadata):
+    cube = object.__new__(GeopysparkDataCube)
+    cube.metadata = metadata
+    cube.pyramid = mock.Mock(
+        layer_type=layer_type,
+        max_zoom=0,
+        levels={0: mock.Mock(layer_type=layer_type, srdd=mock.Mock(rdd=mock.Mock()))},
+    )
+    return cube
 
 
 class TestGeopysparkDataCube:
@@ -117,3 +138,21 @@ class TestGeopysparkDataCube:
             cube.mask_polygon(mask=mask, srs="EPSG:4326")
 
         assert reproject_geometry.call_args_list[1].args[0].equals(expected_clipped_mask)
+
+    def test_merge_cubes_spatial_spacetime_adds_temporal_metadata(self):
+        spatial = _mock_cube(layer_type=gps.LayerType.SPATIAL, metadata=_build_metadata())
+        spacetime = _mock_cube(
+            layer_type=gps.LayerType.SPACETIME,
+            metadata=_build_metadata().with_temporal_extent(
+                ("2020-01-01T00:00:00Z", "2020-01-02T00:00:00Z"), allow_adding_dimension=True
+            ),
+        )
+        merged = _mock_cube(layer_type=gps.LayerType.SPACETIME, metadata=_build_metadata())
+
+        spatial._apply_to_levels_geotrellis_rdd = mock.Mock(return_value=merged)
+
+        with mock.patch("openeogeotrellis.geopysparkdatacube.gps.get_spark_context", return_value=mock.Mock()):
+            result = spatial.merge_cubes(spacetime, overlaps_resolver="subtract")
+
+        assert result.metadata.has_temporal_dimension()
+        assert result.metadata.temporal_dimension.extent == ("2020-01-01T00:00:00Z", "2020-01-02T00:00:00Z")
