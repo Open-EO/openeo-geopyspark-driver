@@ -1138,12 +1138,26 @@ class GeopysparkDataCube(DriverDataCube):
                 if iband.name not in merged_data.metadata.band_names:
                     merged_data.metadata = merged_data.metadata.append_band(iband)
 
-        if self.metadata.has_temporal_dimension() and other.metadata.has_temporal_dimension():
-            self_lower, self_upper = self.metadata.temporal_dimension.extent
-            other_lower, other_upper = other.metadata.temporal_dimension.extent
+        if self.pyramid.layer_type != gps.LayerType.SPATIAL and (
+            self.metadata.has_temporal_dimension() or other.metadata.has_temporal_dimension()
+        ):
+            if self.metadata.has_temporal_dimension() and other.metadata.has_temporal_dimension():
+                self_lower, self_upper = self.metadata.temporal_dimension.extent
+                other_lower, other_upper = other.metadata.temporal_dimension.extent
+                temporal_extent = (
+                    min([self_lower, other_lower]),
+                    max([self_upper, other_upper]),
+                )  # compared lexicographically
+            else:
+                temporal_extent = (
+                    self.metadata.temporal_dimension.extent
+                    if self.metadata.has_temporal_dimension()
+                    else other.metadata.temporal_dimension.extent
+                )
 
             merged_data.metadata = merged_data.metadata.with_temporal_extent(
-                (min([self_lower, other_lower]), max([self_upper, other_upper]))  # compared lexicographically
+                temporal_extent,
+                allow_adding_dimension=True,
             )
 
         if other.metadata.spatial_extent:
