@@ -4313,6 +4313,25 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
         assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)
 
 
+@pytest.mark.skip
+def test_reduce_spatial():
+    job_dir = Path("/tmp/test_reduce_spatial")
+
+    process_graph_path = "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/Implement reduce_spatial #791/reduce_spatial_process_graph.json"
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+
 class TestLoadStac:
 
     # Geometry that covers `item-1` and `item-3` of DummyStacApiServer's default `collection-123`

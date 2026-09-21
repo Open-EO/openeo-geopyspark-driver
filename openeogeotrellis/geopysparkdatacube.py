@@ -1982,6 +1982,22 @@ class GeopysparkDataCube(DriverDataCube):
                 metadata=self.metadata
             )
 
+    def reduce_spatial(self, reducer: dict):
+        if self._is_spatial():
+            raise NotImplementedError
+
+        visitor = GeotrellisTileProcessGraphVisitor(
+            _builder=get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()
+        ).accept_process_graph(reducer)
+
+        highest_level = self.get_max_level()
+        scala_data_cube = highest_level.srdd.rdd()
+
+        # TODO: will print results rather than write them to a file
+        self._compute_stats_geotrellis().reduce_spatial(scala_data_cube, visitor.builder)
+
+        return "done."
+
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'
         return get_jvm().org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
