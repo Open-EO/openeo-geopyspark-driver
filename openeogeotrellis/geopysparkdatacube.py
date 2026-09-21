@@ -1983,9 +1983,6 @@ class GeopysparkDataCube(DriverDataCube):
             )
 
     def reduce_spatial(self, reducer: dict):
-        if self._is_spatial():
-            raise NotImplementedError
-
         visitor = GeotrellisTileProcessGraphVisitor(
             _builder=get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()
         ).accept_process_graph(reducer)
@@ -1993,10 +1990,19 @@ class GeopysparkDataCube(DriverDataCube):
         highest_level = self.get_max_level()
         scala_data_cube = highest_level.srdd.rdd()
 
-        # TODO: will print results rather than write them to a file
-        self._compute_stats_geotrellis().reduce_spatial(scala_data_cube, visitor.builder)
+        bandNames = self.metadata.band_names if self.metadata.has_band_dimension() else ["band_unnamed"]
 
-        return "done."
+        wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
+        wrapped.openEOMetadata().setBandNames(bandNames)
+
+        temp_dir = temp_csv_dir("reduce_spatial")
+
+        if self._is_spatial():
+            self._compute_stats_geotrellis().reduce_spatial_spatial_cube(wrapped, visitor.builder, temp_dir)
+        else:
+            self._compute_stats_geotrellis().reduce_spatial(wrapped, visitor.builder, temp_dir)
+
+        return temp_dir  # TODO: parse
 
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'

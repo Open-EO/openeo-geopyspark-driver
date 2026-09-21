@@ -4317,7 +4317,9 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
 def test_reduce_spatial():
     job_dir = Path("/tmp/test_reduce_spatial")
 
-    process_graph_path = "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/Implement reduce_spatial #791/reduce_spatial_process_graph.json"
+    # process_graph_path = "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/Implement reduce_spatial #791/reduce_spatial_process_graph.json"
+    # process_graph_path = "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/Implement reduce_spatial #791/reduce_spatial_spatial_process_graph.json"
+    process_graph_path = "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/Implement reduce_spatial #791/reduce_spatial_multiple_reducers_process_graph.json"
 
     with open(process_graph_path) as f:
         process = json.load(f)
