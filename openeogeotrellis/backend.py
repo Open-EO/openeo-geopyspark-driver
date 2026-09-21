@@ -1965,6 +1965,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
+                shared_results_pvc=get_backend_config().shared_results_pvc,
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
                 udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
                 udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
@@ -2005,7 +2006,12 @@ class GpsBatchJobs(backend.BatchJobs):
                         log.info(f"Job start requested, but already in state {latest_job_status}")
                         return
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
-                    if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                    # Note: with a shared results PVC, there is nothing to create per job:
+                    # the batch job just mounts a subPath of that (externally managed) claim.
+                    if (
+                        get_backend_config().fuse_mount_batchjob_s3_bucket
+                        and not get_backend_config().shared_results_pvc
+                    ):
                         persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
                             "persistentvolume_batch_job_results.yaml.j2",
                             job_name=spark_app_id,
@@ -2485,7 +2491,9 @@ class GpsBatchJobs(backend.BatchJobs):
                             f"Sparkapplication {application_id} could not be found."
                         )
 
-                if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                # Note: a shared results PVC is managed externally and outlives individual jobs,
+                # so there is nothing to delete per job in that case.
+                if get_backend_config().fuse_mount_batchjob_s3_bucket and not get_backend_config().shared_results_pvc:
                     try:
                         delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
                         logger.debug(

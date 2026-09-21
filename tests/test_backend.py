@@ -957,6 +957,80 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
     )
 
 
+class TestK8sBatchJobResultsVolume:
+    """Rendering of the batch job results volume, with and without a shared results PVC."""
+
+    @staticmethod
+    def _render(**kwargs) -> dict:
+        return k8s_render_manifest_template(
+            "sparkapplication.yaml.j2",
+            propagatable_web_app_driver_envars={},
+            job_name="a-1234",
+            job_id_full="j-abc",
+            fuse_mount_batchjob_s3_bucket=True,
+            **kwargs,
+        )
+
+    @staticmethod
+    def _results_volume(app_dict: dict) -> dict:
+        [volume] = [v for v in app_dict["spec"]["volumes"] if v["name"] == "batch-job-results"]
+        return volume
+
+    @staticmethod
+    def _results_mounts(app_dict: dict) -> list:
+        return [
+            mount
+            for role in ["driver", "executor"]
+            for mount in app_dict["spec"][role]["volumeMounts"]
+            if mount["name"] == "batch-job-results"
+        ]
+
+    def test_per_job_volume_by_default(self):
+        """Without a shared PVC: claim the per job PVC and mount it as a whole."""
+        app_dict = self._render()
+
+        assert self._results_volume(app_dict) == {
+            "name": "batch-job-results",
+            "persistentVolumeClaim": {"claimName": "a-1234", "readOnly": False},
+        }
+        mounts = self._results_mounts(app_dict)
+        assert len(mounts) == 2  # driver + executor
+        for mount in mounts:
+            assert mount == {"name": "batch-job-results", "mountPath": "/batch_jobs/j-abc"}
+            assert "subPath" not in mount
+
+    def test_shared_results_pvc(self):
+        """With a shared PVC: claim that one and mount only the job's own subPath of it."""
+        app_dict = self._render(shared_results_pvc="openeo-batch-results")
+
+        assert self._results_volume(app_dict) == {
+            "name": "batch-job-results",
+            "persistentVolumeClaim": {"claimName": "openeo-batch-results", "readOnly": False},
+        }
+        mounts = self._results_mounts(app_dict)
+        assert len(mounts) == 2  # driver + executor
+        for mount in mounts:
+            # The mount path is the same as without a shared PVC, so the batch job sees no difference.
+            assert mount == {
+                "name": "batch-job-results",
+                "mountPath": "/batch_jobs/j-abc",
+                "subPath": "j-abc",
+            }
+
+    def test_no_results_volume_without_fuse_mount(self):
+        app_dict = k8s_render_manifest_template(
+            "sparkapplication.yaml.j2",
+            propagatable_web_app_driver_envars={},
+            job_name="a-1234",
+            job_id_full="j-abc",
+            fuse_mount_batchjob_s3_bucket=False,
+            shared_results_pvc="openeo-batch-results",
+        )
+
+        assert [v for v in app_dict["spec"]["volumes"] if v["name"] == "batch-job-results"] == []
+        assert self._results_mounts(app_dict) == []
+
+
 def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend_config_path):
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",
@@ -1338,6 +1412,89 @@ class TestGpsBatchJobs:
                 ]
             }
         }
+
+    @pytest.mark.parametrize(
+        ["shared_results_pvc", "expect_per_job_volume"],
+        [
+            (None, True),  # legacy behaviour: a PV and PVC per batch job
+            ("openeo-batch-results", False),  # shared PVC: nothing to create per batch job
+        ],
+    )
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.create_persistent_volume", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.create_namespaced_persistent_volume_claim", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
+        return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
+    )
+    def test_start_k8s_job_results_volume(
+        self,
+        mock_get_spark_pod_status,
+        mock_create_spark_pod,
+        mock_create_pvc,
+        mock_create_pv,
+        mock_get_pod_image,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_s3_bucket,
+        fast_sleep,
+        shared_results_pvc,
+        expect_per_job_volume,
+    ):
+        """A per job PV/PVC is only created when there is no shared results PVC to mount instead."""
+        with gps_config_overrides(fuse_mount_batchjob_s3_bucket=True, shared_results_pvc=shared_results_pvc):
+            self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+            job_id, job = next(iter(job_registry.db.items()))
+
+            backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+
+        # Job is started either way.
+        assert job["status"] == JOB_STATUS.QUEUED
+        mock_create_spark_pod.assert_called_once()
+
+        assert mock_create_pv.called is expect_per_job_volume
+        assert mock_create_pvc.called is expect_per_job_volume
+
+    @pytest.mark.parametrize(
+        ["shared_results_pvc", "expect_per_job_volume"],
+        [(None, True), ("openeo-batch-results", False)],
+    )
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.delete_persistent_volume", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.delete_namespaced_persistent_volume_claim", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CustomObjectsApi.delete_namespaced_custom_object", return_value=mock.MagicMock())
+    def test_cancel_k8s_job_results_volume(
+        self,
+        mock_delete_spark_pod,
+        mock_delete_pvc,
+        mock_delete_pv,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        shared_results_pvc,
+        expect_per_job_volume,
+    ):
+        """The shared results PVC outlives individual jobs, so it must never be deleted when cancelling one."""
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id, job = next(iter(job_registry.db.items()))
+        job["status"] = JOB_STATUS.RUNNING
+        job["application_id"] = "a-1234"
+
+        with gps_config_overrides(fuse_mount_batchjob_s3_bucket=True, shared_results_pvc=shared_results_pvc):
+            backend_implementation.batch_jobs.cancel_job(job_id, self._dummy_user.user_id)
+
+        mock_delete_spark_pod.assert_called_once()
+        assert mock_delete_pv.called is expect_per_job_volume
+        assert mock_delete_pvc.called is expect_per_job_volume
 
     def test_getters_read_from_s3_results_metadata_uri(
         self,
