@@ -177,7 +177,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     The shared volume and claim are expected to be provisioned outside of this application.
     Only has effect when `fuse_mount_batchjob_s3_bucket` is enabled.
     """
-    shared_results_pvc: Optional[str] = attrs.field(default=None)
+    shared_results_pvc: Optional[str] = attrs.field(factory=lambda: os.environ.get("SHARED_RESULTS_PVC"))
 
     batch_scheduler: str = "default-scheduler"
     yunikorn_queue: str = os.environ.get("YUNIKORN_QUEUE", "root.default")
