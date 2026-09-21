@@ -150,6 +150,15 @@ class TestConfigValues:
         # Explicit value takes precedence over the env var.
         assert GpsBackendConfig(shared_results_pvc="other").shared_results_pvc == "other"
 
+    @pytest.mark.parametrize("blank", ["", " ", "\n", "  \t "])
+    def test_shared_results_pvc_blank_is_none(self, monkeypatch, blank):
+        """A set but empty/blank value must be treated as "not set", not as an empty PVC name."""
+        monkeypatch.setenv("SHARED_RESULTS_PVC", blank)
+        assert GpsBackendConfig().shared_results_pvc is None
+
+        assert GpsBackendConfig(shared_results_pvc=blank).shared_results_pvc is None
+        assert GpsBackendConfig(shared_results_pvc=None).shared_results_pvc is None
+
     def test_zookeeper_root_path(self, monkeypatch):
         """Test slash validation and trimming."""
         config = GpsBackendConfig(zookeeper_root_path="/openeo.test/")
