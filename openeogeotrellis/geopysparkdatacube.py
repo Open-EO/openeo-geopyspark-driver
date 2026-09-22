@@ -2000,7 +2000,7 @@ class GeopysparkDataCube(DriverDataCube):
         if self._is_spatial():
             self._compute_stats_geotrellis().reduce_spatial_spatial_cube(wrapped, visitor.builder, temp_dir)
         else:
-            self._compute_stats_geotrellis().reduce_spatial(wrapped, visitor.builder, temp_dir)
+            self._compute_stats_geotrellis().reduce_spatial_spatiotemporal_cube(wrapped, visitor.builder, temp_dir)
 
         return temp_dir  # TODO: parse
 
