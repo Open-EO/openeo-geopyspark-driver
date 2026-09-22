@@ -1,6 +1,6 @@
 import dataclasses
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import pyproj
 from openeo_driver import filter_properties
@@ -14,10 +14,7 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.util.datetime import normalize_temporal_extent
 
 from .collection_metadata import GeopysparkCubeMetadata
-
-if TYPE_CHECKING:
-    # imported lazily to avoid a load_request.py <-> layer_catalog.py import cycle at runtime
-    from .layer_catalog import LayerCatalog
+from .layer_catalog import LayerCatalog
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +106,7 @@ def resolve_load_request(
     collection_id: str,
     load_params: LoadParameters,
     env: EvalEnv,
-    catalog: "LayerCatalog",
+    catalog: LayerCatalog,
     default_opensearch_endpoint: str,
 ) -> CollectionLoadRequest:
     from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
