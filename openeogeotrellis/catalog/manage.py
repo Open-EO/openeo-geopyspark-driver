@@ -35,6 +35,8 @@ from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
+from openeogeotrellis.config import get_backend_config
+
 from . import DATA_SOURCE_PROPERTIES
 from .enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
 
@@ -559,7 +561,11 @@ def _legacy_enrich_collection_metadata(
     # Wrap (and unwrap) collection metadata in catalog structure expected by legacy enrichment logic
     cid = collection_metadata["id"]
     catalog = {cid: copy.deepcopy(collection_metadata)}
-    enriched_catalog = enrich_catalog_metadata(catalog, upstream_links_filter=upstream_links_filter)
+    enriched_catalog = enrich_catalog_metadata(
+        catalog,
+        default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint,
+        upstream_links_filter=upstream_links_filter,
+    )
     enriched_collection_metadata = enriched_catalog[cid]
 
     # Remove some fields from the metadata
