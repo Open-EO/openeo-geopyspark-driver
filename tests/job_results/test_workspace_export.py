@@ -12,7 +12,7 @@ class _FakeWorkspaceRepository:
         return self._workspaces[workspace_id]
 
 
-def _usage_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
+def _usage_metadata(*, omit_derived_from_links: bool = False) -> dict:
     return {"usage": {}, "links": [], "auxiliary_links": []}
 
 

@@ -1,30 +1,23 @@
 import json
 import logging
 import os
-from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from openeo_driver.constants import ITEM_LINK_PROPERTY
-from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, SaveResult
 from openeo.util import dict_no_none
 
-from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
-from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.integrations.gdal import localize_s3_asset
-from openeogeotrellis.job_results import raster_metadata, result_metadata
-from openeogeotrellis.job_results.settings import JobResultsSettings, ResultGrid
-from openeogeotrellis.util.runtime import get_job_id
-from openeogeotrellis.utils import get_jvm, map_optional, to_s3_url
+from openeogeotrellis.job_results.settings import ResultGrid
+from openeogeotrellis.utils import get_jvm, map_optional
 
 logger = logging.getLogger(__name__)
 
 
-def _result_grid(result: SaveResult) -> ResultGrid:
+def result_grid(result: SaveResult) -> ResultGrid:
     def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
         # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
         return geotrellis_proj4_crs.epsgCode().getOrElse(None)
@@ -44,87 +37,11 @@ def _result_grid(result: SaveResult) -> ResultGrid:
     return ResultGrid(epsg=epsg, instruments=instruments)
 
 
-def _summarize_exception(e: Exception) -> str:
+def summarize_exception(e: Exception) -> str:
     return GeoPySparkBackendImplementation.summarize_exception_static(e).summary
 
 
-def _build_settings() -> JobResultsSettings:
-    backend_config = get_backend_config()
-    return JobResultsSettings(
-        job_id=get_job_id(),
-        stac11_mode=False,
-        omit_derived_from_links=False,
-        detailed_asset_metadata=True,
-        concurrent_save_results=1,
-        remove_exported_assets=False,
-        export_workspace_enable_merge=False,
-        max_soft_errors_ratio=0.0,
-        institution=f"{backend_config.processing_facility} - {backend_config.capabilities_backend_version}",
-        processing_facility="VITO - SPARK",  # TODO make configurable
-        processing_software="openeo-geotrellis-" + __version__,
-        provider={},
-        job_local_href_format=backend_config.job_local_href_format,
-        s3_bucket_name=backend_config.s3_bucket_name,
-        gdalinfo_from_file=backend_config.gdalinfo_from_file,
-        gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
-    )
-
-
-def _extract_asset_metadata(
-    job_result_metadata: Dict,
-    asset_metadata: Dict,
-    job_dir: Path,
-    epsg: Optional[int],
-    *,
-    settings: JobResultsSettings,
-) -> None:
-    raster_metadata.extract_asset_metadata(
-        job_result_metadata,
-        asset_metadata,
-        job_dir,
-        epsg,
-        job_id=settings.job_id,
-        gdalinfo_from_file=settings.gdalinfo_from_file,
-        gdalinfo_use_subprocess=settings.gdalinfo_use_subprocess,
-        localize_asset=localize_s3_asset,
-    )
-
-
-def _assemble_result_metadata(
-    tracer: DryRunDataTracer,
-    result: SaveResult,
-    job_dir: Path,
-    unique_process_ids: Set[str],
-    apply_gdal,
-    asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
-    ml_model_metadata: Dict = None,
-    is_item=False,
-    result_items: Optional[List[dict]] = None,
-) -> dict:
-    settings = _build_settings()
-    return result_metadata.assemble_result_metadata(
-        tracer=tracer,
-        result=result,
-        job_dir=job_dir,
-        unique_process_ids=unique_process_ids,
-        apply_gdal=apply_gdal,
-        result_grid=_result_grid,
-        settings=settings,
-        summarize_exception=_summarize_exception,
-        extract_asset_metadata=partial(_extract_asset_metadata, settings=settings),
-        asset_metadata=asset_metadata,
-        ml_model_metadata=ml_model_metadata,
-        is_item=is_item,
-        result_items=result_items,
-    )
-
-
-def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
-    """Convert each asset's href value to a URL on S3 in the metadata dictionary."""
-    return result_metadata.convert_asset_outputs_to_s3_urls(job_metadata, output_href=to_s3_url)
-
-
-def _transform_stac_metadata(job_dir: Path):
+def transform_stac_metadata(job_dir: Path):
     def relativize(assets: dict) -> dict:
         def relativize_href(asset: dict) -> dict:
             absolute_href = asset["href"]
@@ -159,7 +76,7 @@ def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
 
-def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
+def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
     tracker = _get_tracker(tracker_id)
     usage = {}
     all_links = []
@@ -223,18 +140,3 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
     return dict_no_none(usage=usage or None, links=all_links, auxiliary_links=auxiliary_links or None)
-
-
-def href_from_job_local_path(path: Union[os.PathLike, str]) -> str:
-    """
-    Convert a file path from a local job context
-    (e.g. a path on a job-specific mount)
-    to a href that also makes sense outside the job context,
-    e.g. in the web app context (without the same mounts)
-    """
-    backend_config = get_backend_config()
-    return result_metadata.href_from_job_local_path(
-        path,
-        job_local_href_format=backend_config.job_local_href_format,
-        s3_bucket_name=backend_config.s3_bucket_name,
-    )

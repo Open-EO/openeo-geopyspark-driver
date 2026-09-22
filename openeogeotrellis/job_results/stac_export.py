@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from openeo.util import dict_no_none
 
 from .raster_metadata import get_abs_path_of_asset
-from .util import BadlyHashable, to_jsonable
+from .util import to_jsonable
 
 
 def write_exported_stac_collection(
@@ -86,7 +86,7 @@ def write_exported_stac_collection(
             [item_link(item_file) for item_file in item_files]
             + [
                 link
-                for link in usage_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
+                for link in usage_metadata(omit_derived_from_links=omit_derived_from_links).get("links", [])
                 if link["rel"] == "derived_from"
             ]
         ),
@@ -191,7 +191,7 @@ def write_exported_stac_collection_from_item(
             "properties": dict_no_none(properties),
             "links": (
                 copy_auxiliary_links(
-                    auxiliary_links=BadlyHashable(usage_metadata("").get("auxiliary_links", [])),
+                    auxiliary_links=usage_metadata().get("auxiliary_links", []),
                     job_dir=job_dir,
                     for_export_workspace=True,
                 )
@@ -212,7 +212,7 @@ def write_exported_stac_collection_from_item(
     derived_from_links = [
         link
         for link in usage_metadata(
-            "", omit_derived_from_links=omit_derived_from_links or attach_derived_from_document
+            omit_derived_from_links=omit_derived_from_links or attach_derived_from_document
         ).get("links", [])
         if link["rel"] == "derived_from"
     ]
