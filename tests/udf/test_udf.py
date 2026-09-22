@@ -132,10 +132,20 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
 
     rss_values = iter([1000, 1256])
 
+    tracker_calls = []
+
+    class DummyTracker:
+        def add(self, name, value, **kwargs):
+            tracker_calls.append((name, value, kwargs))
+
     monkeypatch.setattr(udf_module, "_start_udf_execution_gauge", fake_gauge)
     monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", DummyRssGauge())
     monkeypatch.setattr(udf_module, "_get_max_rss_bytes", lambda: next(rss_values))
     monkeypatch.setattr(openeo.udf, "run_udf_code", lambda code, data: data)
+    monkeypatch.setattr(
+        "openeogeotrellis.deploy.batch_job_metadata._get_tracker",
+        lambda: DummyTracker(),
+    )
     # `_record_udf_execution_gauge_metrics` also calls `_initialize_prometheus_metrics()` directly
     # (on top of `_start_udf_execution_gauge`, which is mocked away above with `fake_gauge`).
     # Mark metrics as already initialized so that this direct call doesn't run the real
@@ -148,6 +158,9 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     assert captured_duration_measurements
     assert captured_duration_measurements[0][0] >= 0
     assert captured_rss_delta_measurements == [(256, {})]
+    assert tracker_calls
+    assert tracker_calls[0][0] == "duration_ms"
+    assert tracker_calls[0][1] >= 0
 
 
 def test_run_udf_code_exposes_prometheus_metrics_endpoint(monkeypatch):
