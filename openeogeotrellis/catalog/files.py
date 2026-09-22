@@ -10,7 +10,6 @@ from typing import List, Union
 from openeo.util import TimingLogger
 from openeo_driver.utils import read_json
 
-from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.datastructures import dict_merge_recursive
 
 from .common_name import merge_layers_with_common_name
@@ -81,7 +80,14 @@ def dump_layer_catalog():
     cli = argparse.ArgumentParser()
     cli.add_argument("--enrich", action="store_true", help="Enable metadata enrichment.")
     cli.add_argument(
-        "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
+        "--catalog-file",
+        action="append",
+        required=True,
+        help="Path to catalog JSON file. Can be specified multiple times.",
+    )
+    cli.add_argument(
+        "--default-opensearch-endpoint",
+        help="OpenSearch endpoint to use for collections that don't specify one explicitly.",
     )
     cli.add_argument(
         "--container",
@@ -95,9 +101,9 @@ def dump_layer_catalog():
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
 
     metadata = load_catalog_files(
-        catalog_files=arguments.catalog_file or get_backend_config().layer_catalog_files,
+        catalog_files=arguments.catalog_file,
         enrich_metadata=arguments.enrich,
-        default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint,
+        default_opensearch_endpoint=arguments.default_opensearch_endpoint,
     )
     if arguments.container == "list":
         metadata = list(metadata.values())

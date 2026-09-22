@@ -6,8 +6,6 @@ Enforces that `openeogeotrellis.catalog` stays self-contained and engine-agnosti
 - `geopyspark`, `pyspark` and `py4j` may never be imported;
 - imports between modules of the package itself must be relative;
 - nothing reads `get_backend_config()` or `ConfigParams()`.
-
-See ``layercatalog_decoupling/02-target-architecture.md`` §5 for the rules this test enforces.
 """
 import ast
 import os
