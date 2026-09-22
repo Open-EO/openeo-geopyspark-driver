@@ -10,6 +10,7 @@ from typing import List, Union
 from openeo.util import TimingLogger
 from openeo_driver.utils import read_json
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.datastructures import dict_merge_recursive
 
 from .common_name import merge_layers_with_common_name
@@ -93,7 +94,11 @@ def dump_layer_catalog():
 
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
 
-    metadata = load_catalog_files(catalog_files=arguments.catalog_file or [], enrich_metadata=arguments.enrich)
+    metadata = load_catalog_files(
+        catalog_files=arguments.catalog_file or get_backend_config().layer_catalog_files,
+        enrich_metadata=arguments.enrich,
+        default_opensearch_endpoint=get_backend_config().default_opensearch_endpoint,
+    )
     if arguments.container == "list":
         metadata = list(metadata.values())
     json.dump(metadata, fp=sys.stdout, indent=2)
