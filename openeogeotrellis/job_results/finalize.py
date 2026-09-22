@@ -61,7 +61,7 @@ def finalize_job(
             job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=apply_gdal,
-            result_grid=hooks.result_grid,
+            result_cube_metadata=hooks.result_cube_metadata,
             settings=settings,
             summarize_exception=hooks.summarize_exception,
             extract_asset_metadata=partial(
