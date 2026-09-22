@@ -1,18 +1,16 @@
 import datetime
 import json
-import logging
 import re
 from contextlib import nullcontext
-from copy import deepcopy
-from typing import Iterator, List, Tuple
+from typing import List, Tuple
 from unittest import mock, skip
 import importlib.metadata
 
 import dirty_equals
 import geopandas
 import openeo.metadata
+from openeo.metadata import _StacMetadataParser
 import pystac
-import pystac_client
 import pytest
 import responses
 import shapely.geometry
@@ -22,48 +20,24 @@ from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import approxify
-from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsBatchJobs
-from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
-    STAC_API_PER_PAGE_LIMIT_DEFAULT,
-    STAC_API_RETRY_TOTAL,
-    AdaptingPropertyFilter,
-    ItemCollection,
-    ItemDeduplicator,
     NoDataAvailableException,
-    PropertyFilter,
-    _get_pixel_value_scaling_mode,
-    _get_pixel_value_scale_and_offset,
-    _get_raster_scale_and_offset,
-    _get_proj_metadata,
-    _is_band_asset,
-    _is_sentinel2_reflectance_asset,
-    _is_supported_raster_mime_type,
+    SpatialFilteringGeometries,
+    SpatioTemporalExtent,
+    TemporalExtent,
     _prepare_context,
-    _proj_code_to_epsg,
-    _ProjectionMetadata,
-    _ResolutionTracker,
-    _SpatialExtent,
-    _SpatialFilteringGeometries,
-    _spatiotemporal_extent_from_load_params,
-    _SpatioTemporalExtent,
-    _StacMetadataParser,
-    _supports_item_search,
-    _TemporalExtent,
-    construct_item_collection,
-    extract_own_job_info,
+    spatiotemporal_extent_from_load_params,
     load_stac,
-    PixelValueScalingMode,
-    _deduplicator_from_feature_flags,
-    _pystac_item_from_dict_lenient,
 )
-from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
-from openeogeotrellis.util.geometry import bbox_to_geojson
+from openeogeotrellis.stac.own_job import extract_own_job_info
+from openeogeotrellis.stac.extents import _SpatialExtent
+from openeogeotrellis.stac.projection import ProjectionMetadata, _proj_code_to_epsg, get_proj_metadata
+from openeogeotrellis.stac.stac_object_fetching import STAC_API_RETRY_TOTAL
+from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper
 
 
 @pytest.mark.parametrize(
@@ -330,7 +304,7 @@ def test_resolution_and_offset_handling(
         env=EvalEnv(),
     )
 
-    assert context.cellsize == (resolution, resolution)
+    assert (context.target_grid.cell_width, context.target_grid.cell_height) == (resolution, resolution)
     assert context.extent_crs == "EPSG:32636"
 
     dumper = OpenSearchClientDumper()
@@ -834,60 +808,6 @@ class TestStacMetadataParser:
         assert _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names() == expected
 
 
-def test_is_supported_raster_mime_type():
-    assert _is_supported_raster_mime_type("image/tiff; application=geotiff")
-    assert _is_supported_raster_mime_type("image/tiff; application=geotiff; profile=cloud-optimized")
-    assert _is_supported_raster_mime_type("image/jp2")
-    assert _is_supported_raster_mime_type("application/x-hdf5")
-    assert _is_supported_raster_mime_type("application/x-hdf")
-    assert not _is_supported_raster_mime_type("text/html")
-
-
-@pytest.mark.parametrize(
-    ["data", "expected"],
-    [
-        ({"href": "https://stac.test/asset.tif"}, False),
-        ({"href": "https://stac.test/asset.tif", "roles": ["data"]}, True),
-        ({"href": "https://stac.test/asset.tif", "roles": ["data"], "type": "image/tiff; application=geotiff"}, True),
-        ({"href": "https://stac.test/asset.tif", "type": "image/tiff; application=geotiff"}, False),
-        ({"href": "https://stac.test/asset.tif", "type": "image/vnd.stac.geotiff; cloud-optimized=true"}, True),
-        ({"href": "https://stac.test/asset.html", "roles": ["data"], "type": "text/html"}, False),
-        ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
-        ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
-        ({"href": "https://stac.test/asset.png", "eo:bands": [{"name": "B02"}]}, True),
-        ({"href": "https://stac.test/asset.png", "roles": [], "bands": [{"name": "B02"}]}, True),
-    ],
-)
-def test_is_band_asset(data, expected):
-    asset = pystac.Asset.from_dict(data)
-    assert _is_band_asset(asset) == expected
-
-
-@pytest.mark.parametrize(
-    ["catalog", "expected"],
-    [
-        (None, False),
-        (
-            pystac.Catalog(
-                id="catalog123",
-                description="Test Catalog",
-                extra_fields={"conformsTo": ["https://api.stacspec.org/v1.0.0/item-search"]},
-            ),
-            True,
-        ),
-    ],
-)
-def test_supports_item_search(tmp_path, catalog, expected):
-    links = []
-    if catalog:
-        catalog_path = tmp_path / "catalog.json"
-        pystac.write_file(catalog, dest_href=catalog_path)
-        links.append({"rel": "root", "href": str(catalog_path)})
-
-    collection = pystac.Collection.from_dict(StacDummyBuilder.collection(links=links))
-    assert _supports_item_search(collection) == expected
-
-
 def test_proj_code_to_epsg():
     assert _proj_code_to_epsg("EPSG:32631") == 32631
     assert _proj_code_to_epsg("EPSG:4326!") is None
@@ -899,18 +819,18 @@ def test_proj_code_to_epsg():
 
 class TestProjectionMetadata:
     def test_code_from_epsg(self):
-        metadata = _ProjectionMetadata(epsg=32631)
+        metadata = ProjectionMetadata(epsg=32631)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
 
     def test_epsg_from_code(self):
-        metadata = _ProjectionMetadata(code="EPSG:32631")
+        metadata = ProjectionMetadata(code="EPSG:32631")
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
 
     def test_bbox_from_shape_and_transform(self):
         # https://github.com/soxofaan/projection/blob/22ada42310b58c00d74f68250fd65c8ba6f178b3/examples/assets.json
-        metadata = _ProjectionMetadata(
+        metadata = ProjectionMetadata(
             code="EPSG:32659",
             shape=[5558, 9559],
             transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
@@ -918,7 +838,7 @@ class TestProjectionMetadata:
         assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
 
     def test_resolution_empty(self):
-        pm = _ProjectionMetadata()
+        pm = ProjectionMetadata()
 
         with pytest.raises(ValueError, match="Unable to calculate cell size"):
             pm.resolution()
@@ -926,30 +846,30 @@ class TestProjectionMetadata:
         assert pm.resolution(fail_on_miss=False) is None
 
     def test_resolution_from_bbox_and_shape(self):
-        assert _ProjectionMetadata(
+        assert ProjectionMetadata(
             bbox=(100, 200, 300, 500),
             shape=(30, 50),
         ).resolution() == (4, 10)
 
-        assert _ProjectionMetadata(
+        assert ProjectionMetadata(
             bbox=(1000, 2000, 5000, 8000),
             shape=(100, 200),
         ).resolution() == (20.0, 60.0)
 
     def test_resolution_from_transform(self):
-        assert _ProjectionMetadata(
+        assert ProjectionMetadata(
             transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
         ).resolution() == (0.5, 0.5)
 
     def test_resolution_fail_from_item(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item(id="item-no-proj-metadata"))
-        metadata = _ProjectionMetadata.from_item(item)
+        metadata = ProjectionMetadata.from_item(item)
         with pytest.raises(ValueError, match="Unable to calculate cell size.*item 'item-no-proj-metadata'"):
             _ = metadata.resolution(fail_on_miss=True)
 
     def test_resolution_fail_from_asset(self):
         asset = pystac.Asset(href="https://stac.test/asset.tif")
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         with pytest.raises(
             ValueError, match="Unable to calculate cell size.*asset with href='https://stac.test/asset.tif'"
         ):
@@ -958,7 +878,7 @@ class TestProjectionMetadata:
         # add item link
         item = pystac.Item.from_dict(StacDummyBuilder.item(id="item-no-proj-metadata"))
         asset.set_owner(item)
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         with pytest.raises(
             ValueError,
             match="Unable to calculate cell size.*asset with href='https://stac.test/asset.tif'.*item 'item-no-proj-metadata'",
@@ -967,7 +887,7 @@ class TestProjectionMetadata:
 
     def test_from_item_minimal(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
-        metadata = _ProjectionMetadata.from_item(item)
+        metadata = ProjectionMetadata.from_item(item)
         assert metadata.code is None
         assert metadata.epsg is None
         assert metadata.bbox is None
@@ -983,7 +903,7 @@ class TestProjectionMetadata:
                 }
             )
         )
-        metadata = _ProjectionMetadata.from_item(item)
+        metadata = ProjectionMetadata.from_item(item)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1200, 3400, 5600, 7800)
@@ -998,7 +918,7 @@ class TestProjectionMetadata:
                 "proj:shape": [100, 200],
             },
         )
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1200, 3400, 5600, 7800)
@@ -1020,7 +940,7 @@ class TestProjectionMetadata:
                 }
             )
         )
-        metadata = _ProjectionMetadata.from_asset(asset, item=item)
+        metadata = ProjectionMetadata.from_asset(asset, item=item)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1111, 2222, 3333, 4444)
@@ -1044,7 +964,7 @@ class TestProjectionMetadata:
                 )
             )
         )
-        metadata = _ProjectionMetadata.from_asset(asset)
+        metadata = ProjectionMetadata.from_asset(asset)
         assert metadata.code == "EPSG:32631"
         assert metadata.epsg == 32631
         assert metadata.bbox == (1111, 2222, 3333, 4444)
@@ -1071,12 +991,12 @@ class TestProjectionMetadata:
         ],
     )
     def test_coverage_for_simple(self, extent, shape, expected):
-        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
+        metadata = ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
 
     def test_coverage_for_snap_option(self):
-        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
+        metadata = ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
         extent = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
 
         # Do snapping (default)
@@ -1119,27 +1039,27 @@ class TestProjectionMetadata:
     )
     def test_coverage_for_lonlat_in_utm(self, extent, shape, expected):
         # SENTINEL2_L2A-alike projection metadata
-        metadata = _ProjectionMetadata(epsg=32631, bbox=[600000, 5590200, 709800, 5700000], shape=shape)
+        metadata = ProjectionMetadata(epsg=32631, bbox=[600000, 5590200, 709800, 5700000], shape=shape)
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
 
     def test_hashing_for_set(self):
         metadatas = {
-            _ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4]),
-            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+            ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4]),
+            ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
         }
         assert metadatas == {
-            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+            ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
         }
 
     def test_hashing_for_dict(self):
         data = {}
-        data[_ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4])] = "red"
-        data[_ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4))] = "green"
-        data[_ProjectionMetadata(epsg=4326, shape=[100, 100], bbox=[1, 2, 3, 4])] = "blue"
+        data[ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4])] = "red"
+        data[ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4))] = "green"
+        data[ProjectionMetadata(epsg=4326, shape=[100, 100], bbox=[1, 2, 3, 4])] = "blue"
         assert data == {
-            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
-            _ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
+            ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
+            ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
         }
 
 
@@ -1147,7 +1067,7 @@ class TestProjectionMetadata:
 def test_get_proj_metadata_minimal():
     asset = pystac.Asset(href="https://example.com/asset.tif")
     item = pystac.Item.from_dict(StacDummyBuilder.item())
-    assert _get_proj_metadata(asset, item=item) == (None, None, None)
+    assert get_proj_metadata(asset, item=item) == (None, None, None)
 
 
 @pytest.mark.parametrize(
@@ -1201,11 +1121,11 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
     """ """
     asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
     item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
-    assert _get_proj_metadata(asset, item=item) == expected
+    assert get_proj_metadata(asset, item=item) == expected
 
 
 class TestFixGdalOrderedTransform:
-    """Tests for _ProjectionMetadata._fix_gdal_ordered_transform"""
+    """Tests for ProjectionMetadata._fix_gdal_ordered_transform"""
 
     @pytest.mark.parametrize(
         "transform",
@@ -1218,7 +1138,7 @@ class TestFixGdalOrderedTransform:
     )
     def test_already_valid_rasterio_order(self, transform):
         """Valid rasterio/affine order should not be changed."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+        assert ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
 
     @pytest.mark.parametrize(
         "transform",
@@ -1235,7 +1155,7 @@ class TestFixGdalOrderedTransform:
     )
     def test_valid_rasterio_order_including_yx_transpose(self, transform):
         """Valid rasterio/affine order should not be changed."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform, also_check_yx_transposed=True) == transform
+        assert ProjectionMetadata._fix_gdal_ordered_transform(transform, also_check_yx_transposed=True) == transform
 
     @pytest.mark.parametrize(
         ["given", "expected"],
@@ -1248,7 +1168,7 @@ class TestFixGdalOrderedTransform:
     )
     def test_fix_gdal_order(self, given, expected):
         """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(given) == expected
+        assert ProjectionMetadata._fix_gdal_ordered_transform(given) == expected
 
     @pytest.mark.parametrize(
         ["given", "expected"],
@@ -1267,18 +1187,18 @@ class TestFixGdalOrderedTransform:
     )
     def test_fix_gdal_order_including_yx_transpose(self, given, expected):
         """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(given, also_check_yx_transposed=True) == expected
+        assert ProjectionMetadata._fix_gdal_ordered_transform(given, also_check_yx_transposed=True) == expected
 
     def test_fix_gdal_order_9_elements(self):
         """GDAL order with 9 elements (full 3x3 matrix) should preserve trailing elements."""
         gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025, 0.0, 0.0, 1.0]
         expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0, 0.0, 0.0, 1.0]
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+        assert ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
 
     def test_short_transform_unchanged(self):
         """Transform with fewer than 6 elements should not be changed."""
         transform = [1.0, 2.0]
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+        assert ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
 
     def test_from_asset_with_fix_flag(self):
         """from_asset with fix_proj_transform=True should fix GDAL-ordered transforms."""
@@ -1290,7 +1210,7 @@ class TestFixGdalOrderedTransform:
                 "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
             },
         )
-        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=True)
+        metadata = ProjectionMetadata.from_asset(asset, fix_proj_transform=True)
         assert metadata.bbox == pytest.approx((3.0, 50.0, 4.0, 51.0))
 
     def test_from_asset_without_fix_flag(self):
@@ -1303,7 +1223,7 @@ class TestFixGdalOrderedTransform:
                 "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
             },
         )
-        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=False)
+        metadata = ProjectionMetadata.from_asset(asset, fix_proj_transform=False)
         # Without fix, bbox will be computed from the wrong transform
         assert metadata.bbox != pytest.approx((3.0, 50.0, 4.0, 51.0))
 
@@ -1329,32 +1249,32 @@ class TestFixGdalOrderedTransform:
     )
     def test_fix_real_world_gdal_transforms(self, gdal_transform, expected_rasterio):
         """Real-world GDAL-ordered transforms should be correctly converted to rasterio/affine order."""
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_transform) == expected_rasterio
+        assert ProjectionMetadata._fix_gdal_ordered_transform(gdal_transform) == expected_rasterio
 
 
 class TestTemporalExtent:
     def test_as_tuple_empty(self):
-        extent = _TemporalExtent(None, None)
+        extent = TemporalExtent(None, None)
         assert extent.as_tuple() == (None, None)
 
     def test_as_tuple(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.as_tuple() == (
             datetime.datetime(2025, 3, 4, 11, 11, 11, tzinfo=datetime.timezone.utc),
             datetime.datetime(2025, 5, 6, 22, 22, 22, tzinfo=datetime.timezone.utc),
         )
 
     def test_isoformat(self):
-        assert _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22").isoformat() == (
+        assert TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22").isoformat() == (
             "2025-03-04T11:11:11+00:00",
             "2025-05-06T22:22:22+00:00",
         )
-        assert _TemporalExtent(None, "2025-05-06").isoformat() == (None, "2025-05-06T00:00:00+00:00")
-        assert _TemporalExtent("2025-05-06", None).isoformat() == ("2025-05-06T00:00:00+00:00", None)
-        assert _TemporalExtent(None, None).isoformat() == (None, None)
+        assert TemporalExtent(None, "2025-05-06").isoformat() == (None, "2025-05-06T00:00:00+00:00")
+        assert TemporalExtent("2025-05-06", None).isoformat() == ("2025-05-06T00:00:00+00:00", None)
+        assert TemporalExtent(None, None).isoformat() == (None, None)
 
     def test_intersects_empty(self):
-        extent = _TemporalExtent(None, None)
+        extent = TemporalExtent(None, None)
         assert extent.intersects("1789-07-14") == True
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(start_datetime="1914-07-28", end_datetime="1918-11-11") == True
@@ -1362,7 +1282,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal=None) == True
 
     def test_intersects_nominal_basic(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(nominal="2022-10-11") == False
         assert extent.intersects(nominal="2025-03-03T12:13:14") == False
         assert extent.intersects(nominal="2025-03-05T05:05:05") == True
@@ -1374,7 +1294,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal=None) == True
 
     def test_intersects_nominal_edges(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(nominal="2025-03-04T11:11:10") == False
         assert extent.intersects(nominal="2025-03-04T11:11:11") == True
         assert extent.intersects(nominal="2025-03-05T05:05:05") == True
@@ -1382,7 +1302,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-06T22:22:22") == False
 
     def test_intersects_nominal_timezones(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
+        extent = TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
         assert extent.intersects(nominal="2025-03-04T11:11:10") == False
         assert extent.intersects(nominal="2025-03-04T11:11:10-02") == True
         assert extent.intersects(nominal="2025-03-04T11:11:10-04:00") == True
@@ -1397,21 +1317,21 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-07T01:22:22Z") == False
 
     def test_intersects_nominal_half_open(self):
-        extent = _TemporalExtent(None, "2025-05-06")
+        extent = TemporalExtent(None, "2025-05-06")
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(nominal="2025-05-05") == True
         assert extent.intersects(nominal="2025-05-06") == False
         assert extent.intersects(nominal="2025-11-11") == False
         assert extent.intersects(nominal=None) == True
 
-        extent = _TemporalExtent("2025-05-06", None)
+        extent = TemporalExtent("2025-05-06", None)
         assert extent.intersects(nominal="2025-05-05") == False
         assert extent.intersects(nominal="2025-05-06") == True
         assert extent.intersects(nominal="2099-11-11") == True
         assert extent.intersects(nominal=None) == True
 
     def test_intersects_start_end_basic(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(start_datetime="2022-02-02", end_datetime="2022-02-03") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-04-04") == True
         assert extent.intersects(start_datetime="2025-03-10", end_datetime="2025-04-04") == True
@@ -1426,7 +1346,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime=None, end_datetime="2025-04-04") == True
 
     def test_intersects_start_end_edges(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:10") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:11") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:12") == True
@@ -1436,7 +1356,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-05-06T22:22:23", end_datetime="2025-08-08") == False
 
     def test_intersects_start_end_timezones(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
+        extent = TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12Z") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12+06") == False
@@ -1444,7 +1364,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T10:10:10-03") == True
 
     def test_intersects_start_end_half_open(self):
-        extent = _TemporalExtent(None, "2025-05-06")
+        extent = TemporalExtent(None, "2025-05-06")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == False
@@ -1453,7 +1373,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-06-06", end_datetime=None) == False
         assert extent.intersects(start_datetime=None, end_datetime="2025-05-05") == True
 
-        extent = _TemporalExtent("2025-05-06", None)
+        extent = TemporalExtent("2025-05-06", None)
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == True
@@ -1464,11 +1384,11 @@ class TestTemporalExtent:
 
     def test_intersects_nominal_vs_start_end(self):
         """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293"""
-        extent = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent = TemporalExtent("2024-02-01", "2024-02-10")
         assert extent.intersects(nominal="2024-01-01", start_datetime="2024-01-01", end_datetime="2024-12-31") == True
 
     def test_intersects_interval(self):
-        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        extent = TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects_interval(["2022-02-02", "2022-02-03"]) == False
         assert extent.intersects_interval(["2025-02-02", "2025-04-04"]) == True
         assert extent.intersects_interval(["2025-03-10", "2025-04-04"]) == True
@@ -1481,11 +1401,11 @@ class TestTemporalExtent:
         assert extent.intersects_interval([None, "2025-04-04"]) == True
 
     def test_as_cache_key(self):
-        extent1 = _TemporalExtent("2024-02-01", "2024-02-10")
-        extent2 = _TemporalExtent("2024-02-01", "2024-02-10")
-        extent3 = _TemporalExtent(None, "2024-02-10")
-        extent4 = _TemporalExtent(None, "2024-02-10")
-        extent5 = _TemporalExtent("2024-02-10", None)
+        extent1 = TemporalExtent("2024-02-01", "2024-02-10")
+        extent2 = TemporalExtent("2024-02-01", "2024-02-10")
+        extent3 = TemporalExtent(None, "2024-02-10")
+        extent4 = TemporalExtent(None, "2024-02-10")
+        extent5 = TemporalExtent("2024-02-10", None)
 
         cache = {extent1: 1, extent3: 3}
         assert cache[extent2] == 1
@@ -1529,7 +1449,7 @@ class TestTemporalExtent:
         ],
     )
     def test_from_load_param_extent(self, given, expected):
-        extent = _TemporalExtent.from_load_param_extent(given)
+        extent = TemporalExtent.from_load_param_extent(given)
         assert extent.as_tuple() == expected
 
 
@@ -1694,12 +1614,12 @@ class TestSpatialExtent:
 
 class TestSpatialFilteringGeometries:
     def test_empty(self):
-        sfg = _SpatialFilteringGeometries(geometries=None)
+        sfg = SpatialFilteringGeometries(geometries=None)
         assert sfg.get_simplified_geojson() is None
 
     def test_simple_box_geoseries(self):
         geometries = geopandas.GeoSeries([shapely.geometry.box(1, 2, 3, 4)])
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        sfg = SpatialFilteringGeometries(geometries=geometries)
         simplified = sfg.get_simplified_geojson()
         simplified = json.loads(simplified)
         assert simplified == {
@@ -1710,7 +1630,7 @@ class TestSpatialFilteringGeometries:
     def test_simple_box_vector_cube(self):
         gdf = geopandas.GeoDataFrame(geometry=[shapely.geometry.box(1, 2, 3, 4)])
         geometries = DriverVectorCube(geometries=gdf)
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        sfg = SpatialFilteringGeometries(geometries=geometries)
         simplified = sfg.get_simplified_geojson()
         simplified = json.loads(simplified)
         assert simplified == {
@@ -1731,7 +1651,7 @@ class TestSpatialFilteringGeometries:
         ],
     )
     def test_unsupported_geometry_types(self, gdf):
-        sfg = _SpatialFilteringGeometries(geometries=gdf)
+        sfg = SpatialFilteringGeometries(geometries=gdf)
         assert sfg.get_simplified_geojson() is None
 
 
@@ -1770,7 +1690,7 @@ class TestSpatioTemporalExtent:
         ],
     )
     def test_item_intersects(self, bbox, properties, expected):
-        extent = _SpatioTemporalExtent(
+        extent = SpatioTemporalExtent(
             bbox=BoundingBox(west=21, south=35, east=25, north=38, crs=4326),
             from_date="2024-02-01",
             to_date="2024-02-10",
@@ -1804,7 +1724,7 @@ class TestSpatioTemporalExtent:
         ],
     )
     def test_collection_intersects_simple(self, bboxes, intervals, expected):
-        extent = _SpatioTemporalExtent(
+        extent = SpatioTemporalExtent(
             bbox=BoundingBox(west=21, south=35, east=25, north=38, crs=4326),
             from_date="2024-02-01",
             to_date="2024-02-10",
@@ -1821,11 +1741,11 @@ class TestSpatioTemporalExtent:
 
     def test_as_cache_key(self):
         bbox1 = BoundingBox(west=1, south=2, east=3, north=4, crs=4326)
-        extent1 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
-        extent2 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
-        extent3 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
-        extent4 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
-        extent5 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
+        extent1 = SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent2 = SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent3 = SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent4 = SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent5 = SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
 
         cache = {extent1: 1, extent3: 3}
         assert cache[extent2] == 1
@@ -1887,1913 +1807,8 @@ class TestSpatioTemporalExtent:
 )
 def test_spatiotemporal_extent_from_load_params(load_params, expected, time_machine):
     time_machine.move_to("2024-01-02T03:04:05Z")
-    extent = _spatiotemporal_extent_from_load_params(load_params.spatial_extent, load_params.temporal_extent)
+    extent = spatiotemporal_extent_from_load_params(load_params.spatial_extent, load_params.temporal_extent)
     assert (extent.spatial_extent.as_bbox(), extent.temporal_extent.as_tuple()) == expected
-
-
-class TestPropertyFilter:
-    def test_build_matcher_empty(self):
-        """Empty property filter: always matches"""
-        property_filter = PropertyFilter(properties={})
-        matcher = property_filter.build_matcher()
-        assert matcher({}) == True
-        assert matcher({"foo": "bar"}) == True
-
-    def test_build_matcher_basic(self):
-        """Basic use case: single (equality) condition"""
-        properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": "bar",
-                        },
-                        "result": True,
-                    }
-                }
-            }
-        }
-        property_filter = PropertyFilter(properties)
-        matcher = property_filter.build_matcher()
-        assert matcher({}) == False
-        assert matcher({"foo": "bar"}) == True
-        assert matcher({"foo": "nope"}) == False
-        assert matcher({"fooooo": "bar"}) == False
-
-    def test_build_matcher_multiple_conditions(self):
-        """Multiple conditions: all must match"""
-        properties = {
-            "color": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": "red",
-                        },
-                        "result": True,
-                    }
-                }
-            },
-            "size": {
-                "process_graph": {
-                    "lte1": {
-                        "process_id": "lte",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": 42,
-                        },
-                        "result": True,
-                    }
-                }
-            },
-        }
-        property_filter = PropertyFilter(properties=properties)
-        matcher = property_filter.build_matcher()
-        assert matcher({}) == False
-        assert matcher({"color": "red", "size": 10}) == True
-        assert matcher({"color": "rrred", "size": 10}) == False
-        assert matcher({"color": "red", "size": 41}) == True
-        assert matcher({"color": "red", "size": 42}) == True
-        assert matcher({"color": "red", "size": 43}) == False
-        assert matcher({"color": "red", "size": 100}) == False
-
-    @pytest.mark.parametrize(
-        ["pg_node", "matching", "non_matching"],
-        [
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                ["y-bar"],
-                ["nope", None],
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                ["x-bar"],
-                ["nope", None],
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                [42],
-                [0, 42.01, 44, None],
-            ),
-            (
-                {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                [0, 42],
-                [42.01, 100, None],
-            ),
-            (
-                {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                [42, 100],
-                [0, 41, None],
-            ),
-            (
-                {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                [42, 100],
-                [0, 41, None],
-            ),
-            (
-                {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                [42, 0],
-                [100, None],
-            ),
-            (
-                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                [42, 4242],
-                [0, 41, None, -101],
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
-                ["32UXXB", "32UB"],
-                ["32UXXC", "33UXXB", None],
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31*"}},
-                ["31UFS", "31ABC"],
-                ["32UFS", None],
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31U?S"}},
-                ["31UFS", "31UXS"],
-                ["31UFFS", "31UF", None],
-            ),
-        ],
-    )
-    def test_build_matcher_operators(self, pg_node, matching, non_matching):
-        """Single conditions in multiple variants (operators, argument order)"""
-        properties = {"foo": {"process_graph": {"_": {**pg_node, "result": True}}}}
-        property_filter = PropertyFilter(properties=properties)
-        matcher = property_filter.build_matcher()
-        for value in matching:
-            assert matcher({"foo": value}) == True
-        for value in non_matching:
-            assert matcher({"foo": value}) == False
-
-    def test_build_matcher_with_env(self):
-        properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": {"from_parameter": "name"},
-                        },
-                        "result": True,
-                    }
-                }
-            }
-        }
-        env = EvalEnv().push_parameters({"name": "alice"})
-        property_filter = PropertyFilter(properties=properties, env=env)
-        matcher = property_filter.build_matcher()
-        assert matcher({"foo": "alice"}) == True
-        assert matcher({"foo": "bob"}) == False
-
-    @pytest.mark.parametrize(
-        ["properties", "expected"],
-        [
-            ({}, ""),
-            (
-                {
-                    "foo": {
-                        "process_graph": {
-                            "eq1": {
-                                "process_id": "eq",
-                                "arguments": {"x": {"from_parameter": "value"}, "y": "bar"},
-                                "result": True,
-                            }
-                        }
-                    }
-                },
-                "\"foo\" = 'bar'",
-            ),
-            (
-                {
-                    "color": {
-                        "process_graph": {
-                            "eq1": {
-                                "process_id": "eq",
-                                "arguments": {
-                                    "x": {"from_parameter": "value"},
-                                    "y": "red",
-                                },
-                                "result": True,
-                            }
-                        }
-                    },
-                    "size": {
-                        "process_graph": {
-                            "lte1": {
-                                "process_id": "lte",
-                                "arguments": {
-                                    "x": {"from_parameter": "value"},
-                                    "y": 42,
-                                },
-                                "result": True,
-                            }
-                        }
-                    },
-                },
-                dirty_equals.IsOneOf(
-                    '"color" = \'red\' and "size" <= 42',
-                    '"size" <= 42 and "color" = \'red\'',
-                ),
-            ),
-        ],
-    )
-    def test_to_cql2_text(self, properties, expected):
-        property_filter = PropertyFilter(properties=properties)
-        assert property_filter.to_cql2_text() == expected
-
-    @pytest.mark.parametrize(
-        ["pg_node", "expected"],
-        [
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                "\"foo\" = 'y-bar'",
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                "\"foo\" = 'x-bar'",
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"foo" = 42',
-            ),
-            (
-                {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"foo" <= 42',
-            ),
-            (
-                {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                '"foo" >= 42',
-            ),
-            (
-                {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"foo" >= 42',
-            ),
-            (
-                {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                '"foo" <= 42',
-            ),
-            (
-                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                '"foo" in (42, 4242)',
-            ),
-            (
-                {
-                    "process_id": "array_contains",
-                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
-                },
-                "\"foo\" in ('blue', 'green')",
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
-                "",
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
-                "",
-            ),
-        ],
-    )
-    def test_to_cql2_text_operators(self, pg_node, expected):
-        properties = {"foo": {"process_graph": {"_": {**pg_node, "result": True}}}}
-        property_filter = PropertyFilter(properties=properties)
-        assert property_filter.to_cql2_text() == expected
-
-    def test_to_cql2_text_with_env(self):
-        properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": {"from_parameter": "name"},
-                        },
-                        "result": True,
-                    }
-                }
-            }
-        }
-        env = EvalEnv().push_parameters({"name": "alice"})
-        property_filter = PropertyFilter(properties=properties, env=env)
-        expected = "\"foo\" = 'alice'"
-        assert property_filter.to_cql2_text() == expected
-
-    @pytest.mark.parametrize(
-        ["properties", "expected"],
-        [
-            ({}, None),
-            (
-                {
-                    "foo": {
-                        "process_graph": {
-                            "eq1": {
-                                "process_id": "eq",
-                                "arguments": {"x": {"from_parameter": "value"}, "y": "bar"},
-                                "result": True,
-                            }
-                        }
-                    }
-                },
-                {"op": "=", "args": [{"property": "foo"}, "bar"]},
-            ),
-            (
-                {
-                    "color": {
-                        "process_graph": {
-                            "eq1": {
-                                "process_id": "eq",
-                                "arguments": {
-                                    "x": {"from_parameter": "value"},
-                                    "y": "red",
-                                },
-                                "result": True,
-                            }
-                        }
-                    },
-                    "size": {
-                        "process_graph": {
-                            "lte1": {
-                                "process_id": "lte",
-                                "arguments": {
-                                    "x": {"from_parameter": "value"},
-                                    "y": 42,
-                                },
-                                "result": True,
-                            }
-                        }
-                    },
-                },
-                {
-                    "op": "and",
-                    "args": [
-                        {"op": "=", "args": [{"property": "color"}, "red"]},
-                        {"op": "<=", "args": [{"property": "size"}, 42]},
-                    ],
-                },
-            ),
-        ],
-    )
-    def test_to_cql2_json(self, properties, expected):
-        property_filter = PropertyFilter(properties=properties)
-        assert property_filter.to_cql2_json() == expected
-
-    @pytest.mark.parametrize(
-        ["pg_node", "expected"],
-        [
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                {"op": "=", "args": [{"property": "foo"}, "y-bar"]},
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                {"op": "=", "args": [{"property": "foo"}, "x-bar"]},
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": "=", "args": [{"property": "foo"}, 42]},
-            ),
-            (
-                {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": "<=", "args": [{"property": "foo"}, 42]},
-            ),
-            (
-                {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                {"op": ">=", "args": [{"property": "foo"}, 42]},
-            ),
-            (
-                {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": ">=", "args": [{"property": "foo"}, 42]},
-            ),
-            (
-                {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                {"op": "<=", "args": [{"property": "foo"}, 42]},
-            ),
-            (
-                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                {"op": "in", "args": [{"property": "foo"}, [42, 4242]]},
-            ),
-            (
-                {
-                    "process_id": "array_contains",
-                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
-                },
-                {"op": "in", "args": [{"property": "foo"}, ["blue", "green"]]},
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
-                None,
-            ),
-            (
-                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
-                None,
-            ),
-        ],
-    )
-    def test_to_cql2_json_operators(self, pg_node, expected):
-        properties = {"foo": {"process_graph": {"_": {**pg_node, "result": True}}}}
-        property_filter = PropertyFilter(properties=properties)
-        assert property_filter.to_cql2_json() == expected
-
-    def test_to_cql2_json_with_env(self):
-        properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": {"from_parameter": "name"},
-                        },
-                        "result": True,
-                    }
-                }
-            }
-        }
-        env = EvalEnv().push_parameters({"name": "alice"})
-        property_filter = PropertyFilter(properties=properties, env=env)
-        expected = {"op": "=", "args": [{"property": "foo"}, "alice"]}
-        assert property_filter.to_cql2_json() == expected
-
-    @pytest.mark.parametrize(
-        ["use_filter_extension", "search_method", "expected"],
-        [
-            ("cql2-text", None, "\"foo\" = 'bar'"),
-            ("cql2-json", None, {"op": "=", "args": [{"property": "foo"}, "bar"]}),
-            (True, "POST", {"op": "=", "args": [{"property": "foo"}, "bar"]}),
-            (True, "GET", "\"foo\" = 'bar'"),
-        ],
-    )
-    def test_to_cql2_filter(self, use_filter_extension, search_method, expected, requests_mock):
-        links = [{"rel": "self", "href": "https://stac.test/"}]
-        if search_method:
-            links.append({"rel": "search", "href": "https://stac.test/search", "method": search_method})
-
-        requests_mock.get(
-            "https://stac.test/",
-            json={
-                "stac_version": "1.0.0",
-                "conformsTo": ["https://api.stacspec.org/v1.0.0/item-search"],
-                "type": "Catalog",
-                "id": "test-catalog",
-                "description": "Test STAC catalog",
-                "links": links,
-            },
-        )
-
-        properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": "bar",
-                        },
-                        "result": True,
-                    }
-                }
-            }
-        }
-        property_filter = PropertyFilter(properties=properties)
-        client = pystac_client.Client.open("https://stac.test/")
-
-        assert (
-            property_filter.to_cql2_filter(
-                use_filter_extension=use_filter_extension,
-                client=client,
-            )
-            == expected
-        )
-
-    @pytest.mark.parametrize(
-        ["allow", "deny", "input_output_cases"],
-        [
-            (
-                None,
-                None,
-                [
-                    ({}, False),
-                    ({"color": "red", "size": 10}, True),
-                    ({"color": "rrred", "size": 10}, False),
-                    ({"color": "red", "size": 1000}, False),
-                ],
-            ),
-            (
-                ["color"],
-                None,
-                [
-                    ({}, False),
-                    ({"color": "red", "size": 10}, True),
-                    ({"color": "rrred", "size": 10}, False),
-                    ({"color": "red", "size": 1000}, True),
-                ],
-            ),
-            (
-                ["color", "flavor"],
-                None,
-                [
-                    ({}, False),
-                    ({"color": "red", "size": 10}, True),
-                    ({"color": "rrred", "size": 10}, False),
-                    ({"color": "red", "size": 1000}, True),
-                ],
-            ),
-            (
-                ["size"],
-                None,
-                [
-                    ({}, False),
-                    ({"color": "red", "size": 10}, True),
-                    ({"color": "rrred", "size": 10}, True),
-                    ({"color": "red", "size": 1000}, False),
-                ],
-            ),
-            (
-                None,
-                ["color"],
-                [
-                    ({}, False),
-                    ({"color": "red", "size": 10}, True),
-                    ({"color": "rrred", "size": 10}, True),
-                    ({"color": "red", "size": 1000}, False),
-                ],
-            ),
-            (
-                None,
-                ["size", "color", "flavor"],
-                [
-                    ({}, True),
-                    ({"color": "green"}, True),
-                    ({"size": 10000}, True),
-                ],
-            ),
-        ],
-    )
-    def test_subsetted(self, allow, deny, input_output_cases):
-        properties = {
-            "color": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": "red",
-                        },
-                        "result": True,
-                    }
-                }
-            },
-            "size": {
-                "process_graph": {
-                    "lte1": {
-                        "process_id": "lte",
-                        "arguments": {
-                            "x": {"from_parameter": "value"},
-                            "y": 42,
-                        },
-                        "result": True,
-                    }
-                }
-            },
-        }
-        property_filter_orig = PropertyFilter(properties=properties)
-        property_filter = property_filter_orig.subsetted(allow=allow, deny=deny)
-        matcher = property_filter.build_matcher()
-
-        expected = [o for i, o in input_output_cases]
-        actual = [matcher(i) for i, o in input_output_cases]
-        assert actual == expected
-
-
-class TestAdaptingPropertyFilter:
-    @pytest.mark.parametrize(
-        ["adaptations", "expected_text", "expected_json"],
-        [
-            (
-                # Empty case (no adaptations)
-                {},
-                "\"foo\" = 'FOO' and \"bar\" = 'BAR'",
-                {
-                    "op": "and",
-                    "args": [
-                        {"op": "=", "args": [{"property": "foo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
-                    ],
-                },
-            ),
-            (
-                # Drop "foo"
-                {"foo": "drop"},
-                "\"bar\" = 'BAR'",
-                {"op": "=", "args": [{"property": "bar"}, "BAR"]},
-            ),
-            (
-                # Rename "foo" to "fancyfoo"
-                {"foo": {"rename": "fancyfoo"}},
-                "\"fancyfoo\" = 'FOO' and \"bar\" = 'BAR'",
-                {
-                    "op": "and",
-                    "args": [
-                        {"op": "=", "args": [{"property": "fancyfoo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
-                    ],
-                },
-            ),
-            (
-                # Map values
-                {
-                    "foo": {"value_mapping": {"SOMETHING": "else"}},
-                    "bar": {"value_mapping": {"BAR": "BARRRR"}},
-                },
-                "\"foo\" = 'FOO' and \"bar\" = 'BARRRR'",
-                {
-                    "op": "and",
-                    "args": [
-                        {"op": "=", "args": [{"property": "foo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "bar"}, "BARRRR"]},
-                    ],
-                },
-            ),
-            (
-                # add-MGRS-prefix
-                {"foo": {"value_mapping": "add-MGRS-prefix"}},
-                "\"foo\" = 'MGRS-FOO' and \"bar\" = 'BAR'",
-                {
-                    "op": "and",
-                    "args": [
-                        {"op": "=", "args": [{"property": "foo"}, "MGRS-FOO"]},
-                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
-                    ],
-                },
-            ),
-        ],
-    )
-    def test_overrides_to_cql2(self, adaptations, expected_text, expected_json):
-        user_specified_properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
-                        "result": True,
-                    }
-                }
-            },
-            "bar": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {"x": {"from_parameter": "value"}, "y": "BAR"},
-                        "result": True,
-                    }
-                }
-            },
-        }
-        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
-        assert property_filter.to_cql2_text() == expected_text
-        assert property_filter.to_cql2_json() == expected_json
-
-    @pytest.mark.parametrize(
-        ["adaptations", "no_match", "match"],
-        [
-            (
-                {},
-                [{}, {"foo": "bar"}],
-                [{"foo": "FOO"}],
-            ),
-            (
-                {"foo": "drop"},
-                [],
-                [{}, {"anything": "goes"}],
-            ),
-            (
-                {"foo": {"rename": "hohoho", "value_mapping": {"FOO": "HAHAHA"}}},
-                [{}, {"fancyfoo": "FOO"}, {"foo": "FOO"}],
-                [{"hohoho": "HAHAHA"}],
-            ),
-            (
-                {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
-                [{}, {"foo": "FOO"}, {"mgrs-foo": "FOO"}],
-                [{"mgrs-foo": "MGRS-FOO"}],
-            ),
-        ],
-    )
-    def test_overrides_to_matcher(self, adaptations, no_match, match):
-        user_specified_properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
-                        "result": True,
-                    }
-                }
-            }
-        }
-        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
-
-        matcher = property_filter.build_matcher()
-        assert [matcher(input) for input in no_match] == [False] * len(no_match)
-        assert [matcher(input) for input in match] == [True] * len(match)
-
-    def test_wildcard_with_mgrs_prefix(self):
-        """Wildcard tileId with MGRS prefix adaptation: not sent to STAC API, only filtered locally."""
-        user_specified_properties = {
-            "tileId": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"},
-                        "result": True,
-                    }
-                }
-            }
-        }
-        adaptations = {"tileId": {"rename": "grid:code", "value_mapping": "add-MGRS-prefix"}}
-        pf = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
-
-        # CQL2: wildcard filters should be excluded (not supported by STAC API)
-        assert pf.to_cql2_text() == ""
-        assert pf.to_cql2_json() is None
-        # Client-side matcher: uses fnmatch with shell wildcards
-        matcher = pf.build_matcher()
-        assert matcher({"grid:code": "MGRS-32UXXB"}) == True
-        assert matcher({"grid:code": "MGRS-32UB"}) == True
-        assert matcher({"grid:code": "MGRS-32UXXC"}) == False
-        assert matcher({"grid:code": "MGRS-33UXXB"}) == False
-
-    def test_logging(self, caplog):
-        caplog.set_level(level=logging.INFO)
-        user_specified_properties = {
-            "foo": {
-                "process_graph": {
-                    "eq1": {
-                        "process_id": "eq",
-                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
-                        "result": True,
-                    }
-                }
-            }
-        }
-        adaptations = {
-            "foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"},
-        }
-        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
-        property_filter.to_cql2_text()
-        assert caplog.messages == [
-            """AdaptingPropertyFilter: updates=["Rename 'foo' to 'mgrs-foo'", "Map 'mgrs-foo' value 'FOO' to 'MGRS-FOO'"]"""
-        ]
-
-    @pytest.mark.parametrize(
-        ["adaptations", "expected_text", "expected_json"],
-        [
-            (
-                {"foo": {"rename": "ffooo", "value_mapping": {"F22": "F2000"}}},
-                """"ffooo" in ('F1', 'F2000', 'F333')""",
-                {"op": "in", "args": [{"property": "ffooo"}, ["F1", "F2000", "F333"]]},
-            ),
-            (
-                {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
-                """"mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
-                {"op": "in", "args": [{"property": "mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
-            ),
-        ],
-    )
-    def test_contains(self, adaptations, expected_text, expected_json):
-        user_specified_properties = {
-            "foo": {
-                "process_graph": {
-                    "contains": {
-                        "process_id": "array_contains",
-                        "arguments": {"data": ["F1", "F22", "F333"], "value": {"from_parameter": "value"}},
-                        "result": True,
-                    }
-                }
-            }
-        }
-        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
-        assert property_filter.to_cql2_text() == expected_text
-        assert property_filter.to_cql2_json() == expected_json
-
-
-class TestItemCollection:
-    def test_from_stac_item_basic(self):
-        item = pystac.Item.from_dict(StacDummyBuilder.item())
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
-        item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
-
-        assert item_collection.items == [item]
-
-    @pytest.mark.parametrize(
-        ["bbox", "interval", "expected"],
-        [
-            ((20, 34, 26, 40), ["2025-09-01", "2025-10-01"], True),
-            ((20, 34, 26, 40), ["2025-10-01", "2025-11-01"], False),
-            ((30, 34, 36, 40), ["2025-09-01", "2025-10-01"], False),
-        ],
-    )
-    def test_from_stac_item_with_filtering(self, bbox, interval, expected):
-        item = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-09-04", bbox=[20, 30, 25, 35]))
-
-        from_date, to_date = interval
-        spatiotemporal_extent = _SpatioTemporalExtent(
-            bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
-        )
-        item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
-        expected = [item] if expected else []
-        assert item_collection.items == expected
-
-    @pytest.mark.parametrize(
-        ["bbox", "interval", "expected"],
-        [
-            # Full spatio-temporal overlap
-            ((10, 20, 30, 40), ["2025-09-01", "2025-10-01"], [1, 2]),
-            ((21, 31, 26, 36), ["2025-09-01", "2025-10-01"], [1, 2]),
-            # Spatial constraints
-            ((20, 30, 23, 33), ["2025-09-01", "2025-10-01"], [1]),
-            ((26, 36, 27, 37), ["2025-09-01", "2025-10-01"], [2]),
-            # Temporal constraints
-            ((20, 34, 26, 40), ["2025-09-01", "2025-09-07"], [1]),
-            ((20, 34, 26, 40), ["2025-09-05", "2025-09-10"], [2]),
-            # No overlap
-            ((10, 20, 30, 40), ["2025-10-01", "2025-11-01"], []),
-            ((70, 70, 80, 80), ["2025-09-01", "2025-10-01"], []),
-        ],
-    )
-    @gps_config_overrides()
-    def test_from_own_job(self, bbox, interval, expected):
-        from_date, to_date = interval
-        spatiotemporal_extent = _SpatioTemporalExtent(
-            bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
-        )
-
-        user = User("john")
-        job_registry = InMemoryJobRegistry()
-        batch_jobs = GpsBatchJobs(catalog=None, jvm=None, elastic_job_registry=job_registry)
-        job = batch_jobs.create_job(user=user, process={"foo": "bar"}, api_version="1.0.0", metadata={})
-        job_registry.set_status(job_id=job.id, user_id=user.user_id, status="finished")
-        job_registry.set_results_metadata(
-            job_id=job.id,
-            user_id=user.user_id,
-            costs=0,
-            usage={},
-            results_metadata={
-                "assets": {
-                    "asset1": {
-                        "bbox": [20, 30, 25, 35],
-                        "geometry": bbox_to_geojson(20, 30, 25, 35),
-                        "datetime": "2025-09-04T10:00:00Z",
-                        "roles": ["data"],
-                        "href": "https://data.test/asset1.tif",
-                        "bands": [{"name": "red"}],
-                    },
-                    "asset2": {
-                        "bbox": [24, 34, 28, 38],
-                        "geometry": bbox_to_geojson(24, 34, 28, 38),
-                        "datetime": "2025-09-08T10:00:00Z",
-                        "roles": ["data"],
-                        "href": "https://data.test/asset2.tif",
-                        "bands": [{"name": "red"}],
-                    },
-                }
-            },
-        )
-
-        item_collection = ItemCollection.from_own_job(
-            job=job, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
-        )
-
-        expected_map = {
-            1: dirty_equals.IsPartialDict(
-                {
-                    "type": "Feature",
-                    "stac_version": dirty_equals.IsOneOf("1.0.0", "1.1.0"),
-                    "id": "asset1",
-                    "assets": {"asset1": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset1.tif"}},
-                    "bbox": [20, 30, 25, 35],
-                    "properties": {"datetime": "2025-09-04T10:00:00Z"},
-                }
-            ),
-            2: dirty_equals.IsPartialDict(
-                {
-                    "type": "Feature",
-                    "stac_version": dirty_equals.IsOneOf("1.0.0", "1.1.0"),
-                    "id": "asset2",
-                    "assets": {"asset2": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset2.tif"}},
-                    "bbox": [24, 34, 28, 38],
-                    "properties": {"datetime": "2025-09-08T10:00:00Z"},
-                }
-            ),
-        }
-        expected = [expected_map[e] for e in expected]
-        assert [item.to_dict() for item in item_collection.items] == expected
-
-    def test_from_stac_catalog_basic(self):
-        collection = pystac.Collection(
-            id="c123",
-            description="C123",
-            extent=pystac.Extent(
-                spatial=pystac.SpatialExtent(bboxes=[[20, 30, 25, 35]]),
-                temporal=pystac.TemporalExtent.from_dict({"interval": ["2025-07-01", "2025-08-31"]}),
-            ),
-        )
-        item1 = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-07-10", bbox=[21, 31, 25, 35]))
-        item2 = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-07-20", bbox=[22, 32, 25, 35]))
-        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
-        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
-
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
-        item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
-        assert item_collection.items == [item1, item2]
-
-    @pytest.mark.parametrize(
-        ["bbox", "interval", "expected"],
-        [
-            (None, None, [1, 2]),
-            ([20, 30, 25, 35], ["2025-06-01", "2025-09-30"], [1, 2]),
-            ([20, 30, 21, 31], ["2025-06-01", "2025-09-30"], [1]),
-            ([22.3, 32.3, 22.6, 32.6], ["2025-06-01", "2025-09-30"], [2]),
-            ([20, 30, 25, 35], ["2025-07-05", "2025-07-15"], [1]),
-            ([20, 30, 25, 35], ["2025-07-15", "2025-07-25"], [2]),
-        ],
-    )
-    def test_from_stac_catalog_spatiotemporal_filtering(self, bbox, interval, expected):
-        collection = pystac.Collection(
-            id="c123",
-            description="C123",
-            extent=pystac.Extent(
-                spatial=pystac.SpatialExtent(bboxes=[[20, 30, 25, 35]]),
-                temporal=pystac.TemporalExtent.from_dict({"interval": ["2025-07-01", "2025-08-31"]}),
-            ),
-        )
-        item1 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item1", datetime="2025-07-10", bbox=[21, 31, 21.5, 31.5])
-        )
-        item2 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item2", datetime="2025-07-20", bbox=[22, 32, 22.5, 32.5])
-        )
-        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
-        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
-
-        from_date, to_date = interval or (None, None)
-        if bbox:
-            bbox = BoundingBox.from_wsen_tuple(bbox, crs=4326)
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
-        item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
-
-        expected = [{1: item1, 2: item2}[x] for x in expected]
-        assert item_collection.items == expected
-
-    @pytest.fixture
-    def dummy_stac_api_server(self) -> DummyStacApiServer:
-        dummy_server = DummyStacApiServer()
-
-        dummy_server.define_collection(
-            "custom-s2",
-            extent={
-                "spatial": {"bbox": [[3, 50, 5, 51]]},
-                "temporal": {"interval": [["2024-02-01T00:00:00Z", "2024-12-01"]]},
-            },
-        )
-        for m in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
-            for x in [3, 4]:
-                dummy_server.define_item(
-                    collection_id="custom-s2",
-                    item_id=f"item-{m}-{x}",
-                    datetime=f"2024-{m:02d}-20T12:00:00Z",
-                    bbox=[x + 0.1, 50.1, x + 0.9, 50.9],
-                    properties={"flavor": {0: "apple", 1: "banana", 2: "coconut"}[(m + x) % 3]},
-                )
-        return dummy_server
-
-    @pytest.fixture
-    def dummy_stac_api(self, dummy_stac_api_server) -> Iterator[str]:
-        with dummy_stac_api_server.serve() as root_url:
-            yield root_url
-
-    def test_from_stac_api_basic(self, dummy_stac_api):
-        given_url = f"{dummy_stac_api}/collections/collection-123"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        property_filter = PropertyFilter(properties={})
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=property_filter,
-            spatiotemporal_extent=spatiotemporal_extent,
-        )
-        assert [item.id for item in item_collection.items] == ["item-1", "item-2", "item-3"]
-
-    @pytest.mark.parametrize(
-        ["from_date", "to_date", "expected_items"],
-        [
-            ("2024-06-01", "2024-09-01", {"item-6-3", "item-6-4", "item-7-3", "item-7-4", "item-8-3", "item-8-4"}),
-            (None, "2024-04-01", {"item-2-3", "item-2-4", "item-3-3", "item-3-4"}),
-            ("2024-09-01", None, {"item-9-3", "item-9-4", "item-10-3", "item-10-4", "item-11-3", "item-11-4"}),
-        ],
-    )
-    def test_from_stac_api_temporal_filter(self, dummy_stac_api, from_date, to_date, expected_items):
-        given_url = f"{dummy_stac_api}/collections/custom-s2"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        property_filter = PropertyFilter(properties={})
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=from_date, to_date=to_date)
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=property_filter,
-            spatiotemporal_extent=spatiotemporal_extent,
-        )
-        assert set(item.id for item in item_collection.items) == expected_items
-
-    @pytest.mark.parametrize(
-        ["bbox", "expected_items"],
-        [
-            (
-                BoundingBox(3, 50, 4, 51, crs=4326),
-                {f"item-{x}-3" for x in range(2, 12)},
-            ),
-            (
-                BoundingBox(4, 50, 5, 51, crs=4326),
-                {f"item-{x}-4" for x in range(2, 12)},
-            ),
-        ],
-    )
-    def test_from_stac_api_spatial_filter(self, dummy_stac_api, bbox, expected_items):
-        given_url = f"{dummy_stac_api}/collections/custom-s2"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        property_filter = PropertyFilter(properties={})
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date="2024-01-01", to_date="2025-01-01")
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=property_filter,
-            spatiotemporal_extent=spatiotemporal_extent,
-        )
-        assert set(item.id for item in item_collection.items) == expected_items
-
-    @pytest.mark.parametrize(
-        ["use_filter_extension", "expected_search"],
-        [
-            (
-                "cql2-json",
-                {
-                    "method": "POST",
-                    "path": "/search",
-                    "url_params": {},
-                    "json": {
-                        "collections": ["custom-s2"],
-                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
-                        "filter-lang": "cql2-json",
-                        "filter": {"op": "=", "args": [{"property": "flavor"}, "banana"]},
-                    },
-                },
-            ),
-            (
-                "cql2-text",
-                {
-                    "method": "GET",
-                    "path": "/search",
-                    "url_params": {
-                        "collections": "custom-s2",
-                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
-                        "filter-lang": "cql2-text",
-                        "filter": "\"flavor\" = 'banana'",
-                    },
-                    "json": None,
-                },
-            ),
-            (
-                # Auto mode: Prefer POST with cql2-json if supported by server
-                True,
-                {
-                    "method": "POST",
-                    "path": "/search",
-                    "url_params": {},
-                    "json": {
-                        "collections": ["custom-s2"],
-                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
-                        "filter-lang": "cql2-json",
-                        "filter": {"op": "=", "args": [{"property": "flavor"}, "banana"]},
-                    },
-                },
-            ),
-            (
-                # No usage of filter extension
-                False,
-                {
-                    "method": "GET",
-                    "path": "/search",
-                    "url_params": {
-                        "collections": "custom-s2",
-                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
-                    },
-                    "json": None,
-                },
-            ),
-        ],
-    )
-    def test_from_stac_api_property_filter(
-        self, dummy_stac_api, dummy_stac_api_server, use_filter_extension, expected_search
-    ):
-        given_url = f"{dummy_stac_api}/collections/custom-s2"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        property_filter = PropertyFilter(
-            properties={
-                "flavor": {
-                    "process_graph": {
-                        "eq": {
-                            "process_id": "eq",
-                            "arguments": {"x": {"from_parameter": "value"}, "y": "banana"},
-                            "result": True,
-                        }
-                    }
-                }
-            }
-        )
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=property_filter,
-            spatiotemporal_extent=spatiotemporal_extent,
-            use_filter_extension=use_filter_extension,
-        )
-        assert set(item.id for item in item_collection.items) == {
-            "item-3-4",
-            "item-4-3",
-            "item-6-4",
-            "item-7-3",
-            "item-9-4",
-            "item-10-3",
-        }
-
-        # Check search requests made to the STAC API server
-        search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
-        assert search_requests == [expected_search]
-
-    def test_from_stac_api_antimeridian_handling(self, dummy_stac_api, dummy_stac_api_server):
-        """Based on https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568"""
-        collection_id = "ogd-1568"
-        dummy_stac_api_server.define_collection(collection_id)
-        for x in [175, 176, 177, 178, 179, -180, -179, -178]:
-            for y in [68, 69, 70, 71]:
-                dummy_stac_api_server.define_item(
-                    collection_id=collection_id,
-                    item_id=f"item-{x}-{y}",
-                    datetime=f"2025-09-01",
-                    bbox=[x, y, x + 1, y + 1],
-                )
-
-        given_url = f"{dummy_stac_api}/collections/{collection_id}"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        property_filter = PropertyFilter(properties={})
-        bbox = BoundingBox(
-            # Corresponds roughly in lon-lat to BoundingBox(west=177.9, south=69.2, east=-179.4, north=70.3)
-            west=300000,
-            south=7690200,
-            east=409800,
-            north=7800000,
-            crs="EPSG:32601",
-        )
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox)
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=property_filter,
-            spatiotemporal_extent=spatiotemporal_extent,
-        )
-        assert sorted(item.id for item in item_collection.items) == [
-            "item--180-69",
-            "item--180-70",
-            "item-177-69",
-            "item-177-70",
-            "item-178-69",
-            "item-178-70",
-            "item-179-69",
-            "item-179-70",
-        ]
-
-        search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
-        assert search_requests == [
-            dirty_equals.IsPartialDict(
-                url_params={
-                    "collections": collection_id,
-                    "bbox": dirty_equals.IsStr(regex=r"177\.\d*,69\.\d*,180\.0,70\.\d+"),
-                    "limit": "100",
-                }
-            ),
-            dirty_equals.IsPartialDict(
-                url_params={
-                    "collections": collection_id,
-                    "bbox": dirty_equals.IsStr(regex=r"-180\.0,69\.\d+,-179\.\d+,70\.\d+"),
-                    "limit": "100",
-                }
-            ),
-        ]
-
-    @pytest.mark.parametrize(
-        ["max_items", "expected_items"],
-        [
-            (1, ["item-1"]),
-            (2, ["item-1", "item-2"]),
-            (10, ["item-1", "item-2", "item-3"]),
-        ],
-    )
-    def test_from_stac_api_bounded_iteration(self, dummy_stac_api, max_items, expected_items):
-        given_url = f"{dummy_stac_api}/collections/collection-123"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=PropertyFilter(properties={}),
-            spatiotemporal_extent=_SpatioTemporalExtent(),
-            max_items=max_items,
-        )
-        assert [item.id for item in item_collection.items] == expected_items
-
-    def test_from_stac_api_asset_missing_href_is_skipped(self, requests_mock, caplog):
-        """
-        Regression test: STAC API responses where an asset has no 'href' field must not
-        crash the item collection construction (KeyError: 'href' from pystac).
-        The bad asset should be silently dropped (with a warning), while the rest of the
-        item and all valid assets are kept.
-
-        DummyStacApiServer cannot be used here because it also calls pystac.Item.from_dict()
-        server-side and would crash the same way. Instead, the pystac Collection is built
-        directly from dicts (bypassing urllib), and only the search endpoint is mocked via
-        requests_mock so the bad JSON reaches the client code unchanged.
-        """
-        root_url = "https://stac.broken-test"
-        collection_url = f"{root_url}/collections/broken-collection"
-
-        catalog_dict = {
-            "type": "Catalog",
-            "stac_version": "1.0.0",
-            "id": "broken-test",
-            "description": "broken test catalog",
-            "links": [],
-            "conformsTo": ["https://api.stacspec.org/v1.0.0-rc.1/item-search"],
-        }
-        requests_mock.get(root_url, json=catalog_dict)
-        requests_mock.get(
-            f"{root_url}/search",
-            json={
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "stac_version": "1.0.0",
-                        "id": "item-with-bad-asset",
-                        "geometry": {"type": "Polygon", "coordinates": [[[3, 50], [5, 50], [5, 51], [3, 51], [3, 50]]]},
-                        "bbox": [3, 50, 5, 51],
-                        "properties": {"datetime": "2024-06-01T00:00:00Z"},
-                        "links": [],
-                        "assets": {
-                            "good-asset": {"href": "/data/good.tif", "type": "image/tiff"},
-                            "bad-asset": {"type": "image/tiff"},  # missing 'href' — triggers KeyError in pystac
-                        },
-                    }
-                ],
-                "links": [],
-            },
-        )
-
-        # Build the pystac Collection directly (without making an HTTP call), because
-        # pystac.read_file() uses urllib which is NOT intercepted by requests_mock.
-        root_catalog = pystac.Catalog.from_dict(catalog_dict)
-        root_catalog.set_self_href(root_url)
-        collection: pystac.Collection = pystac.Collection.from_dict(
-            {
-                "type": "Collection",
-                "stac_version": "1.0.0",
-                "id": "broken-collection",
-                "description": "collection with broken assets",
-                "license": "unknown",
-                "extent": {
-                    "spatial": {"bbox": [[-180, -90, 180, 90]]},
-                    "temporal": {"interval": [[None, None]]},
-                },
-                "links": [{"rel": "root", "href": root_url}],
-            }
-        )
-        collection.set_self_href(collection_url)
-        collection.set_root(root_catalog)
-        with caplog.at_level(logging.WARNING, logger="openeogeotrellis"):
-            item_collection = ItemCollection.from_stac_api(
-                collection,
-                original_url=collection_url,
-                property_filter=PropertyFilter(properties={}),
-                spatiotemporal_extent=_SpatioTemporalExtent(),
-            )
-
-        # The item must be returned despite the bad asset
-        assert len(item_collection.items) == 1
-        assert item_collection.items[0].id == "item-with-bad-asset"
-
-        # The bad asset must have been dropped, but the good one kept
-        assets = item_collection.items[0].assets
-        assert "good-asset" in assets
-        assert "bad-asset" not in assets
-
-        # A warning must have been logged mentioning the bad asset key
-        assert any("bad-asset" in r.message for r in caplog.records)
-
-    @pytest.mark.parametrize(
-        ["stac_api_supports_property_filtering", "proj_epsg", "post_query_property_filtering", "expected"],
-        [
-            (True, 123, True, {"item-123"}),
-            (True, 456, True, {"item-456"}),
-            (False, 123, True, {"item-123"}),
-            (True, 123, False, {"item-123"}),
-            (False, 123, False, {"item-123", "item-456"}),
-            (False, 123, ["something-else"], {"item-123", "item-456"}),
-            (True, 123, ["something-else"], {"item-123"}),
-            (False, 123, {"deny": "proj:epsg"}, {"item-123", "item-456"}),
-            (True, 123, {"deny": "proj:epsg"}, {"item-123"}),
-        ],
-    )
-    def test_from_stac_api_property_filter_api_vs_post_query_filtering(
-        self,
-        dummy_stac_api,
-        dummy_stac_api_server,
-        stac_api_supports_property_filtering,
-        proj_epsg,
-        post_query_property_filtering,
-        expected,
-    ):
-        """
-        Property filtering with properties that are possibly normalized by pystac (to newer version)
-        """
-        dummy_stac_api_server.support_property_filtering = stac_api_supports_property_filtering
-        collection_id = "oldskool-s2"
-
-        stac_extensions = [
-            # We will use old style (v1.1) proj metadata: `"proj:epsg": 123` instead of proj-v2 style `"proj:code": "EPSG:123"`
-            "https://stac-extensions.github.io/projection/v1.1.0/schema.json",
-        ]
-        dummy_stac_api_server.define_collection(
-            collection_id,
-            extent={
-                "spatial": {"bbox": [[3, 50, 5, 51]]},
-                "temporal": {"interval": [["2024-02-01", "2024-03-01"]]},
-            },
-            stac_extensions=stac_extensions,
-        )
-        dummy_stac_api_server.define_item(
-            collection_id=collection_id,
-            item_id="item-123",
-            datetime=f"2024-02-20T12:00:00Z",
-            bbox=[3, 50, 5, 51],
-            properties={"proj:epsg": 123},
-            stac_extensions=stac_extensions,
-        )
-        dummy_stac_api_server.define_item(
-            collection_id=collection_id,
-            item_id="item-456",
-            datetime=f"2024-02-20T12:00:00Z",
-            bbox=[3, 50, 5, 51],
-            properties={"proj:epsg": 456},
-            stac_extensions=stac_extensions,
-        )
-
-        given_url = f"{dummy_stac_api}/collections/{collection_id}"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        property_filter = PropertyFilter(
-            properties={
-                "proj:epsg": {
-                    "process_graph": {
-                        "eq": {
-                            "process_id": "eq",
-                            "arguments": {"x": {"from_parameter": "value"}, "y": proj_epsg},
-                            "result": True,
-                        }
-                    }
-                }
-            }
-        )
-        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
-        item_collection = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=property_filter,
-            spatiotemporal_extent=spatiotemporal_extent,
-            post_query_property_filtering=post_query_property_filtering,
-        )
-        assert set(item.id for item in item_collection.items) == expected
-
-    def test_get_temporal_extent_empty(self):
-        item_collection = ItemCollection(items=[])
-        assert item_collection.get_temporal_extent() == (None, None)
-
-    def test_get_temporal_extent_just_datetime(self):
-        item_collection = ItemCollection(
-            items=[
-                pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-11-11T00:00:00Z")),
-                pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-11-12T00:00:00Z")),
-            ]
-        )
-
-        assert item_collection.get_temporal_extent() == (
-            datetime.datetime(2025, 11, 11, tzinfo=datetime.timezone.utc),
-            datetime.datetime(2025, 11, 12, tzinfo=datetime.timezone.utc),
-        )
-
-    def test_get_temporal_extent_start_and_end(self):
-        item_collection = ItemCollection(
-            items=[
-                pystac.Item.from_dict(
-                    StacDummyBuilder.item(
-                        datetime="2025-11-11T00:00:00Z",
-                        properties={
-                            "start_datetime": "2025-11-10T10:00:00Z",
-                            "end_datetime": "2025-11-12T12:00:00Z",
-                        },
-                    )
-                ),
-                pystac.Item.from_dict(
-                    StacDummyBuilder.item(
-                        datetime="2025-11-15T00:00:00Z",
-                        properties={
-                            "start_datetime": "2025-11-14T14:00:00Z",
-                            "end_datetime": "2025-11-16T16:00:00Z",
-                        },
-                    )
-                ),
-            ]
-        )
-
-        assert item_collection.get_temporal_extent() == (
-            datetime.datetime(2025, 11, 10, hour=10, tzinfo=datetime.timezone.utc),
-            datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
-        )
-
-    def test_deduplicated(self, dummy_stac_api_server, dummy_stac_api):
-        collection_id = "with-dups"
-        dummy_stac_api_server.define_collection(collection_id)
-        for i in range(6):
-            dummy_stac_api_server.define_item(
-                collection_id=collection_id,
-                item_id=f"item-{i}",
-                datetime=f"2025-11-{(i // 2) + 1:02d}",
-            )
-
-        given_url = f"{dummy_stac_api}/collections/{collection_id}"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        orig = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=PropertyFilter(properties={}),
-            spatiotemporal_extent=_SpatioTemporalExtent(bbox=None, from_date="2025-01-01", to_date=None),
-        )
-        assert set(item.id for item in orig.items) == {
-            "item-0",
-            "item-1",
-            "item-2",
-            "item-3",
-            "item-4",
-            "item-5",
-        }
-
-        deduplicator = ItemDeduplicator()
-        deduped = orig.deduplicated(deduplicator=deduplicator)
-        assert set(item.id for item in deduped.items) == {
-            "item-1",
-            "item-3",
-            "item-5",
-        }
-
-    def test_serialization_basic(self, tmp_path):
-        item = pystac.Item.from_dict(StacDummyBuilder.item())
-        spatiotemporal_extent = _SpatioTemporalExtent()
-        orig = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
-
-        # Serialize to file
-        dump_path = tmp_path / "item_collection.json"
-        orig.to_file(dump_path)
-
-        # Deserialize again
-        loaded = ItemCollection.from_file(dump_path)
-        assert [i.to_dict() for i in loaded.items] == [item.to_dict()]
-
-    def test_serialization_with_stac_api(self, dummy_stac_api, tmp_path):
-        given_url = f"{dummy_stac_api}/collections/collection-123"
-        collection: pystac.Collection = pystac.read_file(given_url)
-        orig = ItemCollection.from_stac_api(
-            collection,
-            original_url=given_url,
-            property_filter=PropertyFilter(properties={}),
-            spatiotemporal_extent=_SpatioTemporalExtent(),
-        )
-
-        # Serialize to file
-        dump_path = tmp_path / "item_collection.json"
-        orig.to_file(dump_path)
-
-        # Deserialize again
-        loaded = ItemCollection.from_file(dump_path)
-        assert [i.to_dict() for i in loaded.items] == [i.to_dict() for i in orig.items]
-
-
-def test_construct_item_collection_minimal(dummy_stac_api):
-    url = f"{dummy_stac_api}/collections/collection-123"
-    item_collection, metadata, bands, netcdf_with_time_dimension = construct_item_collection(url=url)
-    assert set(item.id for item in item_collection.items) == {"item-1", "item-2", "item-3"}
-    assert bands == []
-    # TODO deeper tests that also involve various band metadata detection aspects
-
-
-class TestItemDeduplicator:
-    def test_trivial(self):
-        item = pystac.Item.from_dict(StacDummyBuilder.item())
-        deduplicator = ItemDeduplicator()
-        assert deduplicator.deduplicate([item]) == [item]
-
-    def test_repr(self):
-        deduplicator = ItemDeduplicator(
-            duplication_properties=["platform"], score_property_preference={"gsd": [10, 100]}
-        )
-        expected = "ItemDeduplicator(duplication_properties=['platform'], score_property_preference={'gsd': {10: 2, 100: 1}}, properties_from_id=None)"
-        assert repr(deduplicator) == expected
-        assert str(deduplicator) == expected
-
-    def test_basic(self):
-        item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
-        item10_1s = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1s", datetime="2025-11-10T00:00:01Z"))
-        item10_1h = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1h", datetime="2025-11-10T01:00:00Z"))
-        item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
-
-        deduplicator = ItemDeduplicator()
-        assert deduplicator.deduplicate([item10, item10_1s, item11]) == [item10_1s, item11]
-        assert deduplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
-
-    def test_property_based(self):
-        item600 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item1", properties={"product:type": "a", "flavor": "apple"})
-        )
-        item600b = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item2", properties={"product:type": "a", "flavor": "banana"})
-        )
-        item601 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item3", properties={"product:type": "b", "flavor": "apple"})
-        )
-
-        deduplicator = ItemDeduplicator()
-        assert deduplicator.deduplicate([item600, item600b, item601]) == [item600b, item601]
-
-        deduplicator = ItemDeduplicator(duplication_properties=["flavor"])
-        assert deduplicator.deduplicate([item600, item600b, item601]) == [item601, item600b]
-
-    @pytest.mark.parametrize(
-        ["item2_updated", "best"],
-        [
-            ("2025-11-12T12:00:10Z", "item2"),
-            ("2025-11-12T11:00:00Z", "item1"),
-        ],
-    )
-    def test_updated(self, item2_updated, best):
-        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", properties={"updated": "2025-11-12T12:00:00Z"}))
-        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", properties={"updated": item2_updated}))
-        deduplicator = ItemDeduplicator()
-        result = deduplicator.deduplicate([item1, item2])
-        assert [r.id for r in result] == [best]
-
-    @pytest.mark.parametrize(
-        ["bbox2", "expected"],
-        [
-            ([3, 50, 4, 51], ["item2", "item3"]),
-            ([4, 50, 5, 51], ["item1", "item3"]),
-            (None, ["item1", "item2", "item3"]),
-            ([8, 40, 9, 41], ["item1", "item2", "item3"]),
-            # Invalid bboxes, but should not break deduplication
-            (123, ["item1", "item2", "item3"]),
-            ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], ["item1", "item2", "item3"]),
-            (["one", "two", "three"], ["item1", "item2", "item3"]),
-        ],
-    )
-    def test_duplicate_by_bbox(self, bbox2, expected):
-        item1 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item1", bbox=[3, 50, 4, 51], properties={"updated": "2025-11-01"})
-        )
-        item2 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item2", bbox=bbox2, properties={"updated": "2025-11-02"})
-        )
-        item3 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item3", bbox=[4, 50, 5, 51], properties={"updated": "2025-11-03"})
-        )
-
-        deduplicator = ItemDeduplicator()
-        result = deduplicator.deduplicate([item1, item2, item3])
-        assert [r.id for r in result] == expected
-
-    @pytest.mark.parametrize(
-        ["geometry2", "expected"],
-        [
-            (
-                {"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
-                ["item2", "item3"],
-            ),
-            (
-                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
-                ["item1", "item3"],
-            ),
-            (
-                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50.0001]]]},
-                ["item1", "item3"],
-            ),
-            (None, ["item1", "item2", "item3"]),
-            (
-                {"type": "Polygon", "coordinates": [[[8, 40], [9, 40], [9, 41], [8, 41], [8, 40]]]},
-                ["item1", "item2", "item3"],
-            ),
-            # Invalid geometry, but should not break deduplication
-            ({"type": "MobiusRing"}, ["item1", "item2", "item3"]),
-            ([666, 777], ["item1", "item2", "item3"]),
-        ],
-    )
-    def test_duplicate_by_geometry(self, geometry2, expected):
-        item1 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="item1",
-                geometry={"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
-                properties={"updated": "2025-11-01"},
-            )
-        )
-        item2 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item2", geometry=geometry2, properties={"updated": "2025-11-02"})
-        )
-        item3 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="item3",
-                geometry={"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
-                properties={"updated": "2025-11-03"},
-            )
-        )
-
-        deduplicator = ItemDeduplicator()
-        result = deduplicator.deduplicate([item1, item2, item3])
-        assert [r.id for r in result] == expected
-
-    @pytest.mark.parametrize(
-        ["datetime2", "expected"],
-        [
-            ("2025-11-10T00:00:00Z", ["item2", "item3"]),
-            ("2025-11-10T12:00:00Z", ["item1", "item2", "item3"]),
-            ("2025-11-11T00:00:00Z", ["item1", "item3"]),
-            ("2025-11-12T00:00:00Z", ["item1", "item3", "item2"]),
-            ("2025-11-10T00:00:00+00", ["item2", "item3"]),
-            ("2025-11-10T00:00:00+07", ["item2", "item1", "item3"]),
-            ("2025-11-10", ["item2", "item3"]),
-            ("2025-11-11", ["item1", "item3"]),
-        ],
-    )
-    def test_datetime_and_timezones(self, datetime2, expected):
-        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", datetime="2025-11-10T00:00:00Z"))
-        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", datetime=datetime2))
-        item3 = pystac.Item.from_dict(StacDummyBuilder.item(id="item3", datetime="2025-11-11T00:00:00Z"))
-
-        deduplicator = ItemDeduplicator()
-        result = deduplicator.deduplicate([item1, item2, item3])
-        assert [r.id for r in result] == expected
-
-    def test_s1_sigma0_version_dedup(self):
-        """Sentinel-1 SIGMA0 items with different processing versions (V110 vs V120) should be deduplicated,
-        keeping the higher version."""
-        common_properties = {
-            "datetime": "2020-03-25T17:24:42Z",
-            "platform": "sentinel-1a",
-            "constellation": "sentinel-1",
-            "sar:frequency_band": "C",
-            "sar:instrument_mode": "IW",
-            "sar:observation_direction": "right",
-            "sar:polarizations": ["VV", "VH"],
-            "sat:absolute_orbit": 31835,
-            "sat:orbit_state": "ascending",
-        }
-        common_bbox = [2.0, 50.0, 4.0, 52.0]
-        common_geometry = {
-            "type": "Polygon",
-            "coordinates": [[[2.0, 50.0], [4.0, 50.0], [4.0, 52.0], [2.0, 52.0], [2.0, 50.0]]],
-        }
-        common_datetime = "2020-03-25T17:24:42Z"
-
-        item_v110 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V110",
-                datetime=common_datetime,
-                bbox=common_bbox,
-                geometry=common_geometry,
-                properties={**common_properties, "updated": "2025-07-06T06:06:09.620403Z"},
-            )
-        )
-        item_v120 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120",
-                datetime=common_datetime,
-                bbox=common_bbox,
-                geometry=common_geometry,
-                properties={**common_properties, "updated": "2025-07-06T06:06:09.708329Z"},
-            )
-        )
-
-        deduplicator = ItemDeduplicator()
-        result = deduplicator.deduplicate([item_v110, item_v120])
-        assert [r.id for r in result] == [
-            "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
-        ]
-
-        # Order of input should not matter
-        result = deduplicator.deduplicate([item_v120, item_v110])
-        assert [r.id for r in result] == [
-            "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
-        ]
-
-    def test_score_property_preference(self):
-        """score_property_preference prefers items by property value order, falling back to updated+id."""
-        common_props = {"datetime": "2025-11-10T00:00:00Z"}
-        item_v110 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item-v110", properties={**common_props, "processing:version": 110})
-        )
-        item_v100 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item-v100", properties={**common_props, "processing:version": 100})
-        )
-        item_unknown = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item-unknown", properties={**common_props, "processing:version": 999, "updated": "2099-01-01T00:00:00Z"})
-        )
-        item_no_version = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item-no-version", properties={**common_props, "updated": "2099-01-01T00:00:00Z"})
-        )
-
-        deduplicator = ItemDeduplicator(score_property_preference={"processing:version": [110, 100]})
-
-        # v110 is preferred over v100 regardless of input order
-        assert [r.id for r in deduplicator.deduplicate([item_v100, item_v110])] == ["item-v110"]
-        assert [r.id for r in deduplicator.deduplicate([item_v110, item_v100])] == ["item-v110"]
-
-        # v100 is preferred over an unknown version (not in preference list),
-        # even if the unknown version has a later "updated" timestamp
-        assert [r.id for r in deduplicator.deduplicate([item_unknown, item_v100])] == ["item-v100"]
-
-        # Property absent → same fallback as unknown value: uses updated+id
-        assert [r.id for r in deduplicator.deduplicate([item_no_version, item_v100])] == ["item-v100"]
-
-    @pytest.mark.parametrize(
-        ["duplicator_kwargs", "expected"],
-        [
-            (
-                # Default: pick item with highest "updated" value
-                {},
-                ["RT1"],
-            ),
-            (
-                # Score by RT value
-                dict(
-                    properties_from_id={"consolidation_period": r"-(RT\d+)_"},
-                    score_property_preference={
-                        "consolidation_period": ["RT6", "RT5", "RT4", "RT3", "RT2", "RT1", "RT0"]
-                    },
-                ),
-                ["RT2"],
-            ),
-            (
-                # Reverse RT value scoring
-                dict(
-                    properties_from_id={"consolidation_period": r"-(RT\d+)_"},
-                    score_property_preference={"consolidation_period": ["RT0", "RT1"]},
-                ),
-                ["RT0"],
-            ),
-            (
-                # use RT as deduplication property
-                dict(
-                    properties_from_id={"consolidation_period": r"-(RT\d+)_"},
-                    duplication_properties=["consolidation_period"],
-                ),
-                ["RT0", "RT1", "RT2"],
-            ),
-        ],
-    )
-    def test_by_consolidation_period_from_id(self, duplicator_kwargs, expected):
-        # Three items with different consolidation periods (only in "RT" part of id)
-        # and different "updated" properties.
-        # Note that consolidation period and "updated" follow different order
-        # (RT1 is updated after RT2)
-        item_0 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="c_gls_LAI300-RT0_202602200000_GLOBE",
-                datetime="2026-02-20T00:00:00Z",
-                properties={"updated": "2026-02-22T00:00:00Z"},
-            )
-        )
-        item_1 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="c_gls_LAI300-RT1_202602200000_GLOBE",
-                datetime="2026-02-20T00:00:00Z",
-                properties={"updated": "2026-02-25T00:00:00Z"},
-            )
-        )
-        item_2 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="c_gls_LAI300-RT2_202602200000_GLOBE",
-                datetime="2026-02-20T00:00:00Z",
-                properties={"updated": "2026-02-21T00:00:00Z"},
-            )
-        )
-
-        deduplicator = ItemDeduplicator(**duplicator_kwargs)
-        deduped = deduplicator.deduplicate([item_0, item_1, item_2])
-        assert [i.id for i in deduped] == [f"c_gls_LAI300-{e}_202602200000_GLOBE" for e in expected]
-
-    @pytest.mark.parametrize(
-        ["feature_flags", "expected"],
-        [
-            (
-                # Default: no deduplication
-                {},
-                ["RT0", "RT1", "RT2"],
-            ),
-            (
-                # Default deduplication: pick item with highest "updated" value
-                {"deduplicate_items": True},
-                ["RT1"],
-            ),
-            (
-                # Score by RT value
-                {
-                    "deduplicate_items": {
-                        "properties_from_id": {"consolidation_period": r"-(RT\d+)_"},
-                        "score_property_preference": {
-                            "consolidation_period": ["RT6", "RT5", "RT4", "RT3", "RT2", "RT1", "RT0"]
-                        },
-                    }
-                },
-                ["RT2"],
-            ),
-            (
-                # Deprecated feature flag usage
-                {
-                    "deduplicate_items": True,
-                    "deduplicator_properties_from_id": {"consolidation_period": r"-(RT\d+)_"},
-                    "score_property_preference": {
-                        "consolidation_period": ["RT6", "RT5", "RT4", "RT3", "RT2", "RT1", "RT0"]
-                    },
-                },
-                ["RT2"],
-            ),
-            (
-                # use RT as deduplication property
-                {
-                    "deduplicate_items": {
-                        "properties_from_id": {"consolidation_period": r"-(RT\d+)_"},
-                        "duplication_properties": ["consolidation_period"],
-                    },
-                },
-                ["RT0", "RT1", "RT2"],
-            ),
-        ],
-    )
-    def test_from_feature_flags(self, feature_flags, expected):
-        # Three items with different consolidation periods (only in "RT" part of id)
-        # and different "updated" properties.
-        # Note that consolidation period and "updated" follow different order
-        # (RT1 is updated after RT2)
-        item_0 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="c_gls_LAI300-RT0_202602200000_GLOBE",
-                datetime="2026-02-20T00:00:00Z",
-                properties={"updated": "2026-02-22T00:00:00Z"},
-            )
-        )
-        item_1 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="c_gls_LAI300-RT1_202602200000_GLOBE",
-                datetime="2026-02-20T00:00:00Z",
-                properties={"updated": "2026-02-25T00:00:00Z"},
-            )
-        )
-        item_2 = pystac.Item.from_dict(
-            StacDummyBuilder.item(
-                id="c_gls_LAI300-RT2_202602200000_GLOBE",
-                datetime="2026-02-20T00:00:00Z",
-                properties={"updated": "2026-02-21T00:00:00Z"},
-            )
-        )
-
-        item_collection = ItemCollection([item_0, item_1, item_2])
-        deduplicator = _deduplicator_from_feature_flags(feature_flags)
-        if deduplicator:
-            item_collection = item_collection.deduplicated(deduplicator=deduplicator)
-
-        assert [i.id for i in item_collection.items] == [f"c_gls_LAI300-{e}_202602200000_GLOBE" for e in expected]
 
 
 class TestPrepareContext:
@@ -4034,171 +2049,6 @@ class TestPrepareContext:
 
         assert context.metadata.band_names == expected_metadata_band_names
         assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
-
-    @pytest.mark.parametrize(
-        ["feature_flags", "url", "expected"],
-        [
-            (
-                {},
-                "https://stac.test/foo",
-                PixelValueScalingMode.NO_SCALING,
-            ),
-            (
-                {"apply_sentinel2_reflectance_offset": False},
-                "https://stac.test/foo",
-                PixelValueScalingMode.NO_SCALING,
-            ),
-            (
-                {"apply_sentinel2_reflectance_offset": True},
-                "https://stac.test/foo",
-                PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET,
-            ),
-            (
-                {},
-                "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a",
-                PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET,
-            ),
-            (
-                {},
-                "https://stac.terrascope.be/collections/terrascope-s2-toc-v2",
-                PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET,
-            ),
-            (
-                {"apply_raster_scale_and_offset": True},
-                "https://stac.test/foo",
-                PixelValueScalingMode.SCALE_AND_OFFSET,
-            ),
-        ],
-    )
-    def test_get_pixel_value_scaling_mode(self, feature_flags, url, expected):
-        apply_sentinel2_reflectance_offset = _get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
-        assert apply_sentinel2_reflectance_offset == expected
-
-    @pytest.mark.parametrize(
-        ["item", "asset", "expected"],
-        [
-            (
-                pystac.Item.from_dict(StacDummyBuilder.item()),
-                pystac.Asset(href="https://stac.test/asset.tiff"),
-                (1, 0),
-            ),
-            (
-                pystac.Item.from_dict(StacDummyBuilder.item(properties={"raster:scale": 1.2, "raster:offset": 3.4})),
-                pystac.Asset(href="https://stac.test/asset.tiff"),
-                (1.2, 3.4),
-            ),
-            (
-                pystac.Item.from_dict(StacDummyBuilder.item()),
-                pystac.Asset(
-                    href="https://stac.test/asset.tiff", extra_fields={"raster:scale": 1.2, "raster:offset": 3.4}
-                ),
-                (1.2, 3.4),
-            ),
-        ],
-    )
-    def test_get_raster_scale_and_offset(self, item, asset, expected):
-        assert _get_raster_scale_and_offset(item=item, asset=asset) == expected
-
-    @pytest.mark.parametrize(
-        ["mode", "with_reflectance_band", "expected"],
-        [
-            (PixelValueScalingMode.NO_SCALING, False, (1, 0)),
-            (PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET, False, (1, 0)),
-            (PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET, True, (1, 2.8)),
-            (PixelValueScalingMode.SCALE_AND_OFFSET, False, (1.25, 3.5)),
-        ],
-    )
-    def test_get_pixel_value_scale_and_offset(self, mode, with_reflectance_band, expected):
-        item = pystac.Item.from_dict(StacDummyBuilder.item())
-        asset_properties = {"raster:scale": 1.25, "raster:offset": 3.5}
-        if with_reflectance_band:
-            asset_properties["bands"] = [{"name": "B02", "eo:center_wavelength": 0.493}]
-        asset = pystac.Asset(
-            href="https://stac.test/asset.tiff",
-            extra_fields=asset_properties,
-        )
-        assert _get_pixel_value_scale_and_offset(item=item, asset=asset, pixel_value_scaling_mode=mode) == expected
-
-    @pytest.mark.parametrize(
-        ["asset", "expected"],
-        [
-            (pystac.Asset(href="https://stac.test/B02.tiff"), False),
-            (
-                # Minimal match
-                pystac.Asset(
-                    href="https://stac.test/B02.tiff",
-                    extra_fields={"bands": [{"eo:center_wavelength": 0.475}]},
-                ),
-                True,
-            ),
-            (
-                # Old style (eo:bands > center_wavelength)
-                pystac.Asset(
-                    href="https://stac.test/B02.tiff",
-                    extra_fields={"eo:bands": [{"center_wavelength": 0.475}]},
-                ),
-                True,
-            ),
-            (
-                # Based on B02 on CDSE https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a
-                pystac.Asset.from_dict(
-                    {
-                        "href": "s3://test/Sentinel-2/2025/09/01/T31UES_20250901T105041_B02_20m.jp2",
-                        "bands": [
-                            {
-                                "name": "B02",
-                                "eo:center_wavelength": 0.493,
-                                "eo:full_width_half_max": 0.267,
-                                "eo:common_name": "blue",
-                            }
-                        ],
-                        "type": "image/jp2",
-                        "roles": ["data", "reflectance", "sampling:downsampled", "gsd:20m"],
-                        "raster:scale": 0.0001,
-                        "raster:offset": -0.1,
-                    }
-                ),
-                True,
-            ),
-            (
-                # Based on WVP on CDSE https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a
-                pystac.Asset.from_dict(
-                    {
-                        "href": "s3://test/Sentinel-2/MSI/L2A/2025/09/01/T31UES_20250901T105041_WVP_10m.jp2",
-                        "roles": ["data", "gsd:10m"],
-                        "title": "Water vapour (WVP) - 10m",
-                        "raster:scale": 0.0001,
-                        "raster:offset": -0.1,
-                    }
-                ),
-                False,
-            ),
-            (
-                # Based on B02 on Terrascope https://stac.terrascope.be/collections/terrascope-s2-toc-v2
-                pystac.Asset.from_dict(
-                    {
-                        "href": "https://terrascope.test/dl/Sentinel2/TOC_V2/2025/09/01/S2C_20250901T105041_31UES_TOC-B02_10M_V210.tif",
-                        "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                        "title": "B02",
-                        "roles": ["data"],
-                        "raster:scale": 0.0001,
-                        "raster:offset": 0.0,
-                        "bands": [
-                            {
-                                "name": "B02",
-                                "eo:common_name": "blue",
-                                "eo:center_wavelength": 0.49,
-                                "eo:full_width_half_max": 0.098,
-                            }
-                        ],
-                    }
-                ),
-                True,
-            ),
-        ],
-    )
-    def test_is_sentinel2_reflectance_asset(self, asset, expected):
-        assert _is_sentinel2_reflectance_asset(asset) == expected
 
     @pytest.mark.parametrize(
         ["asset_id", "user_bands", "normalized_band_selection", "expected_metadata_bands", "expected_link_titles"],
@@ -4734,77 +2584,3 @@ class TestPrepareContext:
         ]
 
 
-class TestResolutionTracker:
-    def test_empty(self):
-        tracker = _ResolutionTracker()
-        assert tracker.finest_for() == (set(), None)
-
-    def test_no_keys(self):
-        tracker = _ResolutionTracker()
-        tracker.track(epsg=4326, res=(1, 2))
-        assert tracker.finest_for() == ({4326}, (1, 2))
-
-    def test_basic(self):
-        tracker = _ResolutionTracker()
-        tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
-        tracker.track(key="B01", epsg=4326, res=(0.2, 0.2))
-        tracker.track(key="B02", epsg=4326, res=(0.3, 0.3))
-
-        assert tracker.finest_for(["B01"]) == ({4326}, (0.1, 0.1))
-        assert tracker.finest_for(["B02"]) == ({4326}, (0.3, 0.3))
-        assert tracker.finest_for(["B01", "B02"]) == ({4326}, (0.1, 0.1))
-        assert tracker.finest_for(["B03"]) == (set(), None)
-        assert tracker.finest_for(["B01", "B03"]) == ({4326}, (0.1, 0.1))
-
-    def test_multi_epsg(self):
-        tracker = _ResolutionTracker()
-        tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
-        tracker.track(key="B01", epsg=32631, res=(10, 10))
-
-        assert tracker.finest_for(["B01"]) == ({4326, 32631}, None)
-
-    def test_multi_utm(self):
-        tracker = _ResolutionTracker()
-        tracker.track(key="B01", epsg=32629, res=(10, 10))
-        tracker.track(key="B01", epsg=32631, res=(10, 10))
-        tracker.track(key="B02", epsg=32631, res=(20, 20))
-
-        assert tracker.finest_for(["B01"]) == ({32629, 32631}, (10, 10))
-        assert tracker.finest_for(["B02"]) == (
-            {
-                32631,
-            },
-            (20, 20),
-        )
-        assert tracker.finest_for(["B01", "B02"]) == (
-            {
-                32629,
-                32631,
-            },
-            (10, 10),
-        )
-
-
-@pytest.mark.parametrize(
-    ["assets", "expected"],
-    [
-        (
-            {
-                "asset1": {"href": "https://stac.test/asset1.tiff"},
-                "asset2": {"href": "https://stac.test/asset2.tiff"},
-            },
-            {"asset1", "asset2"},
-        ),
-        (
-            {
-                "asset1": {"look ma": "no href"},
-                "asset2": {"href": "https://stac.test/asset2.tiff"},
-            },
-            {"asset2"},
-        ),
-    ],
-)
-def test_pystac_item_from_dict_lenient(assets, expected):
-    item = _pystac_item_from_dict_lenient(StacDummyBuilder.item(assets=assets))
-    assert isinstance(item, pystac.Item)
-    assert set(item.assets.keys()) == expected

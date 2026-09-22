@@ -232,7 +232,7 @@ class S1BackscatterOrfeo:
         feature_flags: Optional[Dict] = None,
     ) -> JavaObject:
         """Build a FixedFeaturesOpenSearchClient populated with features from STAC API."""
-        from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
+        from openeogeotrellis.load_stac import spatiotemporal_extent_from_load_params
         from openeogeotrellis.load_stac import construct_item_collection
 
         _default_url = "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
@@ -245,18 +245,18 @@ class S1BackscatterOrfeo:
         )
 
         # Build spatiotemporal extent
-        spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+        spatiotemporal_extent = spatiotemporal_extent_from_load_params(
             spatial_extent=spatial_extent,
             temporal_extent=temporal_extent
         )
 
         # Query STAC API
-        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+        item_collection = construct_item_collection(
             url=url,
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
             feature_flags=feature_flags,
-        )
+        ).item_collection
         # Build FixedFeaturesOpenSearchClient from STAC items
         jvm = get_jvm()
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()

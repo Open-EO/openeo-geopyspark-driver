@@ -15,12 +15,17 @@ without compromising stable operations.
 ## 0.73.0
 
 - Starting batch jobs is made more lenient to support processes not known by the web application.
+- `mask`: clip oversized vector geometries to the raster footprint before reprojection to avoid topology errors with UTM/local CRS masking ([#1817](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1817))
 - Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
 - `load_stac`: disable version-migration of certain properties (e.g. `proj:epsg`) to avoid breaking post-query property filtering, and support feature flag to disable or fine-tune post-query property filtering ([#1728](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1728))
 - Improved support for separate "derived_from" auxiliary links on kubernetes deployments ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
 - Add `load_stac` feature flag `use_raw_asset_href` to force usage of raw asset href instead of leveraging standard pystac href normalization ([#1748](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1748))
 - `save_result`: Format option `retain_nodata_tiles` for GeoTiff and NetCDF to retain tiles with only nodata.
 - Remove left-over traces (dead code) related to "kafka" and "async_tasks" ([#1804](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804))
+- Job tracker: immediately delete the Kubernetes SparkApplication (freeing up the resources it owns) once a job's final status and resource usage have been successfully persisted in the job registry. Configurable through `job_tracker_cleanup_openeo_statuses` (defaults to `["finished"]`, use an empty list to opt out).
+- Kubernetes batch jobs: make the batch job config secret owned by the SparkApplication, so that it is garbage collected together with it (best effort, on top of the existing age based secret cleanup). Requires the `patch` permission on secrets.
+- Kubernetes batch jobs: support mounting batch job results from a single shared PersistentVolumeClaim (each job using its own `subPath`) instead of creating a PersistentVolume and PersistentVolumeClaim per job, through the new `shared_results_pvc` config.
+- Produce BigTiff GeoTiffs by default ([Open-EO/openeo-geotrellis-extensions#678](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/678), [Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 
 
 ## 0.72.0

@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import pystac
 import pystac.stac_io
 import requests
-from openeogeotrellis.utils import S3ClientBuilder
+from openeogeotrellis.integrations.s3_client import S3ClientBuilder
 from pystac.stac_io import DefaultStacIO
 from pystac_client.stac_api_io import StacApiIO
 
