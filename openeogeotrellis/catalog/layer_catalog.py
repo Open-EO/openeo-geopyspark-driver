@@ -1,3 +1,4 @@
+import datetime
 import logging
 import math
 from typing import Optional, Tuple, Union
@@ -10,12 +11,51 @@ from openeo.util import deep_get, str_truncate
 from openeo_driver.backend import CollectionCatalog, LoadParameters, QueryablesListing
 from openeo_driver.errors import OpenEOApiException
 
-from openeogeotrellis.util.datetime import normalize_temporal_extent, parse_approximate_isoduration
+from openeogeotrellis.util.datetime import normalize_temporal_extent
 
 from .collection_metadata import GeopysparkCubeMetadata
 from .validation import check_missing_products
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_approximate_isoduration(s: str) -> datetime.timedelta:
+    """
+    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.
+    Approximate, because it does not care about leap years, months with different number of days, etc.
+    Examples: "PT1H30M15.460S", "P5DT4M", "P2WT3H", "P1D"
+    Based on: https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
+    """
+
+    def get_isosplit(s_arg, split):
+        if split in s_arg:
+            n, s_arg = s_arg.split(split, 1)
+        else:
+            n = '0'
+        return float(n.replace(',', '.')), s_arg  # to handle like "P0,5Y"
+
+    s = s.split('P', 1)[-1]  # Remove prefix
+    # M can mean month or minute, so we split the day and time part:
+    if 'T' in s:
+        s_date0, s_time0 = s.split('T', 1)
+    else:
+        s_date0 = s
+        s_time0 = ''
+    s_date, s_time = s_date0, s_time0
+    s_yr, s_date = get_isosplit(s_date, 'Y')  # Step through letter dividers
+    s_mo, s_date = get_isosplit(s_date, 'M')
+    s_wk, s_date = get_isosplit(s_date, 'W')
+    s_dy, s_date = get_isosplit(s_date, 'D')
+
+    s_hr, s_time = get_isosplit(s_time, 'H')
+    s_mi, s_time = get_isosplit(s_time, 'M')
+    s_sc, s_time = get_isosplit(s_time, 'S')
+    n_yr = s_yr * 365  # approx days for year, month, week
+    n_mo = s_mo * 30.4  # Average days per month
+    n_wk = s_wk * 7
+    dt = datetime.timedelta(days=n_yr + n_mo + n_wk + s_dy, hours=s_hr, minutes=s_mi,
+                            seconds=s_sc)
+    return dt
 
 
 class LayerCatalog(CollectionCatalog):
@@ -139,7 +179,7 @@ class LayerCatalog(CollectionCatalog):
         temporal_step = metadata.get("cube:dimensions", "t", "step", default=None) or "P10D"
 
         # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
-        temporal_step = parse_approximate_isoduration(temporal_step)
+        temporal_step = _parse_approximate_isoduration(temporal_step)
         temporal_step = temporal_step.total_seconds()
 
         from_date, to_date = normalize_temporal_extent((temporal_extent[0], temporal_extent[1]))
