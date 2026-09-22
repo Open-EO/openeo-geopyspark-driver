@@ -19,12 +19,9 @@ import tempfile
 import time
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, TypeVar, Iterator, TYPE_CHECKING
+from typing import Callable, Iterable, Optional, Tuple, Union, TypeVar, Iterator
 
 from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
-
-if TYPE_CHECKING:
-    from py4j.java_gateway import JVMView
 
 import dateutil.parser
 import pyproj
@@ -47,6 +44,8 @@ from openeo_driver.util.logging import (
     setup_logging,
 )
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
+from py4j.clientserver import ClientServer
+from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
@@ -72,7 +71,6 @@ def log_memory(function):
 
 def get_jvm() -> JVMView:
     import geopyspark
-    from py4j.clientserver import ClientServer
 
     pysc = geopyspark.get_spark_context()
     gateway = pysc._gateway
