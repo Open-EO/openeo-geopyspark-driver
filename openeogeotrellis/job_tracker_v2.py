@@ -596,7 +596,7 @@ class JobTracker:
             )
             stats["new metadata"] += 1
         except AppNotFound:
-            log.warning(
+            log.info(
                 f"App not found: {job_id=} {application_id=}; "
                 f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
                 exc_info=False,  # omit noisy stack trace for non-exceptional situation
