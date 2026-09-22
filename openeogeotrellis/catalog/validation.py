@@ -17,7 +17,6 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis.util.datetime import normalize_temporal_extent
-from openeogeotrellis.util.geometry import calculate_rough_area, health_check_extent
 from openeogeotrellis.util.projection import reproject_cellsize
 
 from .collection_metadata import GeopysparkCubeMetadata
@@ -27,6 +26,65 @@ if TYPE_CHECKING:
     from .layer_catalog import LayerCatalog
 
 logger = logging.getLogger(__name__)
+
+
+def _calculate_rough_area(geoms: Iterable[BaseGeometry]):
+    """
+    For every geometry, roughly estimate its area using its bounding box and return their sum.
+
+    @param geoms: the geometries to estimate the area for
+    @return: the sum of the estimated areas
+    """
+    total_area = 0
+    for geom in geoms:
+        if hasattr(geom, "geoms"):
+            total_area += _calculate_rough_area(geom.geoms)
+        else:
+            total_area += (geom.bounds[2] - geom.bounds[0]) * (geom.bounds[3] - geom.bounds[1])
+    return total_area
+
+
+def _health_check_extent(extent):
+    crs = extent.get("crs", "EPSG:4326")
+    is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
+
+    if extent["west"] > extent["east"] or extent["south"] > extent["north"]:
+        logger.warning(f"health_check_extent extent with surface<0: {extent}")
+        return False
+
+    if is_utm:
+        # This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
+        utm_bounds = {
+            "west": 166021.44,
+            "south": -10000000,
+            "east": 833978.56,
+            "north": 10000000,
+        }
+        width = utm_bounds["east"] - utm_bounds["west"]
+        horizontal_tolerance = 5  # UTM zone has quite some horizontal tolerance
+        utm_bounds["west"] = utm_bounds["west"] - width * horizontal_tolerance
+        utm_bounds["east"] = utm_bounds["east"] + width * horizontal_tolerance
+        if (
+            extent["west"] < utm_bounds["west"]
+            or extent["east"] > utm_bounds["east"]
+            or extent["south"] < utm_bounds["south"]
+            or extent["north"] > utm_bounds["north"]
+        ):
+            logger.warning(f"health_check_extent dangerous extent: {extent}")
+            return False
+    elif crs == "EPSG:4326":
+        horizontal_tolerance = 1.1
+        if (
+            extent["west"] < -180 * horizontal_tolerance
+            or extent["east"] > 180 * horizontal_tolerance
+            or extent["south"] < -90
+            or extent["north"] > 90
+        ):
+            logger.warning(f"health_check_extent dangerous extent: {extent}")
+            return False
+
+    return True
+
 
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -274,7 +332,7 @@ def is_layer_too_large(
             srs = 'Auto42001'
 
     spatial_extent["crs"] = srs
-    if not health_check_extent(spatial_extent):
+    if not _health_check_extent(spatial_extent):
         return f"Unsupported spatial extent: {spatial_extent}"
 
     target_crs = native_crs
@@ -319,11 +377,11 @@ def is_layer_too_large(
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
             # For performance, we estimate the area using a simple bounding box around each polygon.
             if isinstance(geometries, DriverVectorCube):
-                geometries_area = calculate_rough_area([geometries.to_multipolygon()])
+                geometries_area = _calculate_rough_area([geometries.to_multipolygon()])
             elif isinstance(geometries, DelayedVector):
-                geometries_area = calculate_rough_area(geometries.geometries)
+                geometries_area = _calculate_rough_area(geometries.geometries)
             elif isinstance(geometries, BaseGeometry):
-                geometries_area = calculate_rough_area([geometries])
+                geometries_area = _calculate_rough_area([geometries])
             else:
                 raise TypeError(f"Unsupported geometry type: {type(geometries)}")
             if target_crs != "EPSG:4326":

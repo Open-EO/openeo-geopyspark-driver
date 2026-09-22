@@ -23,6 +23,7 @@ import copy
 import dataclasses
 import difflib
 import functools
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -34,8 +35,6 @@ from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.util.compat import function_supports_kwargs
-
 from . import DATA_SOURCE_PROPERTIES
 from .enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
 
@@ -44,6 +43,12 @@ _log = logging.getLogger(__name__)
 
 class MetadataException(Exception):
     pass
+
+
+def _function_supports_kwargs(function: Callable) -> bool:
+    """Does function accept keyword arguments?"""
+    signature = inspect.signature(function)
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values())
 
 
 CRS_AUTO_42001 = {
@@ -704,7 +709,7 @@ class _BuildItem:
             "collection_id": self.collection_id,
             "labels": self.labels,
         }.items():
-            if function_has_argument(self.build, arg) or function_supports_kwargs(self.build):
+            if function_has_argument(self.build, arg) or _function_supports_kwargs(self.build):
                 assert arg not in self.kwargs, f"{arg=} should not be in {kwargs=}"
                 kwargs.update({arg: value})
 
