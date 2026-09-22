@@ -4450,7 +4450,7 @@ class TestLoadStac:
             },
         }
 
-        from openeogeotrellis.load_stac import extract_own_job_info
+        from openeogeotrellis.stac.own_job import extract_own_job_info
 
         finished_job_info = extract_own_job_info(
             "https://openeo.test/openeo/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results?partial=true",
@@ -4460,7 +4460,7 @@ class TestLoadStac:
 
         ongoing_job_info = finished_job_info._replace(status='queued')
 
-        with mock.patch("openeogeotrellis.load_stac.extract_own_job_info",
+        with mock.patch("openeogeotrellis.stac.own_job.extract_own_job_info",
                         side_effect=[ongoing_job_info, finished_job_info]):
             api110.result(process_graph).assert_status_code(200)
 

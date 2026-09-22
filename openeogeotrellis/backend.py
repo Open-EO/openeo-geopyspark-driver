@@ -99,6 +99,7 @@ from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_render_manifest_template,
     k8s_get_batch_job_cfg_secret_name,
+    k8s_set_secret_owner_reference,
     truncate_user_id_k8s,
     ensure_kubernetes_config,
 )
@@ -130,6 +131,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
+from openeogeotrellis.stac.own_job import extract_own_job_info
 from openeogeotrellis.stac.partialjobresults import PartialJobResults
 from openeogeotrellis.udf import (
     run_udf_code,
@@ -1963,6 +1965,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
+                shared_results_pvc=get_backend_config().shared_results_pvc,
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
                 udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
                 udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
@@ -2003,7 +2006,12 @@ class GpsBatchJobs(backend.BatchJobs):
                         log.info(f"Job start requested, but already in state {latest_job_status}")
                         return
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
-                    if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                    # Note: with a shared results PVC, there is nothing to create per job:
+                    # the batch job just mounts a subPath of that (externally managed) claim.
+                    if (
+                        get_backend_config().fuse_mount_batchjob_s3_bucket
+                        and not get_backend_config().shared_results_pvc
+                    ):
                         persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
                             "persistentvolume_batch_job_results.yaml.j2",
                             job_name=spark_app_id,
@@ -2037,7 +2045,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         api_instance_core.create_namespaced_secret(
                             pod_namespace, s3_profiles_cfg_batch_secret, pretty=True
                         )
-                    api_instance_custom_object.create_namespaced_custom_object(
+                    spark_app = api_instance_custom_object.create_namespaced_custom_object(
                         "sparkoperator.k8s.io",
                         "v1beta2",
                         pod_namespace,
@@ -2052,6 +2060,16 @@ class GpsBatchJobs(backend.BatchJobs):
                         user_id=user_id,
                         results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
                     )
+                    if get_backend_config().provide_s3_profiles_and_tokens:
+                        # Adopt the secret (which had to be created before the Spark application that mounts it)
+                        # so that Kubernetes cleans it up together with the Spark application.
+                        k8s_set_secret_owner_reference(
+                            api_instance_core,
+                            namespace=pod_namespace,
+                            secret_name=batch_job_cfg_secret_name,
+                            owner=spark_app,
+                            log=log,
+                        )
 
                 except ApiException as e:
                     log.error("failed to submit Spark application", exc_info=True)
@@ -2184,7 +2202,7 @@ class GpsBatchJobs(backend.BatchJobs):
             elif source_id.process_id == "load_stac":
                 dependency = PartialJobResults.get_partial_results_from_load_stac_arguments(
                     arguments=source_id.arguments,
-                    extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
+                    extract_own_job_info=lambda url: extract_own_job_info(url, user_id=user_id, batch_jobs=self),
                     logger_adapter=logger_adapter,
                     requests_session=self._requests_session,
                 )
@@ -2473,7 +2491,9 @@ class GpsBatchJobs(backend.BatchJobs):
                             f"Sparkapplication {application_id} could not be found."
                         )
 
-                if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                # Note: a shared results PVC is managed externally and outlives individual jobs,
+                # so there is nothing to delete per job in that case.
+                if get_backend_config().fuse_mount_batchjob_s3_bucket and not get_backend_config().shared_results_pvc:
                     try:
                         delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
                         logger.debug(

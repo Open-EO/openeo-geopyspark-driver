@@ -22,6 +22,10 @@ without compromising stable operations.
 - Add `load_stac` feature flag `use_raw_asset_href` to force usage of raw asset href instead of leveraging standard pystac href normalization ([#1748](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1748))
 - `save_result`: Format option `retain_nodata_tiles` for GeoTiff and NetCDF to retain tiles with only nodata.
 - Remove left-over traces (dead code) related to "kafka" and "async_tasks" ([#1804](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804))
+- Job tracker: immediately delete the Kubernetes SparkApplication (freeing up the resources it owns) once a job's final status and resource usage have been successfully persisted in the job registry. Configurable through `job_tracker_cleanup_openeo_statuses` (defaults to `["finished"]`, use an empty list to opt out).
+- Kubernetes batch jobs: make the batch job config secret owned by the SparkApplication, so that it is garbage collected together with it (best effort, on top of the existing age based secret cleanup). Requires the `patch` permission on secrets.
+- Kubernetes batch jobs: support mounting batch job results from a single shared PersistentVolumeClaim (each job using its own `subPath`) instead of creating a PersistentVolume and PersistentVolumeClaim per job, through the new `shared_results_pvc` config.
+- Produce BigTiff GeoTiffs by default ([Open-EO/openeo-geotrellis-extensions#678](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/678), [Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 - Make `export_workspace` merge by default; its `merge` argument points to the STAC resource itself ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
 
 

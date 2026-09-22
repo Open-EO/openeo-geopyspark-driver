@@ -124,3 +124,60 @@ def k8s_get_batch_job_cfg_secret_name(spark_app_name: str) -> str:
     Get a secret name for a submitted spark application
     """
     return f"cfg-{spark_app_name}"
+
+
+def k8s_set_secret_owner_reference(
+    api_instance_core,
+    *,
+    namespace: str,
+    secret_name: str,
+    owner: dict,
+    log: logging.LoggerAdapter = None,
+) -> bool:
+    """
+    Make the given secret owned by `owner` so that Kubernetes garbage collects the secret
+    when the owner is deleted.
+
+    This is a best effort operation: secrets are also cleaned up separately based on their
+    "created_at" annotation, so failing to set the owner reference is only worth a warning.
+
+    :param api_instance_core: Kubernetes Core API instance
+    :param namespace: namespace of the secret (must be the same as the owner's namespace)
+    :param secret_name: name of the secret to adopt
+    :param owner: the owning object, as returned when creating it (must contain `metadata.uid`)
+    :return: whether the owner reference was successfully set
+    """
+    log = log or _log
+    try:
+        owner_metadata = owner.get("metadata") or {}
+        owner_uid = owner_metadata.get("uid")
+        owner_name = owner_metadata.get("name")
+        if not (owner_uid and owner_name):
+            log.warning(f"Not setting owner reference on secret {secret_name}: no uid/name in owner metadata")
+            return False
+
+        owner_reference = {
+            "apiVersion": owner.get("apiVersion") or "sparkoperator.k8s.io/v1beta2",
+            "kind": owner.get("kind") or "SparkApplication",
+            "name": owner_name,
+            "uid": owner_uid,
+            "controller": False,
+            # Note: `blockOwnerDeletion` requires "update" permission on the owner's "finalizers"
+            # subresource, which we do not have, so it must be left disabled.
+            "blockOwnerDeletion": False,
+        }
+        # Note: a strategic merge patch on "metadata" only touches the owner references,
+        # so labels/annotations (used for the separate secret cleanup) are left untouched.
+        api_instance_core.patch_namespaced_secret(
+            name=secret_name,
+            namespace=namespace,
+            body={"metadata": {"ownerReferences": [owner_reference]}},
+        )
+        log.debug(f"Set owner reference of secret {secret_name} to {owner_name} ({owner_uid})")
+        return True
+    except Exception as e:
+        log.warning(
+            f"Failed to set owner reference on secret {secret_name}: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        return False

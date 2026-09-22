@@ -117,6 +117,16 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         raise NotImplementedError
 
+    def cleanup_app(self, job_id: str, user_id: str, app_id: str) -> None:
+        """
+        Clean up the app (and the resources it owns) from the orchestration component.
+
+        Only to be called when the job reached a final status and that status
+        (and its resource usage) was successfully persisted in the job registry.
+        Implementations should not raise: failing cleanup must not break status tracking.
+        """
+        pass
+
     @classmethod
     @abc.abstractmethod
     def app_state_to_etl_state(cls, app_state: str) -> str:
@@ -429,6 +439,30 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         return _Usage()
 
+    def cleanup_app(self, job_id: str, user_id: str, app_id: str) -> None:
+        """Delete the SparkApplication, which also frees up the resources it owns (driver/executor pods, ...)"""
+        # Local import to avoid kubernetes dependency when not necessary
+        import kubernetes.client.exceptions
+
+        try:
+            self._kubernetes_api.delete_namespaced_custom_object(
+                group="sparkoperator.k8s.io",
+                version="v1beta2",
+                # TODO: this namespace should come from job metadata, not config
+                namespace=ConfigParams().pod_namespace,
+                plural="sparkapplications",
+                name=app_id,
+            )
+            _log.info(f"Deleted K8s app {app_id}", extra={"job_id": job_id, "user_id": user_id})
+        except kubernetes.client.exceptions.ApiException as e:
+            if e.status == 404:
+                # Already gone (e.g. cleaned up by the Spark operator's `timeToLiveSeconds`): nothing to do.
+                _log.debug(
+                    f"K8s app {app_id} not found, nothing to clean up", extra={"job_id": job_id, "user_id": user_id}
+                )
+            else:
+                raise
+
     # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
     _k8s_state_to_etl_api_state = {
         K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
@@ -583,11 +617,12 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-        if job_metadata.status in {
+        reached_final_status = job_metadata.status in {
             JOB_STATUS.FINISHED,
             JOB_STATUS.ERROR,
             JOB_STATUS.CANCELED,
-        }:
+        }
+        if reached_final_status:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
@@ -681,6 +716,18 @@ class JobTracker:
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
         )
+
+        # Only clean up the app once the final status and resource usage are safely persisted above:
+        # if anything went wrong before this point, an exception was raised, the job is left untouched
+        # and will be picked up again in a next run.
+        if reached_final_status and job_metadata.status in get_backend_config().job_tracker_cleanup_openeo_statuses:
+            try:
+                self._app_state_getter.cleanup_app(job_id=job_id, user_id=user_id, app_id=application_id)
+                stats["app cleanup"] += 1
+            except Exception as e:
+                # Cleanup is best effort: never let it invalidate the successful status sync above.
+                log.error(f"Failed to clean up app {application_id}: {type(e).__name__}: {e}", exc_info=True)
+                stats["app cleanup failed"] += 1
 
 
 class CliApp:

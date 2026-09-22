@@ -2193,7 +2193,7 @@ class GeopysparkDataCube(DriverDataCube):
                 predictor = format_options.get("predictor", 1)
                 zlevel = format_options.get("ZLEVEL", 6)
                 tile_size = format_options.get("tile_size")
-                bigtiff = format_options.get("bigtiff", False)
+                bigtiff = format_options.get("bigtiff", True)
 
                 def add_gdalinfo_objects(assets_original):
                     assets_to_add = {}
