@@ -31,10 +31,7 @@ from openeogeotrellis.deploy.batch_job import (
     _extract_and_install_udf_dependencies,
     run_job,
 )
-from openeogeotrellis.deploy.batch_job_metadata import (
-    _convert_asset_outputs_to_s3_urls,
-    _get_tracker,
-)
+from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
 from openeogeotrellis.job_results.raster_metadata import (
     AssetRasterMetadata,
     BandStatistics,
@@ -42,7 +39,7 @@ from openeogeotrellis.job_results.raster_metadata import (
     parse_gdal_raster_metadata,
     read_gdal_raster_metadata,
 )
-from openeogeotrellis.job_results.result_metadata import extract_result_metadata
+from openeogeotrellis.job_results.result_metadata import convert_asset_outputs_to_s3_urls, extract_result_metadata
 from openeogeotrellis.metrics_tracking import MetricsTracker, global_tracker
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import get_jvm, S3ClientBuilder, stream_s3_binary_file_contents, to_s3_url
@@ -1984,7 +1981,7 @@ def test_convert_asset_outputs_to_s3_urls():
     """Test that it converts a metadata dict, translating each output_dir to a URL with the s3:// scheme."""
 
     metadata = get_job_metadata_without_s3(job_dir=Path("/batch_jobs/j-260129154402432e802f5309b026ece0"))
-    metadata = _convert_asset_outputs_to_s3_urls(metadata)
+    metadata = convert_asset_outputs_to_s3_urls(metadata, output_href=to_s3_url)
 
     assert (
         metadata["assets"]["openEO_2017-11-21Z.tif"]["href"]

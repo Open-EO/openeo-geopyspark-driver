@@ -497,6 +497,11 @@ def read_gdal_info(
 
     :return:
         GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
+
+    Note: `gdalinfo_from_file`/`gdalinfo_use_subprocess` default to fixed values here rather than
+    being read from config. The production caller (finalize.py) passes them explicitly from
+    ``get_backend_config()``; any caller that omits them silently gets these hardcoded defaults
+    instead of the deployment's configured values.
     """
     data_gdalinfo = {}
     # TODO: Choose a version, and remove others

@@ -1,4 +1,4 @@
-import concurrent
+import dataclasses
 import json
 import logging
 import os
@@ -7,19 +7,14 @@ import stat
 import sys
 import time
 from copy import deepcopy
-from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
-from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import (
-    MlModelResult,
-    SaveResult,
-)
+from openeo_driver.save_result import SaveResult
 from openeo_driver.users import User
 from openeo_driver.util.logging import (
     LOG_HANDLER_FILE_JSON,
@@ -45,22 +40,15 @@ from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
-from openeogeotrellis.deploy.batch_job_metadata import (
-    _assemble_result_metadata,
-    _convert_asset_outputs_to_s3_urls,
-    _get_tracker_metadata,
-    _transform_stac_metadata,
-    href_from_job_local_path,
-)
+from openeogeotrellis.deploy import batch_job_metadata
+from openeogeotrellis.integrations.gdal import localize_s3_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used
 from openeogeotrellis.job_options import JobOptions
-from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results import finalize
 from openeogeotrellis.job_results.raster_metadata import get_abs_path_of_asset
-from openeogeotrellis.job_results.util import AnnotatedDict, BadlyHashable, json_default, unzip
-from openeogeotrellis.job_results.workspace_export import export_result_to_workspaces
-from openeogeotrellis.job_results.wrapping import wrap_evaluation_result
+from openeogeotrellis.job_results.settings import JobResultsSettings
 from openeogeotrellis.load_stac import get_stac_item_collection_filename
-from openeogeotrellis.stac_save_result import StacSaveResult
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
     build_python_udf_dependencies_archive,
@@ -277,9 +265,6 @@ def run_job(
     vault_token: str = None,
     access_token: str = None,
 ) -> None:
-    result_metadata = {}
-    tracker_metadata = {}
-    items = []
     dependencies = dependencies or []
 
     # TODO: migrate all raw job option usage to parsed job options
@@ -290,15 +275,23 @@ def run_job(
     omit_derived_from_links = parsed_job_options.omit_derived_from_links or stac11_mode
     logger.info(f"{stac11_mode=} {job_options.get('stac-version')=}")
 
-    try:
-        # We actually expect type Path, but in reality paths as strings tend to
-        # slip in anyway, so we better catch them and convert them.
-        output_file = Path(output_file).absolute()
-        metadata_file = Path(metadata_file).absolute()
-        job_dir = Path(job_dir).absolute()
+    settings = _build_job_results_settings(
+        job_options=job_options,
+        stac11_mode=stac11_mode,
+        omit_derived_from_links=omit_derived_from_links,
+        max_soft_errors_ratio=max_soft_errors_ratio,
+    )
 
+    # We actually expect type Path, but in reality paths as strings tend to
+    # slip in anyway, so we better catch them and convert them.
+    output_file = Path(output_file).absolute()
+    metadata_file = Path(metadata_file).absolute()
+    job_dir = Path(job_dir).absolute()
+    hooks = GeoPySparkJobResultsHooks(job_dir=job_dir, output_file=output_file, dependencies=dependencies)
+
+    try:
         logger.info(f"Job spec: {json.dumps(job_specification, indent=1)}")
-        logger.debug(f"{job_dir=}, {job_dir=}, {output_file=}, {metadata_file=}")
+        logger.debug(f"{job_dir=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification["process_graph"]
 
         try:
@@ -345,182 +338,110 @@ def run_job(
         tracer = DryRunDataTracer()
         logger.debug("Starting process graph evaluation")
         pg_copy = deepcopy(process_graph)
+        settings = dataclasses.replace(
+            settings,
+            provider={
+                "name": "VITO",
+                "description": "This data was processed on an openEO backend maintained by VITO.",
+                "roles": ["processor"],
+                "processing:facility": "openEO Geotrellis backend",
+                "processing:software": {"Geotrellis backend": __version__},
+                "processing:expression": {"format": "openeo", "expression": pg_copy},
+            },
+        )
         result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
         logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
+    except Exception:
+        finalize.write_failure_metadata(metadata_file=metadata_file, settings=settings, hooks=hooks)
+        raise
 
-        results = wrap_evaluation_result(result, job_specification=job_specification)
+    finalize.finalize_job(
+        result,
+        tracer=tracer,
+        process_graph=pg_copy,
+        job_specification=job_specification,
+        job_dir=job_dir,
+        output_file=output_file,
+        metadata_file=metadata_file,
+        settings=settings,
+        hooks=hooks,
+        workspace_repository=backend_config_workspace_repository,
+    )
 
-        global_metadata_attributes = {
-            "title": job_specification.get("title", ""),
-            "description": job_specification.get("description", ""),
-            "institution": f"{get_backend_config().processing_facility} - {get_backend_config().capabilities_backend_version}",
-        }
 
-        ml_model_metadata = None
+def _build_job_results_settings(
+    *, job_options: dict, stac11_mode: bool, omit_derived_from_links: bool, max_soft_errors_ratio: float
+) -> JobResultsSettings:
+    backend_config = get_backend_config()
+    return JobResultsSettings(
+        job_id=get_job_id(default="unknown-job"),
+        stac11_mode=stac11_mode,
+        omit_derived_from_links=omit_derived_from_links,
+        detailed_asset_metadata=job_options.get("detailed_asset_metadata", True),
+        concurrent_save_results=int(job_options.get("concurrent-save-results", 1)),
+        remove_exported_assets=job_options.get("remove-exported-assets", False),
+        export_workspace_enable_merge=job_options.get("export-workspace-enable-merge", True),
+        max_soft_errors_ratio=max_soft_errors_ratio,
+        institution=f"{backend_config.processing_facility} - {backend_config.capabilities_backend_version}",
+        processing_facility="VITO - SPARK",  # TODO make configurable
+        processing_software="openeo-geotrellis-" + __version__,
+        provider={},  # filled in once the process graph is available, see run_job
+        job_local_href_format=backend_config.job_local_href_format,
+        s3_bucket_name=backend_config.s3_bucket_name,
+        gdalinfo_from_file=backend_config.gdalinfo_from_file,
+        gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
+        item_collection_glob=get_stac_item_collection_filename(pg_node_id="*"),
+    )
 
-        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
-        result_metadata = _assemble_result_metadata(
-            tracer=tracer,
-            result=results[0],
-            job_dir=job_dir,
-            unique_process_ids=unique_process_ids,
-            apply_gdal=False,
-            asset_metadata={},
-            ml_model_metadata=ml_model_metadata,
-            is_item=stac11_mode,
-        )
-        # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file=metadata_file, stac11_mode=stac11_mode)
+class GeoPySparkJobResultsHooks:
+    """
+    The GeoPySpark-specific half of finalizing a batch job result: the JVM
+    tracker, deployment-specific branching (kube vs. YARN, s3proxy, FUSE,
+    CARD4L) and GeoPySpark error formatting.
 
-        from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used
+    See `openeogeotrellis.job_results.settings.JobResultsHooks`.
+    """
 
-        for result in results:
-            result.options["batch_mode"] = True
-            result.options["use_s3proxy"] = should_proxy_be_used()
-            result.options["s3_bucket"] = os.environ.get("SWIFT_BUCKET")
-            if result.options["use_s3proxy"]:
-                if not result.options["s3_bucket"]:
-                    logger.warning("use_s3proxy is active but no S3 bucket is configured; disabling use_s3proxy")
-                    result.options["use_s3proxy"] = False
-                else:
-                    result.options["s3_client"] = S3ClientBuilder.from_bucket(result.options["s3_bucket"])
-            result.options["file_metadata"] = {**global_metadata_attributes, **result.options.get("file_metadata", {})}
-            if result.options.get("sample_by_feature"):
-                geoms = tracer.get_last_geometry("filter_spatial")
-                if geoms is None:
-                    logger.warning(
-                        "sample_by_feature enabled, but no geometries found. "
-                        "They can be specified using filter_spatial."
-                    )
-                else:
-                    result.options["geometries"] = geoms
-                if result.options.get("geometries") is None:
-                    logger.error(
-                        "sample_by_feature was set, but no geometries provided through filter_spatial. "
-                        "Make sure to provide geometries."
-                    )
-            if isinstance(result, MlModelResult):
-                ml_model_metadata = result.get_model_metadata(str(output_file))
-                logger.info("Extracted ml model metadata from %s" % output_file)
+    def __init__(self, *, job_dir: Path, output_file: Path, dependencies: List[dict]):
+        self._job_dir = job_dir
+        self._output_file = output_file
+        self._dependencies = dependencies
+        self._is_kube_deploy = ConfigParams().is_kube_deploy
+        self._fuse_mount_batchjob_s3_bucket = get_backend_config().fuse_mount_batchjob_s3_bucket
+        self._swift_bucket = os.environ.get("SWIFT_BUCKET")
 
-        extra_links = []
+    def result_grid(self, result: SaveResult):
+        return batch_job_metadata.result_grid(result)
 
-        def result_write_assets(result_arg: SaveResult) -> Tuple[dict, dict]:
-            items = result_arg.write_assets(str(output_file))
-            if isinstance(result_arg, StacSaveResult):
-                stac_href = result_arg.stac_root_local
-                if ConfigParams().is_kube_deploy and not str(stac_href).startswith("s3://"):
-                    stac_href = to_s3_url(str(stac_href).strip("/"))
-                extra_links.append(
-                    {
-                        "href": stac_href,
-                        # https://github.com/radiantearth/stac-spec/blob/master/commons/links.md#relation-types
-                        "rel": "original",
-                        "title": f"Link to original STAC catalog.",
-                        "type": "application/json",
-                    }
-                )
+    def summarize_exception(self, e: Exception) -> str:
+        return batch_job_metadata.summarize_exception(e)
 
-            if items and "assets" not in next(iter(items.values())):  # no "assets" property so assets themselves
-                assets = items
-                logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
-                # TODO: this is here to avoid having to sync changes with openeo-python-driver
-                # it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
-                import uuid
+    def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
+        return batch_job_metadata.get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
 
-                item_id = str(uuid.uuid4())
-                items = {
-                    item_id: {
-                        "id": item_id,
-                        "assets": assets,
-                    }
-                }
+    def prepare_result_options(self, result: SaveResult) -> None:
+        result.options["use_s3proxy"] = should_proxy_be_used()
+        result.options["s3_bucket"] = self._swift_bucket
+        if result.options["use_s3proxy"]:
+            if not result.options["s3_bucket"]:
+                logger.warning("use_s3proxy is active but no S3 bucket is configured; disabling use_s3proxy")
+                result.options["use_s3proxy"] = False
+            else:
+                result.options["s3_client"] = S3ClientBuilder.from_bucket(result.options["s3_bucket"])
 
-            keys = set()
+    def after_assets_written(self, assets_metadata: List[dict], job_dir: Path) -> None:
+        for asset in assets_metadata:
+            href = str(asset["href"])
+            url = urlparse(href)
+            if url.scheme in ["", "file"]:
+                # fusemount could have some delay to make files accessible, so poll a bit:
+                asset_path = get_abs_path_of_asset(url.path, job_dir)
+                wait_till_path_available(asset_path)
+            add_permissions_with_failsafe(Path(asset["href"]), stat.S_IWGRP)
+        logger.info(f"wrote {len(assets_metadata)} assets to {self._output_file}")
 
-            def unique_key(asset_id, href):
-                # try to make the key unique, and backwards compatible if possible
-                if href is not None:
-                    try:
-                        if str(href).startswith("s3://"):
-                            url = urlparse(str(href))
-                            temp_key = str(Path(url.path).relative_to(output_file.parent))
-                        else:
-                            hrefPath = Path(str(href))
-                            if hrefPath.is_absolute():
-                                temp_key = str(hrefPath.relative_to(Path(str(output_file)).parent))
-                            else:
-                                temp_key = str(hrefPath)
-                    except ValueError as e:
-                        url = urlparse(str(href))
-                        temp_key = url.path.split("/")[-1]
-                else:
-                    temp_key = asset_id
-                counter = 0
-                while temp_key in keys:
-                    temp_key = f"{asset_id}_{counter}"
-                    counter += 1
-                keys.add(temp_key)
-                return temp_key
-
-            assets = {
-                unique_key(asset_key, asset.get("href", None)): asset
-                for item in items.values()
-                for asset_key, asset in item.get("assets", {}).items()
-            }
-            return assets, items
-
-        concurrent_save_results = int(job_options.get("concurrent-save-results", 1))
-        if concurrent_save_results == 1:
-            assets_metadata, results_items = unzip(*map(result_write_assets, results))
-        elif concurrent_save_results > 1:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_save_results) as executor:
-                futures = []
-                for result in results:
-                    futures.append(executor.submit(result_write_assets, result))
-
-                for _ in concurrent.futures.as_completed(futures):
-                    continue
-            assets_metadata, results_items = unzip(*map(lambda f: f.result(), futures))
-        else:
-            raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
-        assets_metadata = list(assets_metadata)
-
-        # Flatten all STAC items across all results for use in metadata assembly.
-        all_result_items = [item for result_items in results_items for item in result_items.values()]
-
-        if stac11_mode:
-            # TODO: more structural way to keep track of "derived_from" item_collection paths (instead of globbing a path)?
-            for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
-                extra_links.append(
-                    AnnotatedDict(
-                        {
-                            "rel": "derived_from",
-                            "href": href_from_job_local_path(stac_item_collection_path.absolute()),
-                            "type": "application/geo+json",
-                            ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
-                        }
-                    ).annotate(copy_to_item=True)
-                )
-
-        # flattens items for each results into one list
-        items = [item for result in results_items for item in result.values()]
-
-        for the_assets_metadata in assets_metadata:
-            for name, asset in the_assets_metadata.items():
-                href = str(asset["href"])
-                url = urlparse(href)
-                if url.scheme in ["", "file"]:
-                    file_path = url.path
-                    # fusemount could have some delay to make files accessible, so poll a bit:
-                    asset_path = get_abs_path_of_asset(file_path, job_dir)
-                    wait_till_path_available(asset_path)
-                add_permissions_with_failsafe(Path(asset["href"]), stat.S_IWGRP)
-            logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-
-        if any(dependency["card4l"] for dependency in dependencies):  # TODO: clean this up
+        if any(dependency["card4l"] for dependency in self._dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
 
             s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
@@ -529,7 +450,7 @@ def run_job(
             max_delay_secs = 600
 
             card4l_source_locations = [
-                dependency["source_location"] for dependency in dependencies if dependency["card4l"]
+                dependency["source_location"] for dependency in self._dependencies if dependency["card4l"]
             ]
 
             for source_location in set(card4l_source_locations):
@@ -560,200 +481,40 @@ def run_job(
                     else:
                         raise e
 
-            _transform_stac_metadata(job_dir)
+            batch_job_metadata.transform_stac_metadata(job_dir)
 
-        # this is subtle: result now points to the last of possibly several results (#295); it corresponds to
-        # the terminal save_result node of the process graph
-        if "file_metadata" in result.options:
-            result.options["file_metadata"]["providers"] = [
-                {
-                    "name": "VITO",
-                    "description": "This data was processed on an openEO backend maintained by VITO.",
-                    "roles": ["processor"],
-                    "processing:facility": "openEO Geotrellis backend",
-                    "processing:software": {"Geotrellis backend": __version__},
-                    "processing:expression": {"format": "openeo", "expression": pg_copy},
-                }
-            ]
+    def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:
+        return localize_s3_asset(href, job_dir)
 
-        assets_for_result_metadata = (
-            {
-                item_key: item
-                for result_item_metadata in list(results_items)
-                for item_key, item in result_item_metadata.items()
-            }
-            if stac11_mode
-            else {
-                # TODO: flattened instead of per-result, clean this up?
-                asset_key: asset_metadata
-                for result_assets_metadata in assets_metadata
-                for asset_key, asset_metadata in result_assets_metadata.items()
-            }
-        )
-        result_metadata = _assemble_result_metadata(
-            tracer=tracer,
-            result=result,
-            job_dir=job_dir,
-            unique_process_ids=unique_process_ids,
-            apply_gdal=False,
-            asset_metadata=assets_for_result_metadata,
-            ml_model_metadata=ml_model_metadata,
-            is_item=stac11_mode,
-            result_items=all_result_items,
-        )
-        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        # TODO: avoid writing non-tracker metadata in `tracker_metadata`
-        tracker_metadata["links"].extend(extra_links)
-        if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
-            soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
-            if soft_errors > max_soft_errors_ratio:
-                raise ValueError(f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})")
+    def output_href(self, href: str) -> str:
+        if self._is_kube_deploy:
+            return to_s3_url(str(href).strip("/"))
+        return href
 
-        meta = (
-            {**result_metadata, **tracker_metadata, **{"items": items}}
-            if stac11_mode
-            else {**result_metadata, **tracker_metadata}
-        )
-        write_metadata(meta, metadata_file=metadata_file, stac11_mode=stac11_mode)
-        logger.debug("Starting GDAL-based retrieval of asset metadata")
+    def publish_metadata_file(self, metadata_file: Path) -> None:
+        add_permissions(metadata_file, stat.S_IWGRP)
+        if self._is_kube_deploy and not self._fuse_mount_batchjob_s3_bucket:
+            s3_instance = S3ClientBuilder.from_bucket(self._swift_bucket)
+            # asset files are already uploaded by Scala code TODO: this is not generally true e.g. assets generated by Python
+            s3_instance.upload_file(str(metadata_file), self._swift_bucket, str(metadata_file).strip("/"))
 
-        assets_for_result_metadata = (
-            {
-                item_key: item
-                for result_item_metadata in list(results_items)
-                for item_key, item in result_item_metadata.items()
-            }
-            if stac11_mode
-            else {
-                # TODO: flattened instead of per-result, clean this up?
-                asset_key: asset_metadata
-                for result_assets_metadata in assets_metadata
-                for asset_key, asset_metadata in result_assets_metadata.items()
-            }
-        )
-        result_metadata = _assemble_result_metadata(
-            tracer=tracer,
-            result=result,
-            job_dir=job_dir,
-            unique_process_ids=unique_process_ids,
-            apply_gdal=job_options.get("detailed_asset_metadata", True),
-            asset_metadata=assets_for_result_metadata,
-            ml_model_metadata=ml_model_metadata,
-            is_item=stac11_mode,
-            result_items=all_result_items,
-        )
-
-        assert len(results) == len(assets_metadata)
-        assert len(results) == len(results_items)
-        for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
-            export_result_to_workspaces(
-                result,
-                result_metadata,
-                stac11_mode=stac11_mode,
-                workspace_repository=backend_config_workspace_repository,
-                job_id=get_job_id(default="unknown-job"),
-                result_assets_metadata=result_assets_metadata,
-                result_items_metadata=result_items_metadata,
-                job_dir=job_dir,
-                remove_exported_assets=job_options.get("remove-exported-assets", False),
-                enable_merge=job_options.get("export-workspace-enable-merge", True),
-                omit_derived_from_links=omit_derived_from_links,
-                attach_derived_from_document=stac11_mode,
-                usage_metadata=_get_tracker_metadata,
-                copy_auxiliary_links=_copy_auxiliary_links,
-            )
-    finally:
-        if len(tracker_metadata) == 0:
-            tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        meta = (
-            {**result_metadata, **tracker_metadata, **{"items": items}}
-            if stac11_mode
-            else {**result_metadata, **tracker_metadata}
-        )
-        write_metadata(meta, metadata_file=metadata_file, stac11_mode=stac11_mode)
-
-
-def write_metadata(metadata: dict, metadata_file: Path, *, stac11_mode: bool):
-    def log_asset_hrefs(context: str):
-        if stac11_mode:
-            items = {item["id"]: item for item in metadata.get("items", [])}
-            asset_hrefs = {
-                item_key + ", " + asset_key: asset.get("href")
-                for item_key, item in items.items()
-                for asset_key, asset in item.get("assets").items()
-            }
-            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
-        else:
-            asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
-            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
-
-    log_asset_hrefs("input")
-    out_metadata = metadata
-    if ConfigParams().is_kube_deploy:
-        out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
-    log_asset_hrefs("output")
-
-    if stac11_mode:
-        out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
-
-        for auxiliary_link in _copy_auxiliary_links(
-            # TODO #1490 eliminate the lru hack here?
-            auxiliary_links=BadlyHashable(out_metadata.get("auxiliary_links", [])),
-            job_dir=metadata_file.parent,  # TODO: ugly way to get job_dir
-            for_export_workspace=False,
-        ):
-            for item in out_metadata.get("items", []):
-                item.setdefault("links", []).append(auxiliary_link)
-
-        for link in (k for k in out_metadata.get("links", []) if AnnotatedDict.get_annotation(k, "copy_to_item")):
-            for item in out_metadata.get("items", []):
-                item.setdefault("links", []).append(link)
-
-    with open(metadata_file, "w") as f:
-        json.dump(out_metadata, f, default=json_default)
-    add_permissions(metadata_file, stat.S_IWGRP)
-    logger.info("wrote metadata to %s" % metadata_file)
-
-    if ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket:
-        from openeogeotrellis.utils import S3ClientBuilder
-
-        bucket = os.environ.get("SWIFT_BUCKET")
-        s3_instance = S3ClientBuilder.from_bucket(bucket)
-
-        # asset files are already uploaded by Scala code TODO: this is not generally true e.g. assets generated by Python
-        s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
-
-
-@lru_cache
-def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path, for_export_workspace: bool) -> List[dict]:
-    """files should be downloadable from the web app driver"""
-    # enforce keyword arguments because distinct argument patterns lead to separate cache entries in lru_cache
-
-    copied_auxiliary_links = []
-
-    for auxiliary_link in auxiliary_links.target:
-        auxiliary_file = Path(auxiliary_link["href"])
-
+    def publish_auxiliary_file(self, path: Path, job_dir: Path, *, for_export_workspace: bool) -> str:
+        """files should be downloadable from the web app driver"""
         # TODO: add proper cross-region support
-        if ConfigParams().is_kube_deploy and not for_export_workspace:
-            from openeogeotrellis.utils import S3ClientBuilder
-
+        if self._is_kube_deploy and not for_export_workspace:
             job_bucket = get_backend_config().s3_bucket_name
-            auxiliary_prefix = str(job_dir / auxiliary_file.name).strip("/")
+            auxiliary_prefix = str(job_dir / path.name).strip("/")
             s3_instance = S3ClientBuilder.from_bucket(job_bucket)
-            s3_instance.upload_file(str(auxiliary_file), job_bucket, auxiliary_prefix)
+            s3_instance.upload_file(str(path), job_bucket, auxiliary_prefix)
             downloadable_href = to_s3_url(auxiliary_prefix, job_bucket)
-            logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
+            logger.debug(f"uploaded {path} to {downloadable_href}")
         else:
-            downloadable_file = job_dir / auxiliary_file.name
-            shutil.copy(auxiliary_file, downloadable_file)
+            downloadable_file = job_dir / path.name
+            shutil.copy(path, downloadable_file)
             add_permissions(downloadable_file, stat.S_IWGRP | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-            logger.debug(f"copied {auxiliary_file} to {downloadable_file}")
+            logger.debug(f"copied {path} to {downloadable_file}")
             downloadable_href = f"file://{downloadable_file}"
-
-        copied_auxiliary_links.append(dict(auxiliary_link, href=downloadable_href))
-
-    return copied_auxiliary_links
+        return downloadable_href
 
 
 def _get_env_var_or_fail(env_var: str) -> str:
