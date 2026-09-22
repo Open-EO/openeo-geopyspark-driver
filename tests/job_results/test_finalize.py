@@ -7,7 +7,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, SaveResult
 
 from openeogeotrellis.job_results.finalize import finalize_job, write_failure_metadata
-from openeogeotrellis.job_results.settings import JobResultsSettings, ResultGrid
+from openeogeotrellis.job_results.settings import JobResultsSettings, ResultCubeMetadata
 
 
 def _settings(**overrides) -> JobResultsSettings:
@@ -40,9 +40,9 @@ class _RecordingHooks:
     def __init__(self):
         self.calls: List[tuple] = []
 
-    def result_grid(self, result: SaveResult) -> ResultGrid:
-        self.calls.append(("result_grid", result))
-        return ResultGrid(epsg=None, instruments=[])
+    def result_cube_metadata(self, result: SaveResult) -> ResultCubeMetadata:
+        self.calls.append(("result_cube_metadata", result))
+        return ResultCubeMetadata(epsg=None, instruments=[])
 
     def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
         self.calls.append(("usage_metadata", omit_derived_from_links))

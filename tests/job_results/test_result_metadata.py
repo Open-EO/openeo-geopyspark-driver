@@ -8,7 +8,7 @@ from openeogeotrellis.job_results.result_metadata import (
     convert_asset_outputs_to_s3_urls,
     href_from_job_local_path,
 )
-from openeogeotrellis.job_results.settings import JobResultsSettings, ResultGrid
+from openeogeotrellis.job_results.settings import JobResultsSettings, ResultCubeMetadata
 
 
 def _settings(**overrides) -> JobResultsSettings:
@@ -44,7 +44,7 @@ def test_assemble_result_metadata_without_gdal():
         job_dir=Path("/tmp/job-123"),
         unique_process_ids={"load_collection", "save_result"},
         apply_gdal=False,
-        result_grid=lambda r: ResultGrid(epsg=4326, instruments=["msi"]),
+        result_cube_metadata=lambda r: ResultCubeMetadata(epsg=4326, instruments=["msi"]),
         settings=_settings(),
         summarize_exception=lambda e: str(e),
         extract_asset_metadata=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not be called")),
@@ -68,7 +68,7 @@ def test_assemble_result_metadata_null_result_has_no_assets():
         job_dir=Path("/tmp/job-123"),
         unique_process_ids=set(),
         apply_gdal=False,
-        result_grid=lambda r: ResultGrid(epsg=None, instruments=[]),
+        result_cube_metadata=lambda r: ResultCubeMetadata(epsg=None, instruments=[]),
         settings=_settings(),
         summarize_exception=lambda e: str(e),
         extract_asset_metadata=lambda *a, **kw: None,
@@ -91,7 +91,7 @@ def test_assemble_result_metadata_apply_gdal_calls_extract_asset_metadata():
         job_dir=Path("/tmp/job-123"),
         unique_process_ids=set(),
         apply_gdal=True,
-        result_grid=lambda r: ResultGrid(epsg=None, instruments=[]),
+        result_cube_metadata=lambda r: ResultCubeMetadata(epsg=None, instruments=[]),
         settings=_settings(),
         summarize_exception=lambda e: str(e),
         extract_asset_metadata=fake_extract_asset_metadata,
@@ -113,7 +113,7 @@ def test_assemble_result_metadata_apply_gdal_error_is_summarized(caplog):
         job_dir=Path("/tmp/job-123"),
         unique_process_ids=set(),
         apply_gdal=True,
-        result_grid=lambda r: ResultGrid(epsg=None, instruments=[]),
+        result_cube_metadata=lambda r: ResultCubeMetadata(epsg=None, instruments=[]),
         settings=_settings(),
         summarize_exception=lambda e: f"summarized: {e}",
         extract_asset_metadata=failing_extract_asset_metadata,

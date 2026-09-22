@@ -5,9 +5,6 @@ Enforces that `openeogeotrellis.job_results` stays self-contained:
   `geopyspark`, or call `get_jvm()`;
 - imports inside the package are relative;
 - nothing reads `get_backend_config()` or `ConfigParams()`.
-
-See ``batch_job_decoupling/02-target-architecture.md`` for the rules this
-test enforces.
 """
 import ast
 import shutil

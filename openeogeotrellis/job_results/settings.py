@@ -25,9 +25,9 @@ class JobResultsSettings:
     export_workspace_enable_merge: bool
     max_soft_errors_ratio: float
     institution: str  # "<processing_facility> - <backend_version>"
-    processing_facility: str  # today "VITO - SPARK"
-    processing_software: str  # today "openeo-geotrellis-<version>"
-    provider: dict  # today's providers[] entry
+    processing_facility: str
+    processing_software: str
+    provider: dict  # a STAC Item/Collection `providers[]` entry
     job_local_href_format: str
     s3_bucket_name: Optional[str]
     gdalinfo_from_file: bool
@@ -36,7 +36,9 @@ class JobResultsSettings:
 
 
 @dataclass(frozen=True)
-class ResultGrid:
+class ResultCubeMetadata:
+    """Metadata only obtainable from the result's underlying (JVM-backed) data cube."""
+
     epsg: Optional[int]
     instruments: List[str]
 
@@ -50,20 +52,38 @@ class JobResultsHooks(Protocol):
     implementation; unit tests use a recording fake instead.
     """
 
-    def result_grid(self, result: SaveResult) -> ResultGrid: ...
+    def result_cube_metadata(self, result: SaveResult) -> ResultCubeMetadata:
+        """Read the CRS and instruments off the result's underlying data cube."""
+        ...
 
-    def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict: ...  # {usage, links, auxiliary_links}
+    def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
+        """Return the job tracker's usage/billing metadata: ``{usage, links, auxiliary_links}``."""
+        ...
 
-    def prepare_result_options(self, result: SaveResult) -> None: ...  # s3proxy / s3_client / s3_bucket
+    def prepare_result_options(self, result: SaveResult) -> None:
+        """Fill in engine-specific ``result.options`` (s3proxy, s3 client, s3 bucket) before writing assets."""
+        ...
 
-    def after_assets_written(self, assets_metadata: List[dict], job_dir: Path) -> None: ...  # FUSE wait, permissions, CARD4L
+    def after_assets_written(self, assets_metadata: List[dict], job_dir: Path) -> None:
+        """Run once assets are physically written: FUSE availability wait, permissions, CARD4L."""
+        ...
 
-    def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]: ...  # S3 asset -> local file for gdalinfo
+    def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:
+        """Download a (possibly S3) asset href to a local file for gdalinfo, or ``None`` if not needed."""
+        ...
 
-    def output_href(self, href: str) -> str: ...  # kube: to_s3_url, else identity
+    def output_href(self, href: str) -> str:
+        """Turn a local job-dir path into the href to expose externally (e.g. kube: ``to_s3_url``, else identity)."""
+        ...
 
-    def publish_metadata_file(self, metadata_file: Path) -> None: ...  # permissions + upload
+    def publish_metadata_file(self, metadata_file: Path) -> None:
+        """Fix up permissions on and upload ``job_metadata.json``."""
+        ...
 
-    def publish_auxiliary_file(self, path: Path, job_dir: Path, *, for_export_workspace: bool) -> str: ...
+    def publish_auxiliary_file(self, path: Path, job_dir: Path, *, for_export_workspace: bool) -> str:
+        """Publish an auxiliary file (e.g. a derived_from item collection) and return its href."""
+        ...
 
-    def summarize_exception(self, e: Exception) -> str: ...  # log text only
+    def summarize_exception(self, e: Exception) -> str:
+        """Return a log-friendly one-line summary of an exception raised while assembling metadata."""
+        ...

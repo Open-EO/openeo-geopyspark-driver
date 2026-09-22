@@ -23,7 +23,7 @@ from openeo_driver.utils import temporal_extent_union
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
-from .settings import JobResultsSettings, ResultGrid
+from .settings import JobResultsSettings, ResultCubeMetadata
 from .util import to_s3_url
 
 logger = logging.getLogger(__name__)
@@ -197,7 +197,7 @@ def assemble_result_metadata(
     job_dir: Path,
     unique_process_ids: Set[str],
     apply_gdal: bool,
-    result_grid: Callable[[SaveResult], ResultGrid],
+    result_cube_metadata: Callable[[SaveResult], ResultCubeMetadata],
     settings: JobResultsSettings,
     summarize_exception: Callable[[Exception], str],
     extract_asset_metadata: Callable[[Dict[str, Any], Dict[str, Any], Path, Optional[int]], None],
@@ -208,9 +208,9 @@ def assemble_result_metadata(
 ) -> dict:
     metadata = extract_result_metadata(tracer, stac_items=result_items)
 
-    grid = result_grid(result)
-    epsg = grid.epsg
-    instruments = grid.instruments
+    cube_metadata = result_cube_metadata(result)
+    epsg = cube_metadata.epsg
+    instruments = cube_metadata.instruments
 
     if not isinstance(result, NullResult):
         if apply_gdal:

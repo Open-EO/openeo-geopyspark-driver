@@ -11,13 +11,13 @@ from openeo.util import dict_no_none
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.job_results.settings import ResultGrid
+from openeogeotrellis.job_results.settings import ResultCubeMetadata
 from openeogeotrellis.utils import get_jvm, map_optional
 
 logger = logging.getLogger(__name__)
 
 
-def result_grid(result: SaveResult) -> ResultGrid:
+def result_cube_metadata(result: SaveResult) -> ResultCubeMetadata:
     def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
         # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
         return geotrellis_proj4_crs.epsgCode().getOrElse(None)
@@ -34,7 +34,7 @@ def result_grid(result: SaveResult) -> ResultGrid:
         epsg = None
         instruments = []
 
-    return ResultGrid(epsg=epsg, instruments=instruments)
+    return ResultCubeMetadata(epsg=epsg, instruments=instruments)
 
 
 def summarize_exception(e: Exception) -> str:

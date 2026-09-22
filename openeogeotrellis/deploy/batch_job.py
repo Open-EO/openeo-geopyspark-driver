@@ -411,8 +411,8 @@ class GeoPySparkJobResultsHooks:
         self._fuse_mount_batchjob_s3_bucket = get_backend_config().fuse_mount_batchjob_s3_bucket
         self._swift_bucket = os.environ.get("SWIFT_BUCKET")
 
-    def result_grid(self, result: SaveResult):
-        return batch_job_metadata.result_grid(result)
+    def result_cube_metadata(self, result: SaveResult):
+        return batch_job_metadata.result_cube_metadata(result)
 
     def summarize_exception(self, e: Exception) -> str:
         return batch_job_metadata.summarize_exception(e)
