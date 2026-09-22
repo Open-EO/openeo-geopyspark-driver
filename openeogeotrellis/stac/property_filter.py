@@ -60,6 +60,13 @@ class PropertyFilter:
                 yield property_name, operator, value
 
     @staticmethod
+    def _strip_properties_prefix(property_name: str) -> str:
+        """Strip a leading "properties." prefix, if any, e.g. as used to satisfy STAC APIs
+        that require it in CQL2 property references (see #1690)."""
+        prefix = "properties."
+        return property_name[len(prefix) :] if property_name.startswith(prefix) else property_name
+
+    @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
@@ -81,7 +88,10 @@ class PropertyFilter:
         that can be used to check if properties match the filter conditions.
         """
         conditions = [
-            (property_name, self._build_callable(operator, value))
+            # Strip a "properties." prefix (if any) as `pystac.Item.properties` is always unprefixed,
+            # while the filter's property name might carry it (e.g. to satisfy STAC APIs that
+            # require it in CQL2 property references, see #1690).
+            (self._strip_properties_prefix(property_name), self._build_callable(operator, value))
             for property_name, operator, value in self._iter_literal_matches()
         ]
 
