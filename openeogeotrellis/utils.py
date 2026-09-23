@@ -48,18 +48,16 @@ from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.job_results import util as job_results_util
 from openeogeotrellis.util.runtime import get_job_id
 
 # TODO split up this kitchen sink module into more focused modules
 
 
 logger = logging.getLogger(__name__)
-
-GDALINFO_SUFFIX = "_gdalinfo.json"
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
@@ -73,6 +71,7 @@ def log_memory(function):
 
 def get_jvm() -> JVMView:
     import geopyspark
+
     pysc = geopyspark.get_spark_context()
     gateway = pysc._gateway
     assert isinstance(gateway, ClientServer), f"Java logging assumes ThreadLocals behave; got a {type(gateway)} instead"
@@ -298,29 +297,11 @@ def download_s3_directory(s3_url: str, output_dir: str):
 
 
 
-def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
+def to_s3_url(file_or_dir_name: Union[os.PathLike, str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: move this to openeodriver.integrations.s3?
-
     bucketname = bucketname or get_backend_config().s3_bucket_name
-
-    # See also:
-    # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html
-    #
-    # file_or_dir_name, is actually the S3 key, and it should neither start nor
-    # end with a slash in order to keep the S3 keys and S3 URLs uniform.
-    #
-    # 1) With / at the start we would get weird URLS with a // after bucketname,
-    # like so: s3://my-bucket//path-to-file-or-dir
-    #
-    # 2) Allowing folders to end with a slash just creates confusion.
-    # It keeps things simpler when S3 keys never include a slash at the end.
-    file_or_dir_name = str(file_or_dir_name).strip("/")
-
-    # Keep it robust: bucketname should not contain "/" at all but lets remove
-    # the / just in case, because mistakes are easy to make.
-    bucketname = bucketname.strip("/")
-    return f"s3://{bucketname}/{file_or_dir_name}"
+    return job_results_util.to_s3_url(file_or_dir_name, bucketname)
 
 
 def lonlat_to_mercator_tile_indices(
@@ -758,13 +739,6 @@ def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_
 
     area_difference = ref_geom.symmetric_difference(actual_geom).area
     return area_difference / ref_geom.area < rel_area_tolerance
-
-
-def reproject_geometry(geometry, src_crs, dst_crs):
-    """Kind of like reprojectAsPolygon but the number of points remains the same."""
-
-    transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-    return transform(transformer.transform, geometry)
 
 
 # TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.

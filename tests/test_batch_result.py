@@ -34,10 +34,11 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
-from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+from openeogeotrellis.job_results.result_metadata import extract_result_metadata
 from openeogeotrellis.catalog.collection_metadata import Band
+from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, reproject_geometry
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import GDALINFO_SUFFIX, S3ClientBuilder, equals_approximately, reproject_geometry
+from openeogeotrellis.utils import S3ClientBuilder, equals_approximately
 from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
@@ -1018,6 +1019,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         "job_options": {
             "stac-version": stac_version,
             "remove-exported-assets": remove_original,
+            "export-workspace-enable-merge": False,
         },
     }
 
@@ -1224,7 +1226,10 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
+        },
         "process_graph": process_graph,
     }
 
@@ -1394,6 +1399,7 @@ def test_filepath_per_band(
     try:
         process = {
             "process_graph": process_graph,
+            "job_options": {"export-workspace-enable-merge": False},
         }
         run_job(
             process,
@@ -2357,7 +2363,10 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
+        },
         "process_graph": process_graph,
     }
 
@@ -2574,7 +2583,8 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
-            "stac-version": stac_version
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
         },
     }
 

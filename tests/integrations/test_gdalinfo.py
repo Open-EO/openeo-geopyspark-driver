@@ -1,6 +1,6 @@
 import json
 
-from openeogeotrellis.integrations.gdal import find_gdalinfo_differences
+from openeogeotrellis.job_results.raster_metadata import find_gdalinfo_differences
 from tests.data import get_test_data_file
 
 

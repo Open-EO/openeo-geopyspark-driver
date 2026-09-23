@@ -19,10 +19,10 @@ from openeogeotrellis.utils import (
     map_optional,
     md5_checksum,
     nullcontext,
+    parse_json_from_output,
     single_value,
     stream_s3_binary_file_contents,
     to_s3_url,
-    parse_json_from_output,
     FileChangeWatcher,
     get_jvm,
     to_tuple,
@@ -202,36 +202,16 @@ def test_get_s3_file_contents(mock_s3_bucket, args, expectation):
 @pytest.mark.parametrize(
     ["file_or_folder_path", "bucket_name", "expected_url"],
     [
-        # Slashes at the start and end of the path should be unified:
-        # the S3 key has no slashes at the start or end.
         ("foo", "test-bucket", "s3://test-bucket/foo"),
-        ("foo/", "test-bucket", "s3://test-bucket/foo"),
-        ("/foo", "test-bucket", "s3://test-bucket/foo"),
-        ("/foo/", "test-bucket", "s3://test-bucket/foo"),
-        ("foo/bar", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("foo/bar/", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("/foo/bar", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("/foo/bar/", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("foo/bar/file.txt", "test-bucket", "s3://test-bucket/foo/bar/file.txt"),
         ("/foo/bar/file.txt", "test-bucket", "s3://test-bucket/foo/bar/file.txt"),
-        # Less likely to occur: slashes at the start or end of the bucket name,
-        # but just in case we have small mistakes in the bucket name.
-        ("foo/bar/file.txt", "test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
-        ("foo/bar/file.txt", "/test-bucket", "s3://test-bucket/foo/bar/file.txt"),
-        ("foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
-        ("/foo/bar/file.txt", "test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
-        ("/foo/bar/file.txt", "/test-bucket", "s3://test-bucket/foo/bar/file.txt"),
-        ("/foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
     ],
 )
-def test_to_s3_url(file_or_folder_path, bucket_name, expected_url):
-    actual1 = to_s3_url(file_or_folder_path, bucketname=bucket_name)
-    assert actual1 == expected_url
-
-    # Default bucket name goes through config
+def test_to_s3_url_default_bucket_from_config(file_or_folder_path, bucket_name, expected_url):
+    # explicit-bucket cases are covered by tests/job_results/test_util.py;
+    # this only covers the fallback to the config's bucket name.
     with gps_config_overrides(s3_bucket_name=bucket_name):
-        actual2 = to_s3_url(file_or_folder_path)
-        assert actual2 == expected_url
+        actual = to_s3_url(file_or_folder_path)
+        assert actual == expected_url
 
 
 def test_callsite():
@@ -327,3 +307,5 @@ def test_md5_checksum(tmp_path):
         f.write(b"hello world")
 
     assert md5_checksum(file) == "5eb63bbbe01eeed093cb22bb8f5acdc3"
+
+
