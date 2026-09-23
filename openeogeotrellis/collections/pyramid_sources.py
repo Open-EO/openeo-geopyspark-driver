@@ -2,6 +2,7 @@ import dataclasses
 import logging
 import re
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 import py4j.protocol
@@ -21,8 +22,6 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.utils import to_projected_polygons
-
-# Note: intentionally NOT importing `datetime` here — see build_creo_pyramid() below.
 
 logger = logging.getLogger(__name__)
 
