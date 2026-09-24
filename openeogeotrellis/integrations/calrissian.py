@@ -55,7 +55,7 @@ except ImportError:
 
 
 _log = logging.getLogger(__name__)
-
+keep_as_url_prefix = "<keep_as_url>"  # Magix prefix for the moment to allow debugging on staging
 
 class CalrissianLaunchConfigBuilder:
     """
@@ -294,7 +294,11 @@ class CwLSource:
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
         # noinspection HttpUrlsUsage
-        if content.lower().startswith("http://") or content.lower().startswith("https://"):
+        if (
+            content.lower().startswith("http://")
+            or content.lower().startswith("https://")
+            or content.lower().startswith(keep_as_url_prefix)
+        ):
             return cls.from_url(content)
         elif (
             content.lower().endswith(".cwl")
@@ -319,7 +323,7 @@ class CwLSource:
 
     @classmethod
     def from_url(cls, url: str) -> CwLSource:
-        resp = requests.get(url)
+        resp = requests.get(url.replace(keep_as_url_prefix, "", 1))
         resp.raise_for_status()
         return cls(content=resp.text, source=url)
 
@@ -827,9 +831,9 @@ class CalrissianJobLauncher:
         """
         # Input staging
         source = cwl_source.get_source()
-        if source and (str(source).lower().startswith("http://") or str(source).lower().startswith("https://")):
+        if source and (str(source).lower().startswith(keep_as_url_prefix)):
             # This allows to keep relative paths working.
-            cwl_path = source
+            cwl_path = source.replace(keep_as_url_prefix, "", 1)
         else:
             input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
             self.launch_job_and_wait(manifest=input_staging_manifest)
