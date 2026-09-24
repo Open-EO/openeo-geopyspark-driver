@@ -492,7 +492,10 @@ class CalrissianJobLauncher:
         suffix = generate_unique_id(date_prefix=False)[:8]
         return f"{self._name_base}-{infix}-{suffix}"
 
-    def create_input_staging_job_manifest(self, cwl_source: CwLSource) -> Tuple[kubernetes.client.V1Job, str]:
+    _CWL_SOURCE_SECRET_MOUNT_PATH = "/calrissian/cwl-source"
+    _CWL_SOURCE_SECRET_KEY = "content.b64"
+
+    def create_input_staging_job_manifest(self, cwl_source: CwLSource) -> Tuple[kubernetes.client.V1Job, str, str]:
         """
         Create a k8s manifest for a Calrissian input staging job.
 
@@ -500,6 +503,8 @@ class CalrissianJobLauncher:
         :return: Tuple of
             - k8s job manifest
             - path to the CWL file in the input volume.
+            - name of the k8s Secret holding the (base64 encoded) CWL content, to be cleaned up by the caller
+              once the staging job has finished.
         """
         max_memory_estimate = cwl_source.estimate_max_memory_usage()
         max_executor_or_driver_memory = get_backend_config().max_executor_or_driver_memory
@@ -515,7 +520,9 @@ class CalrissianJobLauncher:
 
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
-        # Serialize CWL content to string that is safe to pass as command line argument
+        # Serialize CWL content to a string, and pass it through a Secret volume mount instead of a command line
+        # argument or env var: large CWL/argument documents can otherwise blow past the kernel's exec() argument
+        # size limit (ARG_MAX), causing `exec /bin/sh: argument list too long`.
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
         # TODO #1008 cleanup procedure of these CWL files?
         cwl_path = str(Path(self._volume_input.mount_path) / f"{name}.cwl")
@@ -525,17 +532,37 @@ class CalrissianJobLauncher:
 
         S3ClientBuilder.from_bucket(self._s3_bucket).head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
 
+        secret_name = f"{name}-src"
+        secret_volume_name = "cwl-source"
+        kubernetes.client.CoreV1Api().create_namespaced_secret(
+            namespace=self._namespace,
+            body=kubernetes.client.V1Secret(
+                metadata=kubernetes.client.V1ObjectMeta(
+                    name=secret_name,
+                    namespace=self._namespace,
+                    labels={"correlation_id": self._calrissian_launch_config.correlation_id},
+                ),
+                string_data={self._CWL_SOURCE_SECRET_KEY: cwl_serialized},
+            ),
+        )
+
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
             image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["/bin/sh"],
-            args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
+            args=[
+                "-c",
+                f"set -euxo pipefail; base64 -d {self._CWL_SOURCE_SECRET_MOUNT_PATH}/{self._CWL_SOURCE_SECRET_KEY} > {cwl_path}",
+            ],
             volume_mounts=[
                 kubernetes.client.V1VolumeMount(
                     name=self._volume_input.name, mount_path=self._volume_input.mount_path, read_only=False
-                )
+                ),
+                kubernetes.client.V1VolumeMount(
+                    name=secret_volume_name, mount_path=self._CWL_SOURCE_SECRET_MOUNT_PATH, read_only=True
+                ),
             ],
             resources=kubernetes.client.V1ResourceRequirements(**self._HARD_CODED_STAGE_JOB_RESOURCES),
         )
@@ -559,7 +586,14 @@ class CalrissianJobLauncher:
                                     claim_name=self._volume_input.claim_name,
                                     read_only=False,
                                 ),
-                            )
+                            ),
+                            kubernetes.client.V1Volume(
+                                name=secret_volume_name,
+                                secret=kubernetes.client.V1SecretVolumeSource(
+                                    secret_name=secret_name,
+                                    default_mode=0o444,
+                                ),
+                            ),
                         ],
                     ),
                     metadata=kubernetes.client.V1ObjectMeta(
@@ -570,7 +604,13 @@ class CalrissianJobLauncher:
             ),
         )
 
-        return manifest, cwl_path
+        return manifest, cwl_path, secret_name
+
+    def _cleanup_input_staging_secret(self, secret_name: str) -> None:
+        try:
+            kubernetes.client.CoreV1Api().delete_namespaced_secret(name=secret_name, namespace=self._namespace)
+        except Exception as e:
+            _log.warning(f"Exception when cleaning up input staging secret {secret_name}", exc_info=e)
 
     def create_cwl_job_manifest(
         self,
@@ -835,16 +875,24 @@ class CalrissianJobLauncher:
             # This allows to keep relative paths working.
             cwl_path = source.replace(keep_as_url_prefix, "", 1)
         else:
-            input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
-            self.launch_job_and_wait(manifest=input_staging_manifest)
+            input_staging_manifest, cwl_path, input_staging_secret_name = self.create_input_staging_job_manifest(
+                cwl_source=cwl_source
+            )
+            try:
+                self.launch_job_and_wait(manifest=input_staging_manifest)
+            finally:
+                self._cleanup_input_staging_secret(input_staging_secret_name)
 
         if isinstance(cwl_arguments, dict):
             cwl_source_arguments = CwLSource.from_string(json.dumps(cwl_arguments))
 
-            input_staging_arguments_manifest, cwl_arguments_path = self.create_input_staging_job_manifest(
-                cwl_source=cwl_source_arguments
+            input_staging_arguments_manifest, cwl_arguments_path, input_staging_arguments_secret_name = (
+                self.create_input_staging_job_manifest(cwl_source=cwl_source_arguments)
             )
-            input_staging_arguments_job = self.launch_job_and_wait(manifest=input_staging_arguments_manifest)
+            try:
+                input_staging_arguments_job = self.launch_job_and_wait(manifest=input_staging_arguments_manifest)
+            finally:
+                self._cleanup_input_staging_secret(input_staging_arguments_secret_name)
             cwl_arguments = [cwl_arguments_path]
 
         # CWL job

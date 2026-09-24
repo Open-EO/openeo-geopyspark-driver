@@ -83,7 +83,7 @@ class TestCalrissianJobLauncher:
         )
 
     def test_create_input_staging_job_manifest(
-        self, generate_unique_id_mock, s3_calrissian_bucket, calrissian_launch_config
+        self, generate_unique_id_mock, s3_calrissian_bucket, k8s_core_v1_api, calrissian_launch_config
     ):
         launcher = CalrissianJobLauncher(
             launch_config=calrissian_launch_config,
@@ -92,11 +92,12 @@ class TestCalrissianJobLauncher:
             s3_bucket=s3_calrissian_bucket,
         )
 
-        manifest, cwl_path = launcher.create_input_staging_job_manifest(
+        manifest, cwl_path, secret_name = launcher.create_input_staging_job_manifest(
             cwl_source=CwLSource.from_string("class: Dummy")
         )
 
         assert cwl_path == "/calrissian/input-data/r-1234-cal-inp-01234567.cwl"
+        assert secret_name == "r-1234-cal-inp-01234567-src"
 
         assert isinstance(manifest, kubernetes.client.V1Job)
         manifest_dict = manifest.to_dict()
@@ -123,7 +124,7 @@ class TestCalrissianJobLauncher:
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
-                                "set -euxo pipefail; echo 'Y2xhc3M6IER1bW15' | base64 -d > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                                "set -euxo pipefail; base64 -d /calrissian/cwl-source/content.b64 > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
                             ],
                             "volume_mounts": [
                                 dirty_equals.IsPartialDict(
@@ -131,6 +132,13 @@ class TestCalrissianJobLauncher:
                                         "mount_path": "/calrissian/input-data",
                                         "name": "calrissian-input-data",
                                         "read_only": False,
+                                    }
+                                ),
+                                dirty_equals.IsPartialDict(
+                                    {
+                                        "mount_path": "/calrissian/cwl-source",
+                                        "name": "cwl-source",
+                                        "read_only": True,
                                     }
                                 ),
                             ],
@@ -145,6 +153,12 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "calrissian-input-data",
                             "persistent_volume_claim": {"claim_name": "calrissian-input-data", "read_only": False},
+                        }
+                    ),
+                    dirty_equals.IsPartialDict(
+                        {
+                            "name": "cwl-source",
+                            "secret": dirty_equals.IsPartialDict({"secret_name": secret_name}),
                         }
                     ),
                 ],
@@ -315,7 +329,9 @@ class TestCalrissianJobLauncher:
     def k8s_secret_api_verify_mocked_sts(self, k8s_core_v1_api, mock_sts):
         def create_namespaced_secret(namespace: str, body: kubernetes.client.V1Secret):
             assert namespace == self.NAMESPACE
-            assert CalrissianLaunchConfigBuilder._ENVIRONMENT_FILE in body.string_data
+            if CalrissianLaunchConfigBuilder._ENVIRONMENT_FILE not in body.string_data:
+                # Not the launch config secret (e.g. an input staging CWL source secret): nothing to verify here.
+                return
             env = yaml.safe_load(body.string_data[CalrissianLaunchConfigBuilder._ENVIRONMENT_FILE])
             for cred_part in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
                 assert cred_part in env
@@ -464,7 +480,7 @@ class TestCalrissianJobLauncher:
 
         with gps_config_overrides(calrissian_config=calrissian_config):
             launcher = CalrissianJobLauncher.from_context()
-            manifest, cwl_path = launcher.create_input_staging_job_manifest(
+            manifest, cwl_path, _secret_name = launcher.create_input_staging_job_manifest(
                 cwl_source=CwLSource.from_string("class: Dummy")
             )
 
