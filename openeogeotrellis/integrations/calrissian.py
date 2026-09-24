@@ -293,9 +293,10 @@ class CwLSource:
 
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
+        prefix = "<keep_as_url>"  # Magix prefix for the moment to allow debugging on staging
         # noinspection HttpUrlsUsage
-        if content.lower().startswith("http://") or content.lower().startswith("https://"):
-            return cls.from_url(content)
+        if content.lower().startswith(prefix + "http://") or content.lower().startswith(prefix + "https://"):
+            return cls.from_url(content.replace(prefix, "", 1))
         elif (
             content.lower().endswith(".cwl")
             or content.lower().endswith(".yaml")
