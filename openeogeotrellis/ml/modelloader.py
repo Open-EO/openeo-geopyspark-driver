@@ -15,6 +15,7 @@ from openeo.util import deep_get
 from openeo_driver.errors import OpenEOApiException, FileNotFoundException
 from openeo_driver.utils import generate_unique_id
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import S3ClientBuilder, set_permissions
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel, ModelArchitecture
@@ -167,7 +168,7 @@ class ModelLoader:
         """
         if use_s3:
             # ML models will be loaded into the executors via the S3a filesystem connector.
-            return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
+            return f"{get_backend_config().ml_models_s3_bucket}/{generate_unique_id(prefix='model')}"
         # ML models will be loaded into the executors via NFS (Network File System).
         # So we require a new directory that all executors from this sync/batch job can access.
         ml_models_dir = gps_batch_jobs.get_job_output_dir("ml_models")
