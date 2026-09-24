@@ -682,7 +682,17 @@ class CalrissianJobLauncher:
             kubernetes.client.V1EnvVar(
                 name="CALRISSIAN_STREAM_LOGS",  # Otherwise calrissian & logshipper streams logs
                 value="NO",
-            )
+            ),
+            kubernetes.client.V1EnvVar(
+                # cwltool stages remote (http/https) File inputs through Python's tempfile module
+                # (e.g. `tempfile.NamedTemporaryFile()`), which defaults to /tmp and ignores
+                # --tmp-outdir-prefix. Since /tmp is not backed by a mounted PVC, calrissian's
+                # KubernetesVolumeBuilder can't bind-mount it into step containers, failing with
+                # "Could not find a persistent volume mounted for ...". Pointing TMPDIR at the
+                # (PVC-backed) tmp-outdir volume keeps such downloads bind-mountable.
+                name="TMPDIR",
+                value=tmp_dir,
+            ),
         ]
         if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
             container_env_vars.append(
