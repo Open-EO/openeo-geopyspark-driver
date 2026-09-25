@@ -48,22 +48,21 @@ from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.sentinel3 import _instant_ms_to_minute
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
-from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.datetime import normalize_temporal_extent, to_datetime_utc
 from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.job_results import items as job_items
 from openeogeotrellis.job_results.util import reproject_geometry
+from openeogeotrellis.util.projection import reproject_cellsize
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
     ensure_executor_logging,
     get_jvm,
     temp_csv_dir,
-    reproject_cellsize,
-    normalize_temporal_extent,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion

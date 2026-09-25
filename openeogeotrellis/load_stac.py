@@ -22,8 +22,9 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.constants import EVAL_ENV_KEY
-from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
-from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons
+from openeogeotrellis.catalog.collection_metadata import GeopysparkCubeMetadata
+from openeogeotrellis.util.datetime import normalize_temporal_extent
+from openeogeotrellis.utils import get_jvm, map_optional, to_projected_polygons
 
 # STAC source resolution / item collection construction
 from openeogeotrellis.stac.extents import (

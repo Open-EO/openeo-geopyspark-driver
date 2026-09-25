@@ -32,7 +32,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
-from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.catalog.collection_metadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import (
     k8s_render_manifest_template,
