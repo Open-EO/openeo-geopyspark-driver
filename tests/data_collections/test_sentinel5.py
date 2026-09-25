@@ -8,12 +8,13 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 import pytest
 import rasterio
 import xarray
+from shapely.geometry.multipolygon import MultiPolygon
 
 from openeogeotrellis.utils import typechecked
 
@@ -353,9 +354,25 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
 # ---------------------------------------------------------------------------
 
 requires_eodata = pytest.mark.skipif(
-    not os.path.exists("/eodata") or not os.listdir("/eodata"),
+    (not os.path.exists("/eodata_CACHE/eodata") or not os.listdir("/eodata_CACHE/eodata"))
+    and (not os.path.exists("/eodata") or not os.listdir("/eodata")),
     reason="requires mounting /eodata.",
 )
+
+
+def fix_eodata_path(path: Union[Path, str]) -> Union[Path, str]:
+    if isinstance(path, Path):
+        p = str(path)
+    else:
+        p = path
+    if p.startswith("/eodata/"):
+        p = p.replace("/eodata/", "/eodata_CACHE/eodata/")
+        if os.path.exists(p):
+            if isinstance(path, Path):
+                return Path(p)
+            else:
+                return p
+    return path
 
 def assert_tif_file_is_healthy(tif_path):
     import rioxarray
@@ -642,6 +659,38 @@ class TestSentinel5:
         ds = rasterio.open(output_file).read(1, masked=True)
         assert ds.count() > 103916 - 1
 
+    def test_sentinel5p_l2_artifacts(self, api110, tmp_path, request) -> None:
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819
+        """
+        process_graph = {
+            "process_graph": {
+                "loadcollection1": {
+                    "process_id": "load_collection",
+                    "arguments": {
+                        "bands": ["aerosol_index_354_388"],
+                        "id": "SENTINEL5P_L2_AER_AI",
+                        "spatial_extent": {"east": 8, "north": 54, "south": 50, "west": 3},
+                        "temporal_extent": ["2023-06-29T13:00:00.000000Z", "2023-06-29T23:00:00.000000Z"],
+                    },
+                    "result": True,
+                }
+            },
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+        ds = rasterio.open(output_file).read(1, masked=True)
+        unique, counts = np.unique(ds.compressed(), return_counts=True)
+        most_common = sorted(zip(unique, counts), key=lambda x: x[1], reverse=True)[:5]
+        print(f"Most common values: {most_common}")
+        # assert a popular value does not go over 500 occurences:
+        assert all(count < 500 for _, count in most_common)
+
     def test_invalid_spatial_extent_exception(self):
         params = {
             "filename": self.filename,
@@ -756,6 +805,44 @@ class TestSentinel5:
             data2["carbonmonoxide_total_column_corrected"][:, -5:],
             equal_nan=True,
         )
+
+    def test_data_loading_with_complex_bounding_box_01(self):
+        nc_file_path = Path(
+            fix_eodata_path(
+                "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
+            )
+        )
+        assert nc_file_path.exists()
+        params = {
+            "filename": str(nc_file_path),
+            "spatial_extent": {"west": -180, "south": -90, "east": 180, "north": 90},
+            "temporal_extent": ["2026-09-10T07:30:00Z", "2026-09-10T09:30:00Z"],
+            "filter_value": 0.0,
+        }
+        data = load_level2_data(params)
+        bp = data["bounding_polygon"]
+        assert isinstance(bp, MultiPolygon)
+        assert bp.is_valid
+
+    def test_data_loading_with_complex_bounding_box_02(self):
+        """
+        This product has bad anti-meridian wrapping. The polygon probably needs to be split.
+        """
+        nc_file_path = Path(
+            fix_eodata_path(
+                "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2023/06/29/S5P_OFFL_L2__AER_AI_20230629T125244_20230629T143414_29583_03_020500_20230701T023445.nc"
+            )
+        )
+        assert nc_file_path.exists()
+        params = {
+            "filename": str(nc_file_path),
+            "spatial_extent": {"west": -180, "south": -90, "east": 180, "north": 90},
+            "bands": ["aerosol_index_354_388", "bounding_polygon"],
+        }
+        data = load_level2_data(params)
+        bp = data["bounding_polygon"]
+        assert isinstance(bp, MultiPolygon)
+        assert bp.is_valid
 
     def test_data_loading_no2(self):
         """Test if it loads all bands, data and shape of bands."""

@@ -40,16 +40,18 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import tempfile
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
 import shapely.geometry
+from openeo.util import rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.geometry import BoundingBox
 from py4j.java_gateway import JavaObject
@@ -104,6 +106,10 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
 
     # check the spatial extent and temporal extent keys
     spatial_extent = params.get("spatial_extent", None)
+    if isinstance(spatial_extent, BoundingBox):
+        spatial_extent = spatial_extent.as_wsen_tuple()
+    elif isinstance(spatial_extent, dict):
+        spatial_extent = BoundingBox.from_dict(spatial_extent).as_wsen_tuple()
     if spatial_extent is not None:
         assert isinstance(spatial_extent, Sequence)
 
@@ -111,6 +117,7 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     # check if temporal_extent is made of datetime objects
     if temporal_extent is not None:
         assert isinstance(temporal_extent, Sequence)
+        temporal_extent = [rfc3339.parse_datetime(x) if isinstance(x, str) else x for x in temporal_extent]
         if not all(isinstance(x, datetime) for x in temporal_extent):
             raise Exception("temporal_extent should be made of datetime objects.")
     # check the band names and filter_value
@@ -149,6 +156,7 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
         VARIABLE_LOC_IN_FILE,
         filter_value,
     )
+    _save_mask_polygon_for_debugging(data["bounding_polygon"], file_path)
 
     # resample data
     if resample_params[0]:  # if resampling is required
@@ -162,6 +170,24 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     # apply quality filtering
     final_data = apply_quality_filter(data, bands, "qa_value_mask")
     return final_data
+
+
+def _save_mask_polygon_for_debugging(polygon: shapely.geometry.base.BaseGeometry, creo_path: Union[Path, str]) -> None:
+    """Dump the spatial mask polygon (raw data's bounding polygon) to a GeoJSON file in the system temp folder.
+
+    This is purely a debugging aid (see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819)
+    to allow inspecting the mask polygon that is used to blank out pixels outside the swath, in case of
+    masking-related artifacts in the output.
+    """
+    try:
+        creo_path = Path(creo_path)
+        out_dir = Path(tempfile.gettempdir()) / "openeo"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{creo_path.name}.geojson"
+        out_path.write_text(json.dumps(shapely.geometry.mapping(polygon)))
+        logger.info(f"Saved Sentinel-5P mask polygon for debugging to {out_path}")
+    except Exception:
+        logger.warning("Failed to save Sentinel-5P mask polygon for debugging", exc_info=True)
 
 
 @typechecked
@@ -274,6 +300,7 @@ def read_product(
     grid_x, grid_y = np.meshgrid(xx, yy)
 
     # create mask for valid data based on raw data's bounding box
+    _save_mask_polygon_for_debugging(raw_data["bounding_polygon"], creo_path)
     bounds_mask = get_mask_from_polygon(grid_x, grid_y, raw_data["bounding_polygon"])
 
     source_lon = raw_data["longitude"].ravel()
