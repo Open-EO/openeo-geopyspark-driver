@@ -612,6 +612,7 @@ class CalrissianJobLauncher:
             self._calrissian_base_arguments
             + self._calrissian_launch_config.get_calrissian_args()
             + [
+                "--tmpdir-prefix=" + tmp_dir,
                 "--tmp-outdir-prefix",
                 tmp_dir,
                 "--outdir",
