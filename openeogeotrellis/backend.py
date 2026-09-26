@@ -131,6 +131,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
+from openeogeotrellis.stac.item_collection import JobResultsStacSourceResolver
 from openeogeotrellis.stac.own_job import extract_own_job_info
 from openeogeotrellis.stac.partialjobresults import PartialJobResults
 from openeogeotrellis.udf import (
@@ -683,155 +684,45 @@ Example usage:
 
     def load_result(self, job_id: str, user_id: Optional[str], load_params: LoadParameters,
                     env: EvalEnv) -> GeopysparkDataCube:
-        logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
-
-        requested_bbox = BoundingBox.from_dict_or_none(
-            load_params.spatial_extent, default_crs="EPSG:4326"
-        )
-        logger.info(f"{requested_bbox=}")
-
+        """
+        Load batch job results, implemented on top of `load_stac`:
+        - `job_id` is an actual job id: build STAC items directly from the job's result metadata
+          (direct access to the result files on posix or object storage, no signed URLs involved).
+        - `job_id` is an HTTP(S) URL: handle it like `load_stac` of that URL
+          (which also detects URLs pointing to own jobs and then uses direct access as well).
+        """
+        logger.info(f"load_result from job ID {job_id!r} with load params {load_params!r}")
         if job_id.startswith("http://") or job_id.startswith("https://"):
-            job_results_canonical_url = job_id
-            job_results = pystac.Collection.from_file(href=job_results_canonical_url, stac_io=ResilientStacIO())
-
-            def intersects_spatial_extent(item) -> bool:
-                if not requested_bbox or item.bbox is None:
-                    return True
-
-                requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                return requested_bbox_lonlat.as_polygon().intersects(shapely.geometry.box(*item.bbox))
-
-            uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
-                                                              asset.extra_fields.get("eo:bands", []))
-                                  for item in job_results.get_items()
-                                  if intersects_spatial_extent(item)
-                                  for asset in item.get_assets().values()
-                                  if asset.media_type == "image/tiff; application=geotiff"}
-
-            timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
-            logger.info(f"{len(uris_with_metadata)=}")
-
-            try:
-                eo_bands = single_value(eo_bands for _, eo_bands in uris_with_metadata.values())
-                band_names = [eo_band["name"] for eo_band in eo_bands]
-            except ValueError as e:
-                raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
-                                         status_code=501)
-
-            job_results_bbox = BoundingBox.from_wsen_tuple(
-                job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
-            )
-            # TODO: this assumes that job result data is gridded in best UTM already?
-            job_results_epsg = job_results_bbox.best_utm()
-            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
-
+            url = job_id
+            source_resolvers = None
+            get_default_bbox = lambda: pystac.Collection.from_file(
+                href=url, stac_io=ResilientStacIO()
+            ).extent.spatial.bboxes[0]
         else:
-            paths_with_metadata = {
-                asset["href"]: (asset.get("datetime"), asset.get("bands", []))
-                for _, asset in self.batch_jobs.get_result_assets(
-                    job_id=job_id, user_id=user_id
-                ).items()
-                if asset["type"] == "image/tiff; application=geotiff"
-            }
-            logger.info(f"{paths_with_metadata=}")
+            # Note: `url` is only used for logging/identification purposes here
+            url = f"openeo-job-results:{job_id}"
+            source_resolvers = [
+                JobResultsStacSourceResolver(job_id=job_id, user_id=user_id, batch_jobs=self.batch_jobs)
+            ]
+            get_default_bbox = lambda: self.batch_jobs.get_job_info(job_id=job_id, user_id=user_id).bbox
 
-            if len(paths_with_metadata) == 0:
-                raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
-                                         status_code=501)
-
-            if not all(timestamp is not None for timestamp, _ in paths_with_metadata.values()):
-                raise OpenEOApiException(
-                    message=f"Cannot load results of job {job_id} because they lack timestamp information.",
-                    status_code=400)
-
-            timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
-            logger.info(f"{timestamped_uris=}")
-
+        if not load_params.spatial_extent:
+            # Legacy `load_result` behavior: default to the overall job result extent
+            # (instead of the union of the item footprints, as `load_stac` would do).
             try:
-                eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
-                band_names = [eo_band.name for eo_band in eo_bands]
-            except ValueError as e:
-                raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
-                                         status_code=501)
+                west, south, east, north = get_default_bbox()
+                load_params = LoadParameters(load_params)
+                load_params.spatial_extent = dict(west=west, south=south, east=east, north=north, crs="EPSG:4326")
+            except Exception as e:
+                logger.warning(f"load_result: failed to determine default spatial extent for {job_id!r}: {e!r}")
 
-            job_info = self.batch_jobs.get_job_info(job_id, user_id)
-            job_results_bbox = BoundingBox.from_wsen_tuple(
-                job_info.bbox, crs="EPSG:4326"
-            )
-            job_results_epsg = job_info.epsg
-            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
-
-        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
-            # TODO: detect actual dimensions instead of this simple default?
-            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[]),
-            BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
-        ])
-
-        temporal_extent = load_params.temporal_extent or (None, None)
-        from_date, to_date = normalize_temporal_extent(temporal_extent)
-        metadata = metadata.filter_temporal(from_date, to_date)
-
-        jvm = get_jvm()
-
-        pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
-
-        single_level = env.get('pyramid_levels', 'all') != 'all'
-
-        if single_level:
-            target_bbox = requested_bbox or job_results_bbox
-            logger.info(f"{target_bbox=}")
-
-            extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
-            extent_crs = target_bbox.crs
-
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
-                extent, target_bbox.crs
-            )
-            projected_polygons = getattr(
-                getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
-            ).reproject(projected_polygons, job_results_epsg)
-
-            metadata_properties = None
-            correlation_id = None
-            data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-            getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
-
-            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
-                                                   correlation_id, data_cube_parameters)
-        else:
-            if requested_bbox:
-                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
-                extent_crs = requested_bbox.crs
-            else:
-                extent = extent_crs = None
-
-            pyramid = pyramid_factory.pyramid_seq(
-                extent, extent_crs, from_date, to_date
-            )
-
-        metadata = metadata.filter_bbox(
-            west=extent.xmin(),
-            south=extent.ymin(),
-            east=extent.xmax(),
-            north=extent.ymax(),
-            crs=extent_crs,
+        return load_stac.load_stac(
+            url=url,
+            load_params=load_params,
+            env=env,
+            batch_jobs=self.batch_jobs,
+            source_resolvers=source_resolvers,
         )
-
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        option = jvm.scala.Option
-
-        # noinspection PyProtectedMember
-        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
-            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
-                  range(0, pyramid.size())}
-
-        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
-
-        if load_params.bands:
-            cube = cube.filter_bands(load_params.bands)
-
-        return cube
 
     def load_stac(
         self,

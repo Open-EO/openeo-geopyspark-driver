@@ -35,6 +35,7 @@ from openeo.metadata import _StacMetadataParser
 from openeo.util import Rfc3339, dict_no_none, TimingLogger
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import (
+    OpenEOApiException,
     ProcessParameterUnsupportedException,
 )
 from openeo_driver.users import User
@@ -431,6 +432,8 @@ class StacResolution:
 
     stac_object: Optional[Union[pystac.Item, pystac.Collection, pystac.Catalog]] = None
     item_collection: Optional["ItemCollection"] = None
+    #: Optional band names (in intended order), only relevant in `item_collection` case.
+    band_names: Optional[List[str]] = None
 
     def __post_init__(self):
         if (self.stac_object is None) == (self.item_collection is None):
@@ -510,6 +513,105 @@ class OwnJobStacSourceResolver:
             user=self._user,
         )
         return StacResolution(item_collection=item_collection)
+
+
+def _band_name(band: Any) -> Optional[str]:
+    """Get band name from a band representation (`openeo.metadata.Band` object or dict)."""
+    if isinstance(band, dict):
+        return band.get("name")
+    return getattr(band, "name", None)
+
+
+class JobResultsStacSourceResolver:
+    """
+    Resolves a batch job (by job id) directly to an `ItemCollection`
+    built from the job's result metadata (as returned by `BatchJobs.get_result_assets`),
+    one STAC Item per (GeoTIFF) data asset.
+
+    Intended for `load_result` with a job id (not a URL):
+    - the job results are accessed directly (posix path or object storage URL, as stored in the job metadata)
+      so no (signed) job result download URLs are involved.
+    - no dependency polling: the job is assumed to be finished already.
+
+    The `url` argument of `resolve` is ignored.
+    """
+
+    # Media type of assets that can be loaded (legacy `load_result` behavior)
+    SUPPORTED_MEDIA_TYPE = "image/tiff; application=geotiff"
+
+    def __init__(self, *, job_id: str, user_id: Optional[str], batch_jobs: openeo_driver.backend.BatchJobs):
+        self._job_id = job_id
+        self._user_id = user_id
+        self._batch_jobs = batch_jobs
+
+    def resolve(self, url: str, *, spatiotemporal_extent: SpatioTemporalExtent) -> StacResolution:
+        job_id = self._job_id
+        assets = {
+            asset_id: asset
+            for asset_id, asset in self._batch_jobs.get_result_assets(job_id=job_id, user_id=self._user_id).items()
+            if asset.get("type") == self.SUPPORTED_MEDIA_TYPE
+        }
+        logger.info(f"JobResultsStacSourceResolver: {job_id=} with {len(assets)} GeoTIFF assets")
+
+        if len(assets) == 0:
+            raise OpenEOApiException(
+                message=f"Job {job_id} contains no results of supported type GTiff.", status_code=501
+            )
+        if not all(asset.get("datetime") is not None for asset in assets.values()):
+            raise OpenEOApiException(
+                message=f"Cannot load results of job {job_id} because they lack timestamp information.",
+                status_code=400,
+            )
+
+        band_name_listings = set(
+            tuple(_band_name(b) for b in (asset.get("bands") or [])) for asset in assets.values()
+        )
+        if len(band_name_listings) != 1:
+            raise OpenEOApiException(
+                message=f"Unsupported band information for job {job_id}: expected single band listing,"
+                f" but got {sorted(band_name_listings)}",
+                status_code=501,
+            )
+        [band_names] = band_name_listings
+        band_names = list(band_names)
+
+        job = self._batch_jobs.get_job_info(job_id=job_id, user_id=self._user_id)
+        rfc3339 = Rfc3339(propagate_none=True)
+        parse_datetime = partial(rfc3339.parse_datetime, with_timezone=True)
+
+        items = []
+        for asset_id, asset in sorted(assets.items()):
+            item_datetime = parse_datetime(asset["datetime"])
+            # Fall back on job level projection metadata (a job's GeoTIFF results share the same CRS)
+            proj_epsg = asset.get("proj:epsg", job.epsg)
+            pystac_item = pystac.Item(
+                id=asset_id,
+                geometry=asset.get("geometry", job.geometry),
+                bbox=asset.get("bbox", job.bbox),
+                datetime=item_datetime,
+                properties=dict_no_none(
+                    {
+                        "datetime": rfc3339.datetime(item_datetime),
+                        "proj:epsg": proj_epsg,
+                        "proj:bbox": asset.get("proj:bbox"),
+                        "proj:shape": asset.get("proj:shape"),
+                    }
+                ),
+                collection=job_id,
+            )
+            if not spatiotemporal_extent.item_intersects(pystac_item):
+                continue
+            pystac_asset = pystac.Asset(
+                href=asset["href"],
+                media_type=asset.get("type"),
+                roles=asset.get("roles") or ["data"],
+                extra_fields={"eo:bands": [{"name": b} for b in band_names]},
+            )
+            pystac_item.add_asset(asset_id, pystac_asset)
+            items.append(pystac_item)
+
+        logger.info(f"JobResultsStacSourceResolver: {job_id=}: {len(items)} items, {band_names=}")
+        return StacResolution(item_collection=ItemCollection(items), band_names=band_names)
 
 
 def _default_source_resolvers(
@@ -592,7 +694,7 @@ def construct_item_collection(
         collection_summary: dict = {}
         item_collection = resolution.item_collection
         # TODO: improve band name detection for this case
-        band_names = []
+        band_names = list(resolution.band_names or [])
     else:
         stac_object = resolution.stac_object
         logger.info(f"construct_item_collection: got {type(stac_object).__name__} {stac_object.id!r}")

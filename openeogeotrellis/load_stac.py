@@ -4,7 +4,7 @@ import datetime as dt
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union
 
 import pystac
 import pystac.stac_io
@@ -33,7 +33,7 @@ from openeogeotrellis.stac.extents import (
     spatiotemporal_extent_from_load_params,
 )
 from openeogeotrellis.stac.exceptions import LoadStacException
-from openeogeotrellis.stac.item_collection import construct_item_collection
+from openeogeotrellis.stac.item_collection import StacSourceResolver, construct_item_collection
 from openeogeotrellis.stac.property_filter import PropertyFilterPGMap
 
 # Per-item/per-asset analysis (projection metadata, band/pixel decisions)
@@ -215,6 +215,7 @@ def _prepare_context(
     data_cube_parameters: Optional[Any] = None,
     serialize_item_collection: bool = True,
     pg_node_id: Optional[str] = None,
+    source_resolvers: Optional[Sequence[StacSourceResolver]] = None,
 ) -> _LoadStacContext:
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
@@ -289,6 +290,7 @@ def _prepare_context(
                 stac_io=stac_io,
                 user=user,
                 spatial_filtering_geometries=spatial_filtering_geometries,
+                source_resolvers=source_resolvers,
             )
             item_collection = stac_source.item_collection
             collection_summary = stac_source.collection_summary
@@ -580,6 +582,7 @@ def load_stac(
     feature_flags: Optional[Dict[str, Any]] = None,
     data_cube_parameters: Optional[Any] = None,
     pg_node_id: Optional[str] = None,
+    source_resolvers: Optional[Sequence[StacSourceResolver]] = None,
 ) -> "GeopysparkDataCube":
     """
 
@@ -591,6 +594,9 @@ def load_stac(
           like "eo:common_name" (from STAC EO extension)
           and "aliases" (non-standardized openeo-geopyspark-driver feature).
           `normalized_band_selection` must contain the standard band names after resolving these aliases.
+    :param source_resolvers: (Optional) custom STAC source resolvers to resolve `url` with
+        (e.g. to load batch job results by job id in `load_result`).
+        By default: own-job resolution (if possible), falling back on live STAC fetching.
     """
     context = _prepare_context(
         url=url,
@@ -603,5 +609,6 @@ def load_stac(
         feature_flags=feature_flags,
         data_cube_parameters=data_cube_parameters,
         pg_node_id=pg_node_id,
+        source_resolvers=source_resolvers,
     )
     return _build_datacube(context)
