@@ -140,6 +140,16 @@ class TestConfigValues:
         monkeypatch.setenv("ZOOKEEPERNODES", "")
         assert GpsBackendConfig().zookeeper_hosts == []
 
+    def test_shared_results_pvc(self, monkeypatch):
+        monkeypatch.delenv("SHARED_RESULTS_PVC", raising=False)
+        assert GpsBackendConfig().shared_results_pvc is None
+
+        monkeypatch.setenv("SHARED_RESULTS_PVC", "openeo-batch-results")
+        assert GpsBackendConfig().shared_results_pvc == "openeo-batch-results"
+
+        # Explicit value takes precedence over the env var.
+        assert GpsBackendConfig(shared_results_pvc="other").shared_results_pvc == "other"
+
     def test_zookeeper_root_path(self, monkeypatch):
         """Test slash validation and trimming."""
         config = GpsBackendConfig(zookeeper_root_path="/openeo.test/")

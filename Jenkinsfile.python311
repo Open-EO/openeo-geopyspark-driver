@@ -38,4 +38,8 @@ pythonPipeline {
   enable_caching = true
   enable_uv = true
   test_coverage = false
+  artifactory_server = ['rss', 'sas']
+  wheel_repo_sas = 'openeo-pypi-local'
+  wheel_repo_dev_sas = 'openeo-pypi-local'
+  promotion_artifactory_server = 'rss'
 }

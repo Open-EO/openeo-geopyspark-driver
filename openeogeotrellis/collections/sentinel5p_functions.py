@@ -65,6 +65,7 @@ all_gases: dict[str, dict[str, Any]] = {
         "VARIABLE_LOC_IN_FILE": {
             "methane_mixing_ratio": "PRODUCT/methane_mixing_ratio",
             "methane_mixing_ratio_bias_corrected": "PRODUCT/methane_mixing_ratio_bias_corrected",
+            "methane_mixing_ratio_bias_corrected_destriped": "PRODUCT/methane_mixing_ratio_bias_corrected_destriped",
         },
         "FILTER_VALUE": 0.5,
     },

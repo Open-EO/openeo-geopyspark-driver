@@ -25,8 +25,9 @@ def load_custom_processes(*, path: Optional[Path] = None, logger=_log, _name="cu
         # Directly load custom processes from OPENEO_CUSTOM_PROCESSES
         logger.debug(f"load_custom_processes: trying exec loading {path!r}")
         try:
-            exec_py_file(path)
+            custom_processes = exec_py_file(path)
             logger.info(f"load_custom_processes: exec loaded {path!r}")
+            return custom_processes
         except Exception as e:
             logger.error(f"load_custom_processes: failed to exec load {path!r}: {e!r}")
     else:
