@@ -124,6 +124,7 @@ def _ch4_bands() -> dict[str, Any]:
     return {
         "methane_mixing_ratio": ch4_ratio,
         "methane_mixing_ratio_bias_corrected": ch4_ratio * 1.01,
+        "methane_mixing_ratio_bias_corrected_destriped": ch4_ratio * 1.01,
     }
 
 
@@ -189,7 +190,7 @@ def _aer_lh_bands():
 SYNTHETIC_PRODUCT_SPECS = {
     "co": ("CO_____", _co_bands, 0.75, 3),
     "no2": ("NO2____", _no2_bands, 0.8, 7),
-    "ch4": ("CH4____", _ch4_bands, 0.6, 3),
+    "ch4": ("CH4____", _ch4_bands, 0.6, 4),
     "so2": ("SO2____", _so2_bands, 0.6, 2),
     "hcho": ("HCHO___", _hcho_bands, 0.6, 2),
     "o3": ("O3_____", _o3_bands, 0.6, 2),
