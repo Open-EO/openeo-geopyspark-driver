@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ## 0.73.0
 
+- `merge_cubes`: preserve temporal metadata when merging a spatial cube with a spacetime cube ([#1830](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1830))
 - Starting batch jobs is made more lenient to support processes not known by the web application.
 - `mask`: clip oversized vector geometries to the raster footprint before reprojection to avoid topology errors with UTM/local CRS masking ([#1817](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1817))
 - Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
@@ -26,6 +27,7 @@ without compromising stable operations.
 - Kubernetes batch jobs: make the batch job config secret owned by the SparkApplication, so that it is garbage collected together with it (best effort, on top of the existing age based secret cleanup). Requires the `patch` permission on secrets.
 - Kubernetes batch jobs: support mounting batch job results from a single shared PersistentVolumeClaim (each job using its own `subPath`) instead of creating a PersistentVolume and PersistentVolumeClaim per job, through the new `shared_results_pvc` config.
 - Produce BigTiff GeoTiffs by default ([Open-EO/openeo-geotrellis-extensions#678](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/678), [Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
+- Make `export_workspace` merge by default; its `merge` argument points to the STAC resource itself ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
 
 
 ## 0.72.0

@@ -110,7 +110,7 @@ def _pystac_item_from_dict_lenient(item: dict) -> pystac.Item:
     that skips bad assets (without href) instead of raising exception
     """
     assets = item.get("assets") or {}
-    bad_assets = [k for k, v in assets.items() if not v.get("href")]
+    bad_assets = [k for k, v in assets.items() if not isinstance(v,dict) or not v.get("href")]
     if bad_assets:
         logger.warning(
             f"ItemCollection: dropping {len(bad_assets)} asset(s) "

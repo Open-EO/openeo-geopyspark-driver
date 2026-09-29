@@ -68,7 +68,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
-from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -145,6 +145,7 @@ from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
 )
+from openeogeotrellis.job_results.util import BadlyHashable
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -158,7 +159,6 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    BadlyHashable,
 )
 from openeogeotrellis.vault import Vault
 
@@ -377,7 +377,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         if use_job_registry and not elastic_job_registry:
             # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
-            logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
+            logger.info("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
             elastic_job_registry = get_elastic_job_registry(
                 requests_session=requests_session, do_health_check=do_ejr_health_check
             )
@@ -1323,7 +1323,7 @@ Example usage:
     ) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
 
-        from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+        from openeogeotrellis.job_results.result_metadata import extract_result_metadata
 
         if process_graph is None:
             process_graph = {}

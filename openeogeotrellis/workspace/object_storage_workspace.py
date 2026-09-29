@@ -13,7 +13,8 @@ from pystac import STACObject, Collection, CatalogType, Item, Asset
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
 from .custom_stac_io import CustomStacIO
-from openeogeotrellis.utils import md5_checksum, S3ClientBuilder
+from openeogeotrellis.job_results.util import md5_checksum
+from openeogeotrellis.utils import S3ClientBuilder
 
 _log = logging.getLogger(__name__)
 

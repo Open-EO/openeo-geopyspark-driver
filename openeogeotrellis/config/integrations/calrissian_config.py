@@ -23,6 +23,9 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "1000",
     "--force-docker-pull",
     "--eval-timeout=600",
+    # Disable schema-salad's on-disk HTTP document cache (defaults to `$HOME/.cache/salad`).
+    # Fetched CWL documents are small, so caching isn't worth the extra failure mode.
+    "--no-doc-cache",
 )
 if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
     DEFAULT_CALRISSIAN_BASE_ARGUMENTS += ("--leave-container", "--leave-tmpdir", "--debug")

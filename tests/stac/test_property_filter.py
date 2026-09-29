@@ -45,6 +45,33 @@ class TestPropertyFilter:
         assert matcher({"foo": "nope"}) == False
         assert matcher({"fooooo": "bar"}) == False
 
+    def test_build_matcher_strips_properties_prefix(self):
+        """
+        Regression test for https://github.com/Open-EO/openeo-geopyspark-driver/issues/1690:
+        when the user filters on `properties.<name>` (e.g. to satisfy STAC APIs that require
+        that prefix in CQL2 property references), the local post-query matcher should still
+        match against `pystac.Item.properties`, which are stored without that prefix.
+        """
+        properties = {
+            "properties.foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": "bar",
+                        },
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = PropertyFilter(properties)
+        matcher = property_filter.build_matcher()
+        assert matcher({"foo": "bar"}) == True
+        assert matcher({"foo": "nope"}) == False
+        assert matcher({"properties.foo": "bar"}) == False
+
     def test_build_matcher_multiple_conditions(self):
         """Multiple conditions: all must match"""
         properties = {
