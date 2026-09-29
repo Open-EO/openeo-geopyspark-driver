@@ -215,6 +215,8 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
+      - name: OPENEO_ADDITIONAL_EXECUTION_METRICS_FILE
+        value: "{{ additional_execution_metrics_file }}"
   {%- block gdal_aws_env %}
       - name: AWS_ACCESS_KEY_ID
         value: {{ aws_access_key_id }}
