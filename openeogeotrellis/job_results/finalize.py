@@ -89,6 +89,7 @@ def finalize_job(
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         result_metadata = assemble(result=results[0], apply_gdal=False, asset_metadata={})
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
+
         write({**result_metadata, **tracker_metadata})
 
         global_metadata_attributes = {
