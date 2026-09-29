@@ -52,7 +52,6 @@ _UDF_EXECUTION_TIME = "udf_execution_time"
 _udf_execution_time_ms = _NoOpMetric()
 _udf_max_rss_delta_bytes = _NoOpMetric()
 _metrics_initialized = False
-_tracker = None
 
 
 def _initialize_prometheus_metrics():
@@ -65,10 +64,6 @@ def _initialize_prometheus_metrics():
     if _PROMETHEUS_METRICS_PORT <= 0 or not _PROMETHEUS_METRICS_ENABLED:
         _metrics_initialized = True
         return
-
-    from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
-    _tracker = _get_tracker()
-    _tracker.registerCounter()
 
     _log.warning(
         "Prometheus metrics are enabled. This is intended for development and debugging purposes only, and may have a small performance impact."

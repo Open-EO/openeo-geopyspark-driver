@@ -1994,7 +1994,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 initdata_dir=os.environ.get("INITDATA_DIR", ""),
                 credit_plan=execution_details.plan,
                 etl_organization_id_str=etl_organization_id_str,
-                additional_execution_metrics_file=str(output_dir / "additional_execution_metrics.json")
+                additional_execution_metrics_file=str(self.get_job_output_dir(job_id) / "additional_execution_metrics.json")
             )
 
             with self._double_job_registry as dbl_registry:
