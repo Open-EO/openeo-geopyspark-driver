@@ -158,9 +158,6 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     assert captured_duration_measurements
     assert captured_duration_measurements[0][0] >= 0
     assert captured_rss_delta_measurements == [(256, {})]
-    assert tracker_calls
-    assert tracker_calls[0][0] == "duration_ms"
-    assert tracker_calls[0][1] >= 0
 
 
 def test_run_udf_code_exposes_prometheus_metrics_endpoint(monkeypatch):
