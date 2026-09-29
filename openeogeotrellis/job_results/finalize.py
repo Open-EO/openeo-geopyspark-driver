@@ -20,6 +20,8 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import MlModelResult, SaveResult
 from openeo_driver.workspacerepository import WorkspaceRepository
 
+from openeogeotrellis.utils import get_jvm
+
 from . import raster_metadata
 from .result_metadata import (
     CollectUniqueProcessIdsVisitor,
@@ -89,7 +91,20 @@ def finalize_job(
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         result_metadata = assemble(result=results[0], apply_gdal=False, asset_metadata={})
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
-        write({**result_metadata, **tracker_metadata})
+
+        execution_metrics = {}
+        try:
+            scala_execution_metrics = get_jvm().org.openeo.sparklisteners.ExecutionMetrics.get()
+            execution_metrics = {
+                "total_stage_runtime": scala_execution_metrics.totalStageRuntimeMillis(),
+                "total_executor_allocation_time": scala_execution_metrics.executorAllocationTimeMillis(),
+                "cpu_utilization_ratio": scala_execution_metrics.cpuUtilizationRatio(),
+                "total_stage_failures": scala_execution_metrics.totalStageFailures(),
+            }
+        except Exception as e:
+            logger.warning("Failed to fetch Scala execution metrics: %s", e)
+
+        write({**result_metadata, **tracker_metadata, **execution_metrics})
 
         global_metadata_attributes = {
             "title": job_specification.get("title", ""),
