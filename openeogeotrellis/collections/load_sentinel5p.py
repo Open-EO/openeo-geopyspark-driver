@@ -156,7 +156,6 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
         VARIABLE_LOC_IN_FILE,
         filter_value,
     )
-    _save_mask_polygon_for_debugging(data["bounding_polygon"], file_path)
 
     # resample data
     if resample_params[0]:  # if resampling is required
@@ -300,7 +299,6 @@ def read_product(
     grid_x, grid_y = np.meshgrid(xx, yy)
 
     # create mask for valid data based on raw data's bounding box
-    _save_mask_polygon_for_debugging(raw_data["bounding_polygon"], creo_path)
     bounds_mask = get_mask_from_polygon(grid_x, grid_y, raw_data["bounding_polygon"])
 
     source_lon = raw_data["longitude"].ravel()

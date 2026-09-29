@@ -9,6 +9,7 @@ Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-l
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Optional, Sequence
 from shapely.geometry import Point, Polygon, box
@@ -18,6 +19,8 @@ from netCDF4 import Dataset, num2date
 from shapely.geometry.multipolygon import MultiPolygon
 
 from openeogeotrellis.utils import typechecked
+
+_log = logging.getLogger(__name__)
 
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
@@ -181,7 +184,11 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
         if not was_ok and is_ok:
             start_ok = i
         elif was_ok and not is_ok:
-            polygons.append(get_bounding_polygon_specific(lat[start_ok:i, :], lon[start_ok:i, :]))
+            polygon = get_bounding_polygon_specific(lat[start_ok:i, :], lon[start_ok:i, :])
+            if polygon.is_valid:
+                polygons.append(polygon)
+            else:
+                _log.warning(f"Invalid polygon ignored for rows {start_ok} to {i}")
         was_ok = is_ok
     return MultiPolygon(polygons)
 
@@ -285,11 +292,6 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
-    import logging
-
-    logging.warning(
-        f"load_data_from_file(file_path={file_path},\nspatial_extent={spatial_extent},\ntemporal_extent={temporal_extent},\nbands={bands},\nvariable_loc_in_file={variable_loc_in_file},\nfilter_value={filter_value})"
-    )
     # Open the NetCDF file
     with Dataset(file_path, "r") as f:
         # Check if there is valid data based on spatial temporal extents and filter value
@@ -494,7 +496,7 @@ def fill_and_mask_data(band_data: np.ndarray, spatio_temporal_mask: np.ndarray):
     # fill nan values where data is not valid
     if hasattr(band_data, "filled"):
         if np.issubdtype(band_data.dtype, np.integer):
-            print(f"converting to float to fill with nan. (Was {band_data.dtype})")
+            _log.info(f"converting to float to fill with nan. (Was {band_data.dtype})")
             band_data = band_data.astype(float)
         band_data = band_data.filled(np.nan)
     # set data to nan based on the spatial-temporal extent.
