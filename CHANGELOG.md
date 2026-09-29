@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ## 0.73.0
 
+- `merge_cubes`: preserve temporal metadata when merging a spatial cube with a spacetime cube ([#1830](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1830))
 - Starting batch jobs is made more lenient to support processes not known by the web application.
 - `mask`: clip oversized vector geometries to the raster footprint before reprojection to avoid topology errors with UTM/local CRS masking ([#1817](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1817))
 - Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
