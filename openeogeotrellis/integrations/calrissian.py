@@ -55,7 +55,7 @@ except ImportError:
 
 
 _log = logging.getLogger(__name__)
-
+keep_as_url_prefix = "<keep_as_url>"  # Magix prefix for the moment to allow debugging on staging
 
 class CalrissianLaunchConfigBuilder:
     """
@@ -199,13 +199,17 @@ class CwLSource:
     When necessary, this simple abstraction can be evolved easily in something more sophisticated.
     """
 
-    def __init__(self, content: str):
+    def __init__(self, content: str, source: Union[None, str, Path] = None):
         self._cwl = content
+        self._source = source
         yaml_parsed = list(yaml.safe_load_all(self._cwl))
         assert len(yaml_parsed) >= 1
 
     def get_content(self) -> str:
         return self._cwl
+
+    def get_source(self) -> Union[None, str, Path]:
+        return self._source
 
     def _get_entrypoint_document(self) -> Optional[dict]:
         """
@@ -290,7 +294,11 @@ class CwLSource:
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
         # noinspection HttpUrlsUsage
-        if content.lower().startswith("http://") or content.lower().startswith("https://"):
+        if (
+            content.lower().startswith("http://")
+            or content.lower().startswith("https://")
+            or content.lower().startswith(keep_as_url_prefix)
+        ):
             return cls.from_url(content)
         elif (
             content.lower().endswith(".cwl")
@@ -311,13 +319,13 @@ class CwLSource:
     @classmethod
     def from_path(cls, path: Union[str, Path]) -> CwLSource:
         with Path(path).open(mode="r", encoding="utf-8") as f:
-            return cls(content=f.read())
+            return cls(content=f.read(), source=path)
 
     @classmethod
     def from_url(cls, url: str) -> CwLSource:
-        resp = requests.get(url)
+        resp = requests.get(url.replace(keep_as_url_prefix, "", 1))
         resp.raise_for_status()
-        return cls(content=resp.text)
+        return cls(content=resp.text, source=url)
 
     @classmethod
     def from_resource(cls, anchor: str, path: str) -> CwLSource:
@@ -325,7 +333,7 @@ class CwLSource:
         Read CWL from a packaged resource file in importlib.resources-style.
         """
         content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
-        return cls(content=content)
+        return cls(content=content, source=path)
 
 
 class CalrissianJobLauncher:
@@ -604,6 +612,7 @@ class CalrissianJobLauncher:
             self._calrissian_base_arguments
             + self._calrissian_launch_config.get_calrissian_args()
             + [
+                "--tmpdir-prefix=" + tmp_dir,
                 "--tmp-outdir-prefix",
                 tmp_dir,
                 "--outdir",
@@ -822,8 +831,13 @@ class CalrissianJobLauncher:
         :return: output of the CWL workflow as a string.
         """
         # Input staging
-        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
-        self.launch_job_and_wait(manifest=input_staging_manifest)
+        source = cwl_source.get_source()
+        if source and (str(source).lower().startswith(keep_as_url_prefix)):
+            # This allows to keep relative paths working.
+            cwl_path = source.replace(keep_as_url_prefix, "", 1)
+        else:
+            input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
+            self.launch_job_and_wait(manifest=input_staging_manifest)
 
         if isinstance(cwl_arguments, dict):
             cwl_source_arguments = CwLSource.from_string(json.dumps(cwl_arguments))

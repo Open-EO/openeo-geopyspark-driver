@@ -29,7 +29,6 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkCubeMetadata,
     GeopysparkDataCube,
 )
-from openeogeotrellis.numpy_aggregators import max_composite
 from tests.datacube_fixtures import layer_with_one_band_and_three_dates
 
 
@@ -362,11 +361,6 @@ class TestMultipleDates(TestCase):
 
     def test_aggregate_temporal_100(self):
         self._test_aggregate_temporal([["2017-01-01", "2018-01-01"]])
-
-    def test_max_aggregator(self):
-        tiles = [self.tile,self.tile2]
-        composite = max_composite(tiles)
-        self.assertEqual(2.0, composite.cells[0][0])
 
     def test_aggregate_max_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })

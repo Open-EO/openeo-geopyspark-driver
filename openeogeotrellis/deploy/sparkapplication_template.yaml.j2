@@ -135,7 +135,7 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
     - name: "batch-job-results"
       persistentVolumeClaim:
-        claimName: {{ job_name }}
+        claimName: {{ shared_results_pvc if shared_results_pvc else job_name }}
         readOnly: false
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
@@ -271,6 +271,8 @@ spec:
         value: "TRUE"
       - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
         value: "{{fuse_mount_batchjob_s3_bucket}}"
+      - name: OPENEO_OTEL_ENABLED
+        value: "{{ open_telemetry_enabled }}"
       - name: OPENEO_EJR_API
         value: {{ openeo_ejr_api }}
       - name: OPENEO_EJR_BACKEND_ID
@@ -306,6 +308,9 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
+{%- if shared_results_pvc %}
+        subPath: {{ job_id_full }}
+{%- endif %}
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
       - name: "batch-job-cfg"
@@ -327,8 +332,11 @@ spec:
     annotations:
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     ports:
-      - containerPort: 9464
-        name: prom-executor
+      - containerPort: {{ open_telemetry_prometheus_port | default(9464, true) }}
+        name: prom-scala
+        protocol: TCP
+      - containerPort: {{ open_telemetry_prometheus_port_python | default(9465, true) }}
+        name: prom-python
         protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
@@ -336,7 +344,7 @@ spec:
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
+    javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.exporter.prometheus.port={{ open_telemetry_prometheus_port | default(9464, true) }} -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
 {%- endblock %}
 {%- if mount_tmp or layer_catalog_init_image != "DISABLED" %}
     initContainers:
@@ -455,6 +463,9 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
+{%- if shared_results_pvc %}
+        subPath: {{ job_id_full }}
+{%- endif %}
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
       - name: "batch-job-cfg"

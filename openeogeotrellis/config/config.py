@@ -8,6 +8,7 @@ from typing import List, Optional, Union, Dict
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
 from openeo_driver.config.base import openeo_backend_config_class
+from openeo_driver.constants import JOB_STATUS
 from openeo_driver.users import User
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.util.auth import ClientCredentials
@@ -144,6 +145,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     etl_api_config: Optional[EtlApiConfig] = None
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
+    otel_prometheus_metrics_port: int = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT", "9464"))
 
     max_executor_or_driver_memory: str = "64G"  # Executors and drivers have the same amount of memory
 
@@ -162,15 +164,43 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO: generically named config for a single bucket: not future/feature-proof (support for multiple buckets)
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
+    """
+    S3 bucket to temporarily store ML models (e.g. random forest) in, so they can be loaded by executors
+    through the s3a connector. Only used on Kubernetes deployments.
+    """
+    ml_models_s3_bucket: str = "openeo-ml-models-dev"
+
     fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
     fuse_mount_batchjob_s3_mounter: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNTER", "s3fs")
     fuse_mount_batchjob_s3_mount_options: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNT_OPTIONS", "-o uid=18585 -o gid=18585 -o compat_dir")
     fuse_mount_batchjob_s3_storage_class: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_STORAGE_CLASS", "csi-s3")
 
+    """
+    Name of a pre-existing, shared PersistentVolumeClaim (ReadWriteMany, bound to a PV
+    rooted at `<bucket>/batch_jobs`) to mount batch job results from. Each batch job mounts it under
+    its own `subPath` (the job id), so no per-job PersistentVolume/PersistentVolumeClaim is created.
+    When not set, a PersistentVolume and PersistentVolumeClaim are created per batch job.
+    The shared volume and claim are expected to be provisioned outside of this application.
+    Only has effect when `fuse_mount_batchjob_s3_bucket` is enabled.
+    """
+    shared_results_pvc: Optional[str] = attrs.field(factory=lambda: os.environ.get("SHARED_RESULTS_PVC"))
+
     batch_scheduler: str = "default-scheduler"
     yunikorn_queue: str = os.environ.get("YUNIKORN_QUEUE", "root.default")
     yunikorn_scheduling_timeout: str = os.environ.get("YUNIKORN_SCHEDULING_TIMEOUT", "10800")
     yunikorn_user_specific_queues: bool = smart_bool(os.environ.get("YUNIKORN_USER_SPECIFIC_QUEUES", False))
+
+    """
+    OpenEO job statuses for which the job tracker immediately deletes the Kubernetes
+    SparkApplication, after the job status and resource usage have been successfully persisted in the
+    job registry. Deleting the SparkApplication also frees up the resources owned by it
+    (driver/executor pods, operator-managed config maps, ...) instead of waiting for the
+    `timeToLiveSeconds` of the Spark operator to kick in.
+    Use an empty list to disable this cleanup. Only has effect on Kubernetes deployments.
+    """
+    job_tracker_cleanup_openeo_statuses: List[str] = attrs.field(
+        factory=lambda: [JOB_STATUS.FINISHED],
+    )
 
     """
     Reading strategy for load_collection and load_stac processes:
@@ -352,8 +382,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # FreeIPA server to use (for user lookup/creation)
     freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)
     freeipa_default_credentials_info: Optional[dict] = None
-
-    supports_async_tasks: bool = False
 
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
 

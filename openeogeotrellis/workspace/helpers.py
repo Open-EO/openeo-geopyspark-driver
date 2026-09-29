@@ -8,7 +8,8 @@ from openeo_driver.util.auth import _AccessTokenCache
 from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 
 from .stac_api_workspace import StacApiWorkspace
-from openeogeotrellis.utils import S3ClientBuilder, md5_checksum
+from openeogeotrellis.job_results.util import md5_checksum
+from openeogeotrellis.utils import S3ClientBuilder
 
 
 def vito_stac_api_workspace(  # for lack of a better name, can still be aliased

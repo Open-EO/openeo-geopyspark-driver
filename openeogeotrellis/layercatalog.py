@@ -761,7 +761,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 projected_polygons_native_crs,
                 from_date,
                 to_date,
-                bands,
+                normalized_band_selection,
                 datacubeParams,
                 native_cell_size,
                 {**feature_flags, "load_stac_feature_flags": load_stac_feature_flags},

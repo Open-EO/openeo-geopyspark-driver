@@ -3,6 +3,39 @@ kind: Namespace
 metadata:
   name: csi-s3
 ---
+# RBAC for the "default" ServiceAccount used by the Calrissian runner pod.
+# Calrissian's own k8s client (see calrissian/k8s.py) needs to create/list/watch/delete
+# pods (and read their logs) in the namespace it operates in, to manage CWL step pods
+# and to look up its own pod (get_current_pod()). Without this, Calrissian jobs fail with:
+#   (403) Reason: Forbidden ... cannot list resource "pods" in API group "" in the
+#   namespace "calrissian-demo-project"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: calrissian-pod-manager
+  namespace: calrissian-demo-project
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calrissian-pod-manager
+  namespace: calrissian-demo-project
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: calrissian-demo-project
+roleRef:
+  kind: Role
+  name: calrissian-pod-manager
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: Secret
 metadata:

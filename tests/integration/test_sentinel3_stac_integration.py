@@ -20,7 +20,7 @@ from openeogeotrellis.collections.sentinel3 import (
     _get_acquisition_key,
     SLSTR_PRODUCT_TYPE,
 )
-from openeogeotrellis.load_stac import construct_item_collection, _spatiotemporal_extent_from_load_params
+from openeogeotrellis.load_stac import construct_item_collection, spatiotemporal_extent_from_load_params
 
 _log = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def test_sentinel3_stac_query_recent_data_nrt():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )
@@ -93,11 +93,11 @@ def test_sentinel3_stac_query_recent_data_nrt():
         _log.info(f"  Querying {collection_name}: {url}")
 
         try:
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-            )
+            ).item_collection
 
             num_items = len(item_collection.items)
             collection_results[collection_name] = num_items
@@ -179,7 +179,7 @@ def test_sentinel3_stac_query_older_data_ntc():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )
@@ -197,11 +197,11 @@ def test_sentinel3_stac_query_older_data_ntc():
         _log.info(f"  Querying {collection_name}: {url}")
 
         try:
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-            )
+            ).item_collection
 
             num_items = len(item_collection.items)
             collection_results[collection_name] = num_items
@@ -285,7 +285,7 @@ def test_sentinel3_stac_deduplication_ntc_takes_precedence():
     spatial_extent = {"west": bbox[0], "south": bbox[1], "east": bbox[2], "north": bbox[3]}
     temporal_extent = (f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent,
         temporal_extent=temporal_extent
     )
@@ -301,11 +301,11 @@ def test_sentinel3_stac_deduplication_ntc_takes_precedence():
         _log.info(f"Querying {collection_name}: {url}")
 
         try:
-            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            item_collection = construct_item_collection(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-            )
+            ).item_collection
 
             items = list(item_collection.items)
             _log.info(f"  Found {len(items)} items in {collection_name}")
