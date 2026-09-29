@@ -38,7 +38,6 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
 )
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.byteunit import byte_string_as
@@ -1080,6 +1079,7 @@ def cwl_to_stac(
 
     for key in cwl_arguments:
         val = cwl_arguments[key]
+        from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
         if isinstance(val, GeopysparkDataCube):
             save_result = to_save_result(val)  # Is to_save_result needed?
             assert isinstance(save_result, ImageCollectionResult), (
