@@ -79,12 +79,14 @@ def get_execution_metadata() -> dict:
     execution_metrics = {}
     try:
         scala_execution_metrics = get_jvm().org.openeo.sparklisteners.ExecutionMetrics.get()
-        execution_metrics = {
-            "total_stage_runtime": scala_execution_metrics.totalStageRuntimeMillis(),
-            "total_executor_allocation_time": scala_execution_metrics.executorAllocationTimeMillis(),
-            "cpu_utilization_ratio": scala_execution_metrics.cpuUtilizationRatio(),
-            "total_stage_failures": scala_execution_metrics.totalStageFailures(),
-        }
+        total_stage_runtime = scala_execution_metrics.totalStageRuntimeMillis()
+        if total_stage_runtime != 0:
+            execution_metrics = {
+                "total_stage_runtime": total_stage_runtime,
+                "total_executor_allocation_time": scala_execution_metrics.executorAllocationTimeMillis(),
+                "cpu_utilization_ratio": scala_execution_metrics.cpuUtilizationRatio(),
+                "total_stage_failures": scala_execution_metrics.totalStageFailures(),
+            }
     except Exception as e:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)
     return execution_metrics
