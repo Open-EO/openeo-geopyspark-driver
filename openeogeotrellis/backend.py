@@ -2006,7 +2006,9 @@ class GpsBatchJobs(backend.BatchJobs):
                         # method the state was valid it is best to just NOOP and communicate the job is started.
                         log.info(f"Job start requested, but already in state {latest_job_status}")
                         return
-                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                    infra_id = get_backend_config().infra_id
+                    status_kwargs = {"infra_id": infra_id} if infra_id else {}
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED, **status_kwargs)
                     # Note: with a shared results PVC, there is nothing to create per job:
                     # the batch job just mounts a subPath of that (externally managed) claim.
                     if (
