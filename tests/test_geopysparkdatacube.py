@@ -1,8 +1,11 @@
 import datetime
+import io
 from unittest import mock
 
+import geopandas as gpd
 import geopyspark as gps
 import pytest
+import requests
 from pyproj import CRS
 from shapely.geometry import Point, box
 
@@ -69,7 +72,6 @@ class TestGeopysparkDataCube:
 
     def test_mask_polygon_clips_to_buffered_raster_footprint_before_reprojecting(self):
         cube = object.__new__(GeopysparkDataCube)
-        # extent: {'west': 4900000, 'south': 2840000, 'east': 4920000, 'north': 2860000, 'crs': 'EPSG:3035'}
         cube.get_max_level = mock.Mock(
             return_value=mock.Mock(
                 layer_metadata=mock.Mock(
@@ -80,7 +82,11 @@ class TestGeopysparkDataCube:
         )
         cube.apply_to_levels = mock.Mock(return_value="masked-cube")
 
-        mask = box(-180, -90, 180, 90)
+        polygon_url = "https://s3.waw4-1.cloudferro.com/model-waw4-1-0qm0pt98q2fsihpm0duqjw4ell41oeiauvp4cy6edrl1kklfad/EUNIS2021plus/panEU/v311/2024/ALP/model-valid-geometry_EUNIS2021plus_panEU_v311_2024_ALP.parquet"
+        response = requests.get(polygon_url, stream=True)
+        response.raise_for_status()
+        response.raw.decode_content = True
+        mask = gpd.read_parquet(io.BytesIO(response.raw.read()))
         # global_extent: {'west': 4899610.0, 'south': 2839610.0, 'east': 4920390.0, 'north': 2860390.0, 'crs': 'EPSG:3035'}
         raster_footprint_in_mask_crs = box(4899610.0, 2839610.0, 4920390.0, 2860390.0)
         expected_clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(1e-6))
