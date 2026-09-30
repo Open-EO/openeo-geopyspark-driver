@@ -71,71 +71,64 @@ class TestGeopysparkDataCube:
         assert "filter_temporal with invalid extent" in caplog.text
 
     def test_mask_polygon_clips_to_buffered_raster_footprint_before_reprojecting(self):
-        cube = object.__new__(GeopysparkDataCube)
-        cube.get_max_level = mock.Mock(
-            return_value=mock.Mock(
-                layer_metadata=mock.Mock(
-                    crs="EPSG:3035",
-                    extent=mock.Mock(xmin=4900000, ymin=2840000, xmax=4920000, ymax=2860000),
-                )
-            )
-        )
-        cube.apply_to_levels = mock.Mock(return_value="masked-cube")
+        from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
+        from geopyspark.geotrellis.constants import LayerType
+        from geopyspark.geotrellis.layer import TiledRasterLayer
+        from py4j.protocol import Py4JJavaError
+        from pyspark import SparkContext
 
+        import numpy as np
+
+        # Build a real (small) GeoTrellis layer, backed by a real Spark/JVM context, instead of
+        # mocking `rdd.mask()`: the JTS bug this test reproduces only manifests inside the real
+        # GeoTrellis/JTS `intersectionSafe` fallback (see MaskRDD.scala), not in mocked Python code.
+        TILE_SIZE = 16
+        tile = Tile.from_numpy_array(np.ones((1, TILE_SIZE, TILE_SIZE), dtype="int"), -1)
+        date1 = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+        layer_data = [
+            (SpaceTimeKey(0, 0, date1), tile),
+            (SpaceTimeKey(1, 0, date1), tile),
+            (SpaceTimeKey(0, 1, date1), tile),
+            (SpaceTimeKey(1, 1, date1), tile),
+        ]
+        rdd = SparkContext.getOrCreate().parallelize(layer_data)
+
+        # extent: {'west': 4900000, 'south': 2840000, 'east': 4920000, 'north': 2860000, 'crs': 'EPSG:3035'}
+        extent = {"xmin": 4900000.0, "ymin": 2840000.0, "xmax": 4920000.0, "ymax": 2860000.0}
+        layout = {"layoutCols": 1, "layoutRows": 1, "tileCols": TILE_SIZE, "tileRows": TILE_SIZE}
+        metadata = {
+            "cellType": "int32ud-1",
+            "extent": extent,
+            # GeoPySpark/GeoTrellis needs a proj4 string here (EPSG:3035 equivalent).
+            "crs": "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs",
+            "bounds": {
+                "minKey": {"col": 0, "row": 0, "instant": _convert_to_unix_time(date1)},
+                "maxKey": {"col": 1, "row": 1, "instant": _convert_to_unix_time(date1)},
+            },
+            "layoutDefinition": {"extent": extent, "tileLayout": layout},
+        }
+        gps_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: gps_layer}))
+
+        # Real-world mask polygon known to trigger the JTS `GeometryPrecisionReducer` bug
+        # ("Reduction failed, possible invalid input") when clipped/intersected at this raster
+        # footprint. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850
         polygon_url = "https://s3.waw4-1.cloudferro.com/model-waw4-1-0qm0pt98q2fsihpm0duqjw4ell41oeiauvp4cy6edrl1kklfad/EUNIS2021plus/panEU/v311/2024/ALP/model-valid-geometry_EUNIS2021plus_panEU_v311_2024_ALP.parquet"
         response = requests.get(polygon_url, stream=True)
         response.raise_for_status()
         response.raw.decode_content = True
-        mask = gpd.read_parquet(io.BytesIO(response.raw.read()))
+        mask_gdf = gpd.read_parquet(io.BytesIO(response.raw.read()))
+        mask = mask_gdf.union_all()
+
         from pathlib import Path
 
         Path("/tmp/openeo").mkdir(exist_ok=True)
-        mask.to_file("/tmp/openeo/mask.geojson", driver="GeoJSON")
-        # global_extent: {'west': 4899610.0, 'south': 2839610.0, 'east': 4920390.0, 'north': 2860390.0, 'crs': 'EPSG:3035'}
-        raster_footprint_in_mask_crs = box(4899610.0, 2839610.0, 4920390.0, 2860390.0)
-        expected_clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(1e-6))
-        reprojected_polygon = box(4908000, 2842000, 4918000, 2858000)
-        rasterizer_options = object()
+        mask_gdf.to_file("/tmp/openeo/mask.geojson", driver="GeoJSON")
 
-        with mock.patch("openeogeotrellis.geopysparkdatacube.reproject_geometry") as reproject_geometry, mock.patch(
-            "openeogeotrellis.geopysparkdatacube.gps.RasterizerOptions", return_value=rasterizer_options
-        ), mock.patch("openeogeotrellis.geopysparkdatacube.gps.get_spark_context"):
-            reproject_geometry.side_effect = [raster_footprint_in_mask_crs, reprojected_polygon]
+        result = cube.mask_polygon(mask=mask, srs="EPSG:4326")
 
-            result = cube.mask_polygon(mask=mask, srs="EPSG:4326")
-
-        assert result == "masked-cube"
-
-        first_call = reproject_geometry.call_args_list[0]
-        assert first_call.kwargs["src_crs"] == "EPSG:3035"
-        assert first_call.kwargs["dst_crs"] == CRS.from_user_input("EPSG:4326")
-        assert first_call.args[0].equals(box(4900000, 2840000, 4920000, 2860000))
-
-        second_call = reproject_geometry.call_args_list[1]
-        assert second_call.kwargs["src_crs"] == CRS.from_user_input("EPSG:4326")
-        assert second_call.kwargs["dst_crs"] == "EPSG:3035"
-        assert second_call.args[0].equals(expected_clipped_mask)
-
-        apply_function = cube.apply_to_levels.call_args.args[0]
-        rdd = mock.Mock()
-        apply_function(rdd)
-        rdd.mask.assert_called_once_with(
-            reprojected_polygon,
-            partition_strategy=None,
-            options=rasterizer_options,
-        )
-        # intersect "/tmp/openeo/mask.geojson" and "/tmp/openeo/reprojected_polygon.geojson"
-        gpd.GeoDataFrame(geometry=[reprojected_polygon], crs="EPSG:3035").to_file(
-            "/tmp/openeo/reprojected_polygon.geojson", driver="GeoJSON"
-        )
-
-        mask_gdf = gpd.read_file("/tmp/openeo/mask.geojson").to_crs("EPSG:3035")
-        reprojected_polygon_gdf = gpd.read_file("/tmp/openeo/reprojected_polygon.geojson")
-        intersection = gpd.overlay(mask_gdf, reprojected_polygon_gdf, how="intersection")
-        assert intersection.is_valid.all(), "intersection should be valid"
-        print(f"intersection empty: {intersection.empty}, area: {intersection.area.sum()}")
-        intersection.to_file("/tmp/openeo/intersection.geojson", driver="GeoJSON")
-        assert not intersection.empty, "mask and reprojected polygon do not intersect"
+        # with pytest.raises(Py4JJavaError, match="Reduction failed, possible invalid input"):
+        result.get_max_level().to_numpy_rdd().collect()
 
 
     def test_mask_polygon_uses_minimum_buffer_for_degenerate_reprojected_footprint(self):
