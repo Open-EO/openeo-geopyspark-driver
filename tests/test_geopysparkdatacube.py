@@ -69,20 +69,22 @@ class TestGeopysparkDataCube:
 
     def test_mask_polygon_clips_to_buffered_raster_footprint_before_reprojecting(self):
         cube = object.__new__(GeopysparkDataCube)
+        # extent: {'west': 4900000, 'south': 2840000, 'east': 4920000, 'north': 2860000, 'crs': 'EPSG:3035'}
         cube.get_max_level = mock.Mock(
             return_value=mock.Mock(
                 layer_metadata=mock.Mock(
-                    crs="EPSG:32631",
-                    extent=mock.Mock(xmin=640000, ymin=5675000, xmax=650000, ymax=5685000),
+                    crs="EPSG:3035",
+                    extent=mock.Mock(xmin=4900000, ymin=2840000, xmax=4920000, ymax=2860000),
                 )
             )
         )
         cube.apply_to_levels = mock.Mock(return_value="masked-cube")
 
         mask = box(-180, -90, 180, 90)
-        raster_footprint_in_mask_crs = box(4.0, 50.0, 5.0, 51.0)
+        # global_extent: {'west': 4899610.0, 'south': 2839610.0, 'east': 4920390.0, 'north': 2860390.0, 'crs': 'EPSG:3035'}
+        raster_footprint_in_mask_crs = box(4899610.0, 2839610.0, 4920390.0, 2860390.0)
         expected_clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(1e-6))
-        reprojected_polygon = box(644000, 5676000, 649000, 5684000)
+        reprojected_polygon = box(4908000, 2842000, 4918000, 2858000)
         rasterizer_options = object()
 
         with mock.patch("openeogeotrellis.geopysparkdatacube.reproject_geometry") as reproject_geometry, mock.patch(
@@ -95,13 +97,13 @@ class TestGeopysparkDataCube:
         assert result == "masked-cube"
 
         first_call = reproject_geometry.call_args_list[0]
-        assert first_call.kwargs["src_crs"] == "EPSG:32631"
+        assert first_call.kwargs["src_crs"] == "EPSG:3035"
         assert first_call.kwargs["dst_crs"] == CRS.from_user_input("EPSG:4326")
-        assert first_call.args[0].equals(box(640000, 5675000, 650000, 5685000))
+        assert first_call.args[0].equals(box(4900000, 2840000, 4920000, 2860000))
 
         second_call = reproject_geometry.call_args_list[1]
         assert second_call.kwargs["src_crs"] == CRS.from_user_input("EPSG:4326")
-        assert second_call.kwargs["dst_crs"] == "EPSG:32631"
+        assert second_call.kwargs["dst_crs"] == "EPSG:3035"
         assert second_call.args[0].equals(expected_clipped_mask)
 
         apply_function = cube.apply_to_levels.call_args.args[0]
