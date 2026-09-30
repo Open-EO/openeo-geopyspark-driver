@@ -1193,6 +1193,10 @@ class GeopysparkDataCube(DriverDataCube):
         )
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
+        with open("/tmp/openeo/reprojected_polygon.geojson", "w") as f:
+            j = json.loads(shapely.to_geojson(reprojected_polygon))
+            j["crs"] = {"type": "name", "properties": {"name": layer_crs}}
+            f.write(json.dumps(j))
         if not reprojected_polygon.is_valid:
             _log.warning(
                 f"mask_polygon: Mask polygon is not valid after reprojection to {layer_crs}: {reprojected_polygon.wkt}"

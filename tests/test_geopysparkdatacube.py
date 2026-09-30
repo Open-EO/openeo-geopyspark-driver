@@ -87,6 +87,10 @@ class TestGeopysparkDataCube:
         response.raise_for_status()
         response.raw.decode_content = True
         mask = gpd.read_parquet(io.BytesIO(response.raw.read()))
+        from pathlib import Path
+
+        Path("/tmp/openeo").mkdir(exist_ok=True)
+        mask.to_file("/tmp/openeo/mask.geojson", driver="GeoJSON")
         # global_extent: {'west': 4899610.0, 'south': 2839610.0, 'east': 4920390.0, 'north': 2860390.0, 'crs': 'EPSG:3035'}
         raster_footprint_in_mask_crs = box(4899610.0, 2839610.0, 4920390.0, 2860390.0)
         expected_clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(1e-6))
