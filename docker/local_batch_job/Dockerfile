@@ -17,8 +17,8 @@ ENV PYTHONPATH="$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH"
 RUN $PYSPARK_PYTHON -c "import pyspark;import openeo;import otbApplication"
 
 # COPY files to allow building the image with the latest version stored locally:
-# TODO: Disable this by default when a new openeo-base is available.
-COPY ./openeogeotrellis /opt/venv/lib64/python3.8/site-packages/openeogeotrellis
+# TODO: avoid hard-coding version-dependent paths and other assumptions here
+COPY ./openeogeotrellis /opt/venv/lib64/python3.11/site-packages/openeogeotrellis
 
 # to find jars:
 ENV GEOPYSPARK_JARS_PATH=/opt/

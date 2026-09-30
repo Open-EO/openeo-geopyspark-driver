@@ -12,6 +12,11 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+## 0.74.0
+
+- Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
+
+
 ## 0.73.0
 
 - `merge_cubes`: preserve temporal metadata when merging a spatial cube with a spacetime cube ([#1830](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1830))
