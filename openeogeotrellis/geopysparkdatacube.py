@@ -19,6 +19,7 @@ import geopandas as gpd
 import pyproj
 import pytz
 import shapely.geometry
+import shapely.validation
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
@@ -1193,14 +1194,30 @@ class GeopysparkDataCube(DriverDataCube):
         )
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
-        with open("/tmp/openeo/reprojected_polygon.geojson", "w") as f:
-            j = json.loads(shapely.to_geojson(reprojected_polygon))
-            j["crs"] = {"type": "name", "properties": {"name": layer_crs}}
-            f.write(json.dumps(j))
+        # Defensively snap to a safe precision grid: GeoTrellis's JTS `GeometryPrecisionReducer`
+        # fallback (only exercised when the raw JTS intersection first throws a
+        # `TopologyException`) can itself raise
+        # `IllegalArgumentException: Reduction failed, possible invalid input` on complex
+        # real-world polygons that have many closely spaced/near-duplicate vertices, especially
+        # at large (e.g. metric) coordinate magnitudes. Reducing precision here, using shapely's
+        # own robust implementation, avoids ever triggering that buggy fallback in the JVM.
+        # See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850
         if not reprojected_polygon.is_valid:
-            _log.warning(
-                f"mask_polygon: Mask polygon is not valid after reprojection to {layer_crs}: {reprojected_polygon.wkt}"
-            )
+            reprojected_polygon = shapely.set_precision(reprojected_polygon, grid_size=1e-6)
+            reprojected_polygon_made_valid = shapely.validation.make_valid(reprojected_polygon)
+            import random
+
+            random_int = random.randint(1, 100)
+            with open(f"/tmp/openeo/reprojected_polygon_{random_int}.geojson", "w") as f:
+                j = json.loads(shapely.to_geojson(reprojected_polygon))
+                j["crs"] = {"type": "name", "properties": {"name": layer_crs}}
+                f.write(json.dumps(j))
+            with open(f"/tmp/openeo/reprojected_polygon_made_valid_{random_int}.geojson", "w") as f:
+                j = json.loads(shapely.to_geojson(reprojected_polygon_made_valid))
+                j["crs"] = {"type": "name", "properties": {"name": layer_crs}}
+                f.write(json.dumps(j))
+            _log.warning(f"mask_polygon: Had to apply make_valid on reprojected polygon {layer_crs}.")
+            reprojected_polygon = reprojected_polygon_made_valid
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         rasterizer_options = gps.RasterizerOptions()

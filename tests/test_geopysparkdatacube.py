@@ -74,7 +74,6 @@ class TestGeopysparkDataCube:
         from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
         from geopyspark.geotrellis.constants import LayerType
         from geopyspark.geotrellis.layer import TiledRasterLayer
-        from py4j.protocol import Py4JJavaError
         from pyspark import SparkContext
 
         import numpy as np
@@ -127,7 +126,11 @@ class TestGeopysparkDataCube:
 
         result = cube.mask_polygon(mask=mask, srs="EPSG:4326")
 
-        # with pytest.raises(Py4JJavaError, match="Reduction failed, possible invalid input"):
+        # This used to raise a Py4JJavaError wrapping
+        # `java.lang.IllegalArgumentException: Reduction failed, possible invalid input`
+        # (see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850).
+        # `mask_polygon` now defensively snaps/validates the reprojected mask polygon,
+        # so this should complete without error.
         result.get_max_level().to_numpy_rdd().collect()
 
 
