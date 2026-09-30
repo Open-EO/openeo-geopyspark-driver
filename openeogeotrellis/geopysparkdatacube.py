@@ -19,6 +19,7 @@ import geopandas as gpd
 import pyproj
 import pytz
 import shapely.geometry
+import shapely.validation
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
@@ -1172,8 +1173,7 @@ class GeopysparkDataCube(DriverDataCube):
     merge = merge_cubes
 
     @callsite
-    def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
-                     replacement=None, inside=False) -> 'GeopysparkDataCube':
+    def mask_polygon(self, mask: BaseGeometry, srs="EPSG:4326", replacement=None, inside=False) -> "GeopysparkDataCube":
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
         mask_crs = CRS.from_user_input(srs)
@@ -1194,9 +1194,9 @@ class GeopysparkDataCube(DriverDataCube):
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         if not reprojected_polygon.is_valid:
-            _log.warning(
-                f"mask_polygon: Mask polygon is not valid after reprojection to {layer_crs}: {reprojected_polygon.wkt}"
-            )
+            reprojected_polygon_made_valid = shapely.validation.make_valid(reprojected_polygon)
+            _log.warning(f"mask_polygon: Had to apply make_valid on reprojected polygon {layer_crs}.")
+            reprojected_polygon = reprojected_polygon_made_valid
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         rasterizer_options = gps.RasterizerOptions()
