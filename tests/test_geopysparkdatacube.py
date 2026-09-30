@@ -124,6 +124,19 @@ class TestGeopysparkDataCube:
             partition_strategy=None,
             options=rasterizer_options,
         )
+        # intersect "/tmp/openeo/mask.geojson" and "/tmp/openeo/reprojected_polygon.geojson"
+        gpd.GeoDataFrame(geometry=[reprojected_polygon], crs="EPSG:3035").to_file(
+            "/tmp/openeo/reprojected_polygon.geojson", driver="GeoJSON"
+        )
+
+        mask_gdf = gpd.read_file("/tmp/openeo/mask.geojson").to_crs("EPSG:3035")
+        reprojected_polygon_gdf = gpd.read_file("/tmp/openeo/reprojected_polygon.geojson")
+        intersection = gpd.overlay(mask_gdf, reprojected_polygon_gdf, how="intersection")
+        assert intersection.is_valid.all(), "intersection should be valid"
+        print(f"intersection empty: {intersection.empty}, area: {intersection.area.sum()}")
+        intersection.to_file("/tmp/openeo/intersection.geojson", driver="GeoJSON")
+        assert not intersection.empty, "mask and reprojected polygon do not intersect"
+
 
     def test_mask_polygon_uses_minimum_buffer_for_degenerate_reprojected_footprint(self):
         cube = object.__new__(GeopysparkDataCube)
