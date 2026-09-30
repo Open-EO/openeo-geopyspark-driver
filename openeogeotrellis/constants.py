@@ -12,6 +12,7 @@ class EVAL_ENV_KEY:
     PARAMETERS = "parameters"
     OPENEO_API_VERSION = "openeo_api_version"
     GLOBAL_EXTENT = "global_extent"
+    GLOBAL_EXTENT_PER_SOURCE = "global_extent_per_source"
     JOB_DIR = "job_dir"
     STAC_API_FILTER_BY_GEOMETRY = "stac_api_filter_by_geometry"
 

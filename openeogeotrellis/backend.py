@@ -841,6 +841,10 @@ Example usage:
         env: EvalEnv,
         pg_node_id: Optional[str] = None,
     ) -> GeopysparkDataCube:
+        # Resolve the effective (possibly per-source, e.g. mask-specific) global extent into
+        # the plain (white-listed) GLOBAL_EXTENT env key before the caching boundary
+        # (`source_id` is excluded from the `load_params` cache key).
+        env = openeogeotrellis._backend.post_dry_run.resolve_global_extent_in_env(load_params=load_params, env=env)
         return self._load_stac_cached(
             url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
         )
