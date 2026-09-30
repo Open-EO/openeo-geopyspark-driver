@@ -1203,7 +1203,6 @@ class GeopysparkDataCube(DriverDataCube):
         # own robust implementation, avoids ever triggering that buggy fallback in the JVM.
         # See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850
         if not reprojected_polygon.is_valid:
-            reprojected_polygon = shapely.set_precision(reprojected_polygon, grid_size=1e-6)
             reprojected_polygon_made_valid = shapely.validation.make_valid(reprojected_polygon)
             import random
 
@@ -1211,11 +1210,11 @@ class GeopysparkDataCube(DriverDataCube):
             with open(f"/tmp/openeo/reprojected_polygon_{random_int}.geojson", "w") as f:
                 j = json.loads(shapely.to_geojson(reprojected_polygon))
                 j["crs"] = {"type": "name", "properties": {"name": layer_crs}}
-                f.write(json.dumps(j))
+                f.write(json.dumps(j, indent=2))
             with open(f"/tmp/openeo/reprojected_polygon_made_valid_{random_int}.geojson", "w") as f:
                 j = json.loads(shapely.to_geojson(reprojected_polygon_made_valid))
                 j["crs"] = {"type": "name", "properties": {"name": layer_crs}}
-                f.write(json.dumps(j))
+                f.write(json.dumps(j, indent=2))
             _log.warning(f"mask_polygon: Had to apply make_valid on reprojected polygon {layer_crs}.")
             reprojected_polygon = reprojected_polygon_made_valid
         # TODO should we warn when masking generates an empty collection?
