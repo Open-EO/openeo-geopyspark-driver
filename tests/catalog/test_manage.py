@@ -1,19 +1,12 @@
-import argparse
 import contextlib
 import json
 import re
-import sys
-from email import message
 from typing import Optional, Iterable
 
 import dirty_equals
 import pytest
 
 from openeogeotrellis.catalog.enrich import LinksList
-
-if sys.version_info < (3, 10):
-    # TODO #1060 clean up once python 3.8/3.9 support can be dropped
-    pytest.skip("openeogeotrellis.catalog.manage requires at least Python 3.10+", allow_module_level=True)
 
 
 from openeo.testing.stac import StacDummyBuilder

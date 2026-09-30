@@ -11,6 +11,7 @@ import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
+import importlib.resources
 
 import dateutil.parser
 import kubernetes.client
@@ -43,14 +44,6 @@ from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import S3ClientBuilder
-
-try:
-    # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
-    import importlib_resources
-except ImportError:
-    import importlib.resources
-
-    importlib_resources = importlib.resources
 
 
 _log = logging.getLogger(__name__)
@@ -331,7 +324,7 @@ class CwLSource:
         """
         Read CWL from a packaged resource file in importlib.resources-style.
         """
-        content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
+        content = importlib.resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
         return cls(content=content, source=path)
 
 
