@@ -108,6 +108,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
+        infra_id: Optional[str] = None,
     ) -> None:
         self._update(
             job_id=job_id,
@@ -118,6 +119,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
             self._update(job_id=job_id, started=rfc3339.datetime(started))
         if finished:
             self._update(job_id=job_id, finished=rfc3339.datetime(finished))
+        if infra_id:
+            self._update(job_id=job_id, infra_id=infra_id)
 
     def set_dependencies(
         self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]
@@ -187,13 +190,18 @@ class InMemoryJobRegistry(JobRegistryInterface):
         max_age: Optional[int] = None,
         max_updated_ago: Optional[int] = None,
         require_application_id: bool = False,
+        infra_id: Optional[str] = None,
     ) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-        # TODO: implement support for max_age, max_updated_ago, fields
+        # TODO: implement support for max_age, max_updated_ago and fields
         return [
             job
             for job in self.db.values()
-            if job["status"] in active and (not require_application_id or job.get("application_id") is not None)
+            if (
+                job["status"] in active
+                and (not require_application_id or job.get("application_id") is not None)
+                and (not infra_id or job.get("infra_id") == infra_id)
+            )
         ]
 
 
@@ -275,10 +283,17 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
+        infra_id: Optional[str] = None,
     ) -> None:
         if self.elastic_job_registry:
             self.elastic_job_registry.set_status(
-                job_id=job_id, user_id=user_id, status=status, updated=updated, started=started, finished=finished
+                job_id=job_id,
+                user_id=user_id,
+                status=status,
+                updated=updated,
+                started=started,
+                finished=finished,
+                infra_id=infra_id,
             )
 
     def delete_job(self, job_id: str, *, user_id: Optional[str] = None, verify_deletion: bool = True) -> None:
@@ -353,6 +368,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         max_age: Optional[int] = None,
         max_updated_ago: Optional[int] = None,
         require_application_id: bool = False,
+        infra_id: Optional[str] = None,
     ) -> List[JobDict]:
         if self.elastic_job_registry:
             return self.elastic_job_registry.list_active_jobs(
@@ -360,6 +376,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 max_age=max_age,
                 max_updated_ago=max_updated_ago,
                 require_application_id=require_application_id,
+                infra_id=infra_id,
             )
         return []
 

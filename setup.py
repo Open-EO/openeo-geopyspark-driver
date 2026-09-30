@@ -72,7 +72,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.48.0.a4.dev",
-        "openeo_driver>=0.141.0a2.dev",
+        "openeo_driver>=0.142.0a3",
         "opentelemetry-api>=1.0.0",
         "prometheus-client>=0.20.0",
         "pyspark>=4.0.0",
