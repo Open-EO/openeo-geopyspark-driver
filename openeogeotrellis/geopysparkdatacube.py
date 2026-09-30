@@ -1193,6 +1193,10 @@ class GeopysparkDataCube(DriverDataCube):
         )
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
+        if not reprojected_polygon.is_valid:
+            _log.warning(
+                f"mask_polygon: Mask polygon is not valid after reprojection to {layer_crs}: {reprojected_polygon.wkt}"
+            )
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         rasterizer_options = gps.RasterizerOptions()
