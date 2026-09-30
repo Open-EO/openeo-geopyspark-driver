@@ -2,6 +2,7 @@ import datetime
 from unittest import mock
 
 import geopyspark as gps
+import geopandas as gpd
 import numpy as np
 import pytest
 from pyproj import CRS
@@ -117,7 +118,7 @@ class TestGeopysparkDataCube:
             options=rasterizer_options,
         )
 
-    def test_mask_polygon_make_valid(self):
+    def test_mask_polygon_make_valid(self, caplog):
         from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
         from geopyspark.geotrellis.constants import LayerType
         from geopyspark.geotrellis.layer import TiledRasterLayer
@@ -153,15 +154,17 @@ class TestGeopysparkDataCube:
         gps_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
         cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: gps_layer}))
 
-        # Based on model-valid-geometry_EUNIS2021plus_panEU_v311_2024_ALP.parquet
-        polygon_path = get_test_data_file("test_mask_polygon_make_valid.geojson")
-        mask = shapely.from_geojson(polygon_path.read_text())
+        polygon_path = get_test_data_file("geometries/model-valid-geometry_EUNIS2021plus_panEU_v311_2024_ALP.parquet")
+        mask = gpd.read_parquet(polygon_path).union_all()
         result = cube.mask_polygon(mask=mask, srs="EPSG:4326")
 
-        # Thenks to shapely.validation.make_valid, this should not throw this error:
+        # Thanks to shapely.validation.make_valid, this should not throw this error:
         # `java.lang.IllegalArgumentException: Reduction failed, possible invalid input`
         # https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850
         result.get_max_level().to_numpy_rdd().collect()
+        assert (
+            "Had to apply make_valid on reprojected polygon" in caplog.text
+        )  # log message about invalid geometry was emitted
 
     def test_mask_polygon_uses_minimum_buffer_for_degenerate_reprojected_footprint(self):
         cube = object.__new__(GeopysparkDataCube)

@@ -19,6 +19,7 @@ import geopandas as gpd
 import pyproj
 import pytz
 import shapely.geometry
+import shapely.validation
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
