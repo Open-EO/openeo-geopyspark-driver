@@ -105,6 +105,15 @@ def callsite(func):
     return run
 
 
+def _extract_polygons(geometry: BaseGeometry) -> List[Polygon]:
+    """Recursively collect all non-empty Polygons from a (possibly nested) geometry."""
+    if isinstance(geometry, Polygon):
+        return [] if geometry.is_empty else [geometry]
+    if isinstance(geometry, BaseMultipartGeometry):
+        return [p for g in geometry.geoms for p in _extract_polygons(g)]
+    return []
+
+
 class GeopysparkDataCube(DriverDataCube):
 
     metadata: GeopysparkCubeMetadata = None
@@ -1195,6 +1204,9 @@ class GeopysparkDataCube(DriverDataCube):
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         if not reprojected_polygon.is_valid:
             reprojected_polygon_made_valid = shapely.validation.make_valid(reprojected_polygon)
+            if not isinstance(reprojected_polygon_made_valid, (Polygon, MultiPolygon)):
+                # make_valid could return a GeometryCollection (e.g. with degenerate LineStrings)
+                reprojected_polygon_made_valid = MultiPolygon(_extract_polygons(reprojected_polygon_made_valid))
             _log.warning(f"mask_polygon: Had to apply make_valid on reprojected polygon {layer_crs}.")
             reprojected_polygon = reprojected_polygon_made_valid
         # TODO should we warn when masking generates an empty collection?
