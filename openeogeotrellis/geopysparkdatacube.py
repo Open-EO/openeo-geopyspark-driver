@@ -1178,20 +1178,18 @@ class GeopysparkDataCube(DriverDataCube):
         layer_crs = max_level.layer_metadata.crs
         mask_crs = CRS.from_user_input(srs)
         layer_extent = max_level.layer_metadata.extent
+        # Buffer the raster footprint by a few pixels (in layer CRS, where pixel size is exact)
+        # to be robust against reprojection inaccuracies along the edges.
+        cell_x, cell_y = self.get_cellsize()
+        footprint_buffer = 3 * max(cell_x, cell_y)
         raster_footprint_in_mask_crs = reproject_geometry(
-            box(layer_extent.xmin, layer_extent.ymin, layer_extent.xmax, layer_extent.ymax),
+            box(layer_extent.xmin, layer_extent.ymin, layer_extent.xmax, layer_extent.ymax).buffer(
+                footprint_buffer, cap_style="square", join_style="mitre"
+            ),
             src_crs=layer_crs,
             dst_crs=mask_crs,
         )
-        footprint_bounds = raster_footprint_in_mask_crs.bounds
-        footprint_buffer = max(
-            max(
-                footprint_bounds[2] - footprint_bounds[0],
-                footprint_bounds[3] - footprint_bounds[1],
-            ) * 1e-6,
-            1e-12,
-        )
-        clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
+        clipped_mask = mask.intersection(raster_footprint_in_mask_crs)
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         if not reprojected_polygon.is_valid:
             reprojected_polygon_made_valid = shapely.validation.make_valid(reprojected_polygon)

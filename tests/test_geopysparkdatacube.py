@@ -6,7 +6,7 @@ import geopandas as gpd
 import numpy as np
 import pytest
 from pyproj import CRS
-from shapely.geometry import Point, box
+from shapely.geometry import box
 import shapely
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
@@ -83,10 +83,11 @@ class TestGeopysparkDataCube:
             )
         )
         cube.apply_to_levels = mock.Mock(return_value="masked-cube")
+        cube.get_cellsize = mock.Mock(return_value=(10.0, 20.0))
 
         mask = box(-180, -90, 180, 90)
         raster_footprint_in_mask_crs = box(4.0, 50.0, 5.0, 51.0)
-        expected_clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(1e-6))
+        expected_clipped_mask = mask.intersection(raster_footprint_in_mask_crs)
         reprojected_polygon = box(644000, 5676000, 649000, 5684000)
         rasterizer_options = object()
 
@@ -102,7 +103,8 @@ class TestGeopysparkDataCube:
         first_call = reproject_geometry.call_args_list[0]
         assert first_call.kwargs["src_crs"] == "EPSG:32631"
         assert first_call.kwargs["dst_crs"] == CRS.from_user_input("EPSG:4326")
-        assert first_call.args[0].equals(box(640000, 5675000, 650000, 5685000))
+        # Footprint buffered by 3 pixels (3 * max(10, 20) = 60) in layer CRS, with square corners
+        assert first_call.args[0].equals(box(640000 - 60, 5675000 - 60, 650000 + 60, 5685000 + 60))
 
         second_call = reproject_geometry.call_args_list[1]
         assert second_call.kwargs["src_crs"] == CRS.from_user_input("EPSG:4326")
@@ -166,31 +168,33 @@ class TestGeopysparkDataCube:
             "Had to apply make_valid on reprojected polygon" in caplog.text
         )  # log message about invalid geometry was emitted
 
-    def test_mask_polygon_uses_minimum_buffer_for_degenerate_reprojected_footprint(self):
+    def test_mask_polygon_buffers_degenerate_raster_footprint(self):
         cube = object.__new__(GeopysparkDataCube)
         cube.get_max_level = mock.Mock(
             return_value=mock.Mock(
                 layer_metadata=mock.Mock(
                     crs="EPSG:32631",
-                    extent=mock.Mock(xmin=640000, ymin=5675000, xmax=650000, ymax=5685000),
+                    # zero-area extent
+                    extent=mock.Mock(xmin=640000, ymin=5675000, xmax=640000, ymax=5675000),
                 )
             )
         )
         cube.apply_to_levels = mock.Mock(return_value="masked-cube")
+        cube.get_cellsize = mock.Mock(return_value=(10.0, 10.0))
 
         mask = box(3.9, 49.9, 4.1, 50.1)
-        collapsed_footprint_in_mask_crs = Point(4.0, 50.0)
-        expected_clipped_mask = mask.intersection(collapsed_footprint_in_mask_crs.buffer(1e-12))
         reprojected_polygon = box(644000, 5676000, 649000, 5684000)
 
         with mock.patch("openeogeotrellis.geopysparkdatacube.reproject_geometry") as reproject_geometry, mock.patch(
             "openeogeotrellis.geopysparkdatacube.gps.get_spark_context"
         ):
-            reproject_geometry.side_effect = [collapsed_footprint_in_mask_crs, reprojected_polygon]
+            reproject_geometry.side_effect = [box(4.0, 50.0, 4.001, 50.001), reprojected_polygon]
 
             cube.mask_polygon(mask=mask, srs="EPSG:4326")
 
-        assert reproject_geometry.call_args_list[1].args[0].equals(expected_clipped_mask)
+        footprint = reproject_geometry.call_args_list[0].args[0]
+        assert not footprint.is_empty
+        assert footprint.equals(box(640000 - 30, 5675000 - 30, 640000 + 30, 5675000 + 30))
 
     def test_merge_cubes_spatial_spacetime_adds_temporal_metadata(self):
         spatial = _mock_cube(layer_type=gps.LayerType.SPATIAL, metadata=_build_metadata())
