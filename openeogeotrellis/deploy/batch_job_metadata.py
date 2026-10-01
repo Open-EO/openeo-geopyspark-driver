@@ -78,7 +78,7 @@ def _get_tracker(tracker_id: str = ""):
 def get_execution_metadata() -> dict:
     execution_metrics = {}
     try:
-        scala_execution_metrics = get_jvm().org.openeo.sparklisteners.ExecutionMetrics.get()
+        scala_execution_metrics = get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics.get()
         total_stage_runtime = scala_execution_metrics.totalStageRuntimeMillis()
         if total_stage_runtime != 0:
             execution_metrics = {
