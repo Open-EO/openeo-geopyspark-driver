@@ -118,7 +118,21 @@ class TestGeopysparkDataCube:
             options=rasterizer_options,
         )
 
-    def test_mask_polygon_make_valid(self, caplog):
+    @pytest.mark.parametrize(
+        "extent",
+        [
+            # make_valid returns GeometryCollection(MultiPolygon, LineString)
+            {"xmin": 4880000.0, "ymin": 2840000.0, "xmax": 4900000.0, "ymax": 2860000.0},
+            # make_valid returns Polygon
+            {"xmin": 4900000.0, "ymin": 2840000.0, "xmax": 4920000.0, "ymax": 2860000.0},
+            {"xmin": 4860000.0, "ymin": 2860000.0, "xmax": 4880000.0, "ymax": 2880000.0},
+            # make_valid returns GeometryCollection(Polygon, LineString)
+            {"xmin": 4840000.0, "ymin": 2800000.0, "xmax": 4860000.0, "ymax": 2820000.0},
+            # make_valid returns GeometryCollection(Polygon, MultiLineString)
+            {"xmin": 4860000.0, "ymin": 2820000.0, "xmax": 4880000.0, "ymax": 2840000.0},
+        ],
+    )
+    def test_mask_polygon_make_valid(self, caplog, extent):
         from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
         from geopyspark.geotrellis.constants import LayerType
         from geopyspark.geotrellis.layer import TiledRasterLayer
@@ -138,7 +152,6 @@ class TestGeopysparkDataCube:
         ]
         rdd = SparkContext.getOrCreate().parallelize(layer_data)
 
-        extent = {"xmin": 4900000.0, "ymin": 2840000.0, "xmax": 4920000.0, "ymax": 2860000.0}
         layout = {"layoutCols": 1, "layoutRows": 1, "tileCols": tile_size, "tileRows": tile_size}
         metadata = {
             "cellType": "int32ud-1",
@@ -156,15 +169,30 @@ class TestGeopysparkDataCube:
 
         polygon_path = get_test_data_file("geometries/model-valid-geometry_EUNIS2021plus_panEU_v311_2024_ALP.parquet")
         mask = gpd.read_parquet(polygon_path).union_all()
-        result = cube.mask_polygon(mask=mask, srs="EPSG:4326")
+        with mock.patch.object(TiledRasterLayer, "mask", autospec=True, side_effect=TiledRasterLayer.mask) as mask_spy:
+            result = cube.mask_polygon(mask=mask, srs="EPSG:4326")
 
         # Thanks to shapely.validation.make_valid, this should not throw this error:
         # `java.lang.IllegalArgumentException: Reduction failed, possible invalid input`
         # https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850
-        result.get_max_level().to_numpy_rdd().collect()
-        assert (
-            "Had to apply make_valid on reprojected polygon" in caplog.text
-        )  # log message about invalid geometry was emitted
+        tiles = result.get_max_level().to_numpy_rdd().collect()
+        assert "Had to apply make_valid on reprojected polygon" in caplog.text
+        assert len(tiles) > 0
+
+        mask_spy.assert_called_once()
+        output_polygon = mask_spy.call_args.args[1]
+        # Debug dump
+        # import pathlib
+        # debug_dir = pathlib.Path("/tmp/openeo")
+        # debug_dir.mkdir(parents=True, exist_ok=True)
+        # gpd.GeoSeries([output_polygon], crs="EPSG:3035").to_file(
+        #     debug_dir / f"test_mask_polygon_make_valid_output_polygon_{int(extent['xmin'])}_{int(extent['ymin'])}.geojson",
+        #     driver="GeoJSON",
+        # )
+        # Scala side silently drops anything that is not a (Multi)Polygon, resulting in an empty cube
+        assert isinstance(output_polygon, (shapely.Polygon, shapely.MultiPolygon))
+        assert output_polygon.is_valid
+        assert not output_polygon.is_empty
 
     def test_mask_polygon_uses_minimum_buffer_for_degenerate_reprojected_footprint(self):
         cube = object.__new__(GeopysparkDataCube)
