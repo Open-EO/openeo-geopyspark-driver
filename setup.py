@@ -94,7 +94,7 @@ setup(
         'affine',
         "xarray~=2024.7.0",
         "netcdf4",
-        "shapely>=2.0.0",
+        "shapely>=2.2.0",
         'epsel~=1.0.0',
         "Bottleneck~=1.4.0",
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
