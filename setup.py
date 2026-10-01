@@ -31,14 +31,12 @@ tests_require = [
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0,<3.0.0",
     "kubernetes",
-    "google-auth<2.46.0; python_version<='3.8'",  # quick-fix for google-auth python 3.8 compatibility issue
     "re-assert",
     "dirty-equals>=0.6",
     "cryptography~=46.0.0",
     "responses",
     "rio_cogeo",
-    'pydantic~=1.0; python_version<"3.9"',
-    'pydantic; python_version>="3.9"',
+    "pydantic",
     "zarr",
     "jsonschema",
     "rioxarray",
@@ -48,16 +46,15 @@ tests_require = [
 typing_require = [
     "mypy-boto3-sts",
     "mypy-boto3-s3",
-    'typechecked; python_version>="3.10"',
     "types-shapely",
-    'scipy-stubs; python_version>="3.10"',
+    "scipy-stubs",
     "typeguard",
 ]
 
 setup(
     name='openeo-geopyspark',
     version=version,
-    python_requires=">=3.8",
+    python_requires=">=3.11",
     packages=find_packages(exclude=('tests', 'scripts')),
     include_package_data = True,
     data_files=[
@@ -74,45 +71,34 @@ setup(
     ],
     tests_require=tests_require,
     install_requires=[
-        # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
         "openeo>=0.48.0.a4.dev",
-        "openeo_driver>=0.141.0a2.dev",
+        "openeo_driver>=0.142.0a3.dev",
         "opentelemetry-api>=1.0.0",
         "prometheus-client>=0.20.0",
-        'pyspark>=4.0.0; python_version>"3.8"',
-        'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
+        "pyspark>=4.0.0",
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        'rasterio~=1.3.10; python_version<"3.9"',
-        'rasterio~=1.3.10; python_version>="3.9"',
+        "rasterio~=1.3.10",
         'py4j',
-        'numpy==1.22.4; python_version<"3.9"',
-        'numpy>=2.3.3,<2.5; python_version>="3.9"',
-        'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
-        'pandas; python_version>="3.9"',
+        "numpy>=2.3.3,<2.5",
+        "pandas",
         'pyproj==3.4.1',
         'protobuf~=3.9.2',
-        'kazoo~=2.8.0; python_version<="3.8"',
-        'kazoo~=2.11.0; python_version>"3.8"',
-        'h5py==2.10.0; python_version<"3.9"',
-        'h5py~=3.11.0; python_version>="3.9"',
+        "kazoo~=2.11.0",
+        "h5py~=3.11.0",
         'h5netcdf',
         'requests>=2.26.0,<3.0',
         'python_dateutil',
         'pytz',
         'affine',
-        'xarray~=0.16.2; python_version<"3.9"',
-        'xarray~=2024.7.0; python_version>="3.9"',
+        "xarray~=2024.7.0",
         "netcdf4",
-        "shapely>=1.8.5",  # TODO #1161 bump requirement to at least 2.0.0 for simplicity (once compatibility is verified on all deployments)
+        "shapely>=2.0.0",
         'epsel~=1.0.0',
-        'numbagg==0.1; python_version<"3.9"', #leave it to user environment to include this for newer pythons
-        'Bottleneck~=1.3.2; python_version<"3.9"',
-        'Bottleneck~=1.4.0; python_version>="3.9"',
+        "Bottleneck~=1.4.0",
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
-        'jep==4.1.1; python_version<"3.9"',
-        'jep_openeo_numpy==4.1.2; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
+        "jep_openeo_numpy==4.1.2",  # Required because Jep needs to compile against numpy 2.x
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",
@@ -126,7 +112,7 @@ setup(
         'scipy>=1.8',  # used by sentinel-3 reader
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
         "urllib3>=1.26.20",
-        "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
+        "geopandas>=1.0.0",
     ],
     extras_require={
         "dev": tests_require + typing_require,
