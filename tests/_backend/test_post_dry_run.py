@@ -609,12 +609,15 @@ class TestPostDryRun:
         }
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+        expected_extent = BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326")
+        source_ids = [source_id for source_id, _ in source_constraints]
         assert global_extent == {
-            "global_extent": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+            "global_extent": expected_extent,
             "global_extent_variants": {
-                "original": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
-                "target_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+                "original": expected_extent,
+                "target_aligned": expected_extent,
             },
+            "global_extent_per_source": {source_id: expected_extent for source_id in source_ids},
         }
 
     def test_determine_global_extent_load_collection_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
@@ -661,6 +664,9 @@ class TestPostDryRun:
             "global_extent_variants": {
                 "original": expected_orig,
                 "target_aligned": expected_aligned,
+            },
+            "global_extent_per_source": {
+                source_id: expected_aligned for source_id, _ in source_constraints
             },
         }
 
@@ -1263,6 +1269,7 @@ class TestPostDryRun:
                 "assets_full_bbox": BoundingBox(1, 2, 3, 4, crs="EPSG:4326"),
                 "assets_covered_bbox": expected,
             },
+            "global_extent_per_source": {source_id: expected for source_id, _ in source_constraints},
         }
 
     def test_extract_spatial_extent_from_constraint_load_collection_type_stac_minimal(
