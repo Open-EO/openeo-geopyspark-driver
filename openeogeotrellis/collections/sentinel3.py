@@ -46,6 +46,15 @@ DEFAULT_REPROJECTION_TYPE = "nearest_neighbor"
 DEFAULT_SUPER_SAMPLING = 1 # no super sampling
 DEFAULT_FLAG_BITMASK = 0xff
 
+OLCI_PRODUCT_TYPES = [OLCI_PRODUCT_TYPE, "OL_2_LFR___", "OL_2_WFR___"]
+# OLCI tie point grid files: these are georeferenced by the OLCI tie_geo_coordinates.nc file of the same product
+# (not to be confused with SLSTR tie point grids, which have a different resolution)
+OLCI_TIE_POINT_FILES = ["tie_geometries", "tie_meteo"]
+OLCI_TIE_GEO_COORDINATES_FILE = "tie_geo_coordinates.nc"
+OLCI_TIE_AZIMUTH_BANDS = ["OAA", "SAA"]
+# margin (in degrees) around the tile to take tie points into account for interpolation
+OLCI_TIE_POINT_MARGIN = 0.5
+
 
 logger = logging.getLogger(__name__)
 
@@ -732,6 +741,14 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
     else:
         raise ValueError(product_type)
 
+    tie_point_bands = [b for b in band_names if _is_olci_tie_point_band(b)]
+    if tie_point_bands and product_type not in OLCI_PRODUCT_TYPES:
+        raise ValueError(
+            f"Tie point grid bands {tie_point_bands} are only supported for OLCI products {OLCI_PRODUCT_TYPES},"
+            f" not for {product_type}"
+        )
+    regular_band_names = [b for b in band_names if b not in tie_point_bands]
+
     tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=final_grid_resolution)
     tile_coordinates.shape = tile_shape + (2,)
 
@@ -770,8 +787,13 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         angle_data_mask = None
         tile_coordinates_with_rim = None
 
-    if reprojection_type in ["nearest_neighbour", "nearest_neighbor", "nn"]:
-        reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
+    if reprojection_type not in ["nearest_neighbour", "nearest_neighbor", "nn", REPROJECTION_TYPE_BINNING]:
+        raise ValueError(f"reprojection_type must be either 'nearest_neighbor' or 'binning', found '{reprojection_type}'")
+
+    if not regular_band_names:
+        reprojected_data = None
+    elif reprojection_type in ["nearest_neighbour", "nearest_neighbor", "nn"]:
+        reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, regular_band_names,
                                                   source_coordinates, tile_coordinates, data_mask,
                                                   angle_source_coordinates, tile_coordinates_with_rim, angle_data_mask,
                                                   digital_numbers)
@@ -785,7 +807,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
             product_type,
             final_grid_resolution,
             creo_path,
-            band_names,
+            regular_band_names,
             source_coordinates,
             tile_coordinates,
             data_mask,
@@ -797,9 +819,140 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
             flag_band=flag_band,
             flag_bitmask=flag_bitmask,
         )
-    else:
-        raise ValueError(f"reprojection_type must be either 'nearest_neighbor' or 'binning', found '{reprojection_type}'")
-    return reprojected_data
+
+    if not tie_point_bands:
+        return reprojected_data
+
+    tie_point_data = interpolate_olci_tie_point_bands(
+        creo_path=creo_path, band_names=tie_point_bands, bbox=bbox_tile, target_coordinates=tile_coordinates
+    )
+
+    # merge regular and tie point bands, preserving the requested band order
+    regular_iter = iter(reprojected_data if reprojected_data is not None else [])
+    tie_point_iter = iter(tie_point_data)
+    return np.array(
+        [
+            np.asarray(next(tie_point_iter) if b in tie_point_bands else next(regular_iter), dtype=np.float32)
+            for b in band_names
+        ]
+    )
+
+
+def _is_olci_tie_point_band(band_name: str) -> bool:
+    return band_name.split(":")[0] in OLCI_TIE_POINT_FILES
+
+
+def _parse_olci_tie_point_band(band_name: str) -> Tuple[str, str, Optional[int]]:
+    """
+    Parse an OLCI tie point band name of the form "file:variable" or "file:variable:index",
+    where the optional index selects an entry along the extra (non-spatial) dimension of a
+    3D variable, e.g. "tie_meteo:atmospheric_temperature_profile:0" or "tie_meteo:horizontal_wind:1".
+    """
+    parts = band_name.split(":")
+    if len(parts) == 2:
+        return parts[0], parts[1], None
+    if len(parts) == 3:
+        try:
+            return parts[0], parts[1], int(parts[2])
+        except ValueError:
+            pass
+    raise ValueError(f"Invalid OLCI tie point band {band_name!r}, expected 'file:variable' or 'file:variable:index'")
+
+
+def interpolate_olci_tie_point_bands(
+    creo_path, band_names: List[str], bbox, target_coordinates: np.ndarray, margin: float = OLCI_TIE_POINT_MARGIN
+) -> np.ndarray:
+    """
+    Read OLCI tie point grid bands (tie_geometries.nc, tie_meteo.nc) and linearly interpolate them
+    onto the target grid.
+
+    The tie points are georeferenced with the tie_geo_coordinates.nc file of the same OLCI product,
+    so the native (sub-sampled) OLCI tie point grid is used. Values are returned as physical
+    values (scaled, with fill values replaced by NaN). Azimuth angles are interpolated through
+    their sine and cosine to handle the wrap-around at +/-180 degrees.
+
+    :param creo_path: Path to the OLCI product (.SEN3 directory)
+    :param band_names: List of band names like "tie_geometries:SZA" or "tie_meteo:humidity:3"
+    :param bbox: Bounding box [xmin, ymin, xmax, ymax] of the target tile (lon/lat)
+    :param target_coordinates: Array of shape (rows, cols, 2) containing target [lon, lat] pixel centers
+    :param margin: Margin (in degrees) around the bbox to select tie points
+    :return: Array of shape (len(band_names), rows, cols)
+    """
+    from scipy.interpolate import LinearNDInterpolator
+    from scipy.spatial import Delaunay
+
+    creo_path = pathlib.Path(creo_path)
+    target_shape = target_coordinates.shape[:2]
+
+    with xr.open_dataset(creo_path / OLCI_TIE_GEO_COORDINATES_FILE) as geo_ds:
+        lat = geo_ds["latitude"].values.astype(np.float64)
+        lon = geo_ds["longitude"].values.astype(np.float64)
+
+    xmin, ymin, xmax, ymax = bbox
+    mask = (
+        (lat >= ymin - margin)
+        & (lat <= ymax + margin)
+        & (lon >= xmin - margin)
+        & (lon <= xmax + margin)
+        & np.isfinite(lat)
+        & np.isfinite(lon)
+    )
+
+    result = np.full((len(band_names),) + target_shape, np.nan, dtype=np.float32)
+    if np.count_nonzero(mask) < 3:
+        logger.warning(f"Not enough OLCI tie points found in {creo_path} for bbox {bbox}")
+        return result
+
+    points = np.column_stack((lon[mask], lat[mask]))
+    try:
+        triangulation = Delaunay(points)
+    except Exception as e:
+        logger.warning(f"Failed to triangulate OLCI tie points in {creo_path} for bbox {bbox}: {e!r}")
+        return result
+    target_points = target_coordinates.reshape(-1, 2)
+
+    def interpolate(values: np.ndarray) -> np.ndarray:
+        interpolator = LinearNDInterpolator(triangulation, values, fill_value=np.nan)
+        return interpolator(target_points).reshape(target_shape)
+
+    datasets = {}
+    try:
+        for i, band_name in enumerate(band_names):
+            file_name, variable, index = _parse_olci_tie_point_band(band_name)
+            logger.info(f"Interpolating OLCI tie point band {band_name}")
+            if file_name not in datasets:
+                datasets[file_name] = xr.open_dataset(creo_path / f"{file_name}.nc", mask_and_scale=True)
+            data_array = datasets[file_name][variable]
+            extra_dims = [d for d in data_array.dims if d not in ("tie_rows", "tie_columns")]
+            if index is not None:
+                if len(extra_dims) != 1:
+                    raise ValueError(f"Band {band_name!r}: variable {variable!r} has no extra dimension to index")
+                data_array = data_array.isel({extra_dims[0]: index})
+            elif extra_dims:
+                raise ValueError(
+                    f"Band {band_name!r}: variable {variable!r} has extra dimension(s) {extra_dims},"
+                    f" select one with '{file_name}:{variable}:<index>'"
+                )
+            data_array = data_array.transpose("tie_rows", "tie_columns")
+            if data_array.shape != lat.shape:
+                raise ValueError(
+                    f"Band {band_name!r} has shape {data_array.shape}, which does not match"
+                    f" the OLCI tie point grid {lat.shape}"
+                )
+            values = data_array.values.astype(np.float64)[mask]
+
+            if variable in OLCI_TIE_AZIMUTH_BANDS:
+                radians = np.deg2rad(values)
+                sin_interpolated = interpolate(np.sin(radians))
+                cos_interpolated = interpolate(np.cos(radians))
+                result[i] = np.rad2deg(np.arctan2(sin_interpolated, cos_interpolated))
+            else:
+                result[i] = interpolate(values)
+    finally:
+        for ds in datasets.values():
+            ds.close()
+
+    return result
 
 
 def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
