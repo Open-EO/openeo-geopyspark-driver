@@ -420,6 +420,7 @@ class GeoPySparkJobResultsHooks:
         return batch_job_metadata.summarize_exception(e)
 
     def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
+        logger.debug("GeoPySparkJobResultsHooks: getting usage metadata")
         execution_metadata = batch_job_metadata.get_execution_metadata()
         tracker_metadata = batch_job_metadata.get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         return {**execution_metadata, **tracker_metadata}

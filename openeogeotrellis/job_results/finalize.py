@@ -88,6 +88,7 @@ def finalize_job(
 
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         result_metadata = assemble(result=results[0], apply_gdal=False, asset_metadata={})
+        logger.debug("finalize 1: using hooks %s for usage_metadata", hooks)
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
 
         write({**result_metadata, **tracker_metadata})
@@ -234,6 +235,7 @@ def finalize_job(
         result_metadata = assemble(
             result=last_result, apply_gdal=False, asset_metadata=assets_for_result_metadata, result_items=all_result_items
         )
+        logger.debug("finalize 2: using hooks %s for usage_metadata", hooks)
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
         # TODO: avoid writing non-tracker metadata in `tracker_metadata`
         tracker_metadata["links"].extend(extra_links)
