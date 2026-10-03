@@ -9,13 +9,18 @@ Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-l
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Optional, Sequence
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, box
+from shapely.geometry.base import BaseGeometry
 import numpy as np
 from netCDF4 import Dataset, num2date
+from shapely.geometry.multipolygon import MultiPolygon
 
 from openeogeotrellis.utils import typechecked
+
+_log = logging.getLogger(__name__)
 
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
@@ -165,7 +170,32 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
 
 
 @typechecked
-def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
+def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
+    assert lat.ndim == 2 and lon.ndim == 2
+    assert lat.shape == lon.shape
+    latitude_threshold = 85
+    # return get_bounding_polygon_specific(lat, lon)
+
+    polygons = []
+    start_ok = None
+    was_ok = False
+    for i in range(lat.shape[0]):
+        max_lat = max(abs(lat[i, :]))
+        is_ok = max_lat < latitude_threshold and i < lat.shape[0] - 1
+        if not was_ok and is_ok:
+            start_ok = i
+        elif was_ok and not is_ok:
+            polygon = get_bounding_polygon_specific(lat[start_ok:i, :], lon[start_ok:i, :])
+            if polygon.is_valid:
+                polygons.append(polygon)
+            else:
+                _log.warning(f"Invalid polygon ignored for rows {start_ok} to {i}")
+        was_ok = is_ok
+    return MultiPolygon(polygons)
+
+
+@typechecked
+def get_bounding_polygon_specific(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     """Get bounding polygon from lat-lon arrays.
 
     Args:
@@ -197,17 +227,18 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     polygon_lat = np.concatenate([top_lat, right_lat[-2::-1], bottom_lat[::-1][1:], left_lat[1:-1]])
     polygon_lon = np.concatenate([top_lon, right_lon[-2::-1], bottom_lon[::-1][1:], left_lon[1:-1]])
     polygon = Polygon(zip(polygon_lon, polygon_lat))
+    # assert polygon.is_valid
     return polygon
 
 
 @typechecked
-def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: Polygon) -> np.ndarray:
+def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: BaseGeometry) -> np.ndarray:
     """Mask coordinates (lat,lon) that are not inside the polygon.
 
     Args:
         lon (2d Array of float): Pixel centers longitude.
         lat (2d Array of float): Pixel centers latitude.
-        polygon (shapely Polygon): Polygon to mask the coordinates.
+        polygon (shapely geometry): Polygon (or MultiPolygon) to mask the coordinates.
 
     Returns:
         mask (Array of bool): Boolean mask for the coordinates inside the polygon.
@@ -315,6 +346,9 @@ def load_data_from_file(
         data = {}
         for band in bands:
             try:
+                if band == "bounding_polygon":
+                    # Allow to keep it as debug information
+                    continue
                 var_path = variable_loc_in_file[band]
                 band_data = f[var_path][0]  # 0 is for time dimension
                 # get band data based on combined mask
@@ -463,7 +497,7 @@ def fill_and_mask_data(band_data: np.ndarray, spatio_temporal_mask: np.ndarray):
     # fill nan values where data is not valid
     if hasattr(band_data, "filled"):
         if np.issubdtype(band_data.dtype, np.integer):
-            print(f"converting to float to fill with nan. (Was {band_data.dtype})")
+            _log.info(f"converting to float to fill with nan. (Was {band_data.dtype})")
             band_data = band_data.astype(float)
         band_data = band_data.filled(np.nan)
     # set data to nan based on the spatial-temporal extent.
@@ -621,7 +655,9 @@ def apply_quality_filter(
     filtered_data = {}
     quality_mask = data[quality_band]
     for key, val in data.items():
-        if key in bands:
+        if key == "bounding_polygon":
+            filtered_data[key] = val  # copy unchanged
+        elif key in bands:
             filtered_data[key] = np.where(quality_mask, val, np.nan)
         elif (key not in bands) & (key != quality_band):
             filtered_data[key] = val  # copy metadata
