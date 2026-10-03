@@ -368,19 +368,21 @@ class TestEtlApi:
         etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
 
         def verify_request(request, context):
-            assert request.json() == dict(
-                jobId="j-abc123",
-                jobName="a test",
-                executionId="application_1704961751000_456",
-                userId="johndoe",
-                sourceId=expected_source_id,
-                orchestrator="openeo",
-                jobStart=1704961751000,
-                jobFinish=1704961804000,
-                idempotencyKey="application_1704961751000_456_load_stac",
-                service="load_stac",
-                area={"value": 40.0, "unit": "square_meter"},
-            )
+            assert request.json() == [
+                dict(
+                    jobId="j-abc123",
+                    jobName="a test",
+                    executionId="application_1704961751000_456",
+                    userId="johndoe",
+                    sourceId=expected_source_id,
+                    orchestrator="openeo",
+                    jobStart=1704961751000,
+                    jobFinish=1704961804000,
+                    idempotencyKey="application_1704961751000_456_load_stac",
+                    service="load_stac",
+                    area={"value": 40.0, "unit": "square_meter"},
+                )
+            ]
 
             context.status_code = 201
             return [{
@@ -388,7 +390,7 @@ class TestEtlApi:
                 "cost": 8.76
             }]
 
-        requests_mock.post(f"{mock_endpoint}/addedvalue", json=verify_request)
+        requests_mock.post(f"{mock_endpoint}/addedvalue/bulk", json=verify_request)
 
         credits_cost = etl_api.log_added_value(
             batch_job_id="j-abc123",
@@ -397,7 +399,7 @@ class TestEtlApi:
             user_id="johndoe",
             started_ms=1704961751000,
             finished_ms=1704961804000,
-            process_id="load_stac",
+            process_ids=["load_stac"],
             square_meters=40.0,
             source_id=source_id_override,
         )

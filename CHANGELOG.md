@@ -15,6 +15,7 @@ without compromising stable operations.
 ## In progress: 0.74.0
 
 - Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
+- `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
 
 
 ## 0.73.0

@@ -748,7 +748,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             user_id=user_id,
             started_ms=None,
             finished_ms=None,
-            process_id="load_collection",
+            process_ids=["load_collection"],
             square_meters=pytest.approx(1200 * 1200, rel=0.01),
             source_id=None,
         )

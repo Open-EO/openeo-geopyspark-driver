@@ -201,41 +201,73 @@ class EtlApi:
         user_id: str,
         started_ms: Optional[float],
         finished_ms: Optional[float],
-        process_id: str,
+        process_ids: List[str],
         square_meters: float,
         source_id: Optional[str],
     ) -> float:
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
-        billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
-                                      "mean", "aggregate_spatial", "discard_result", "filter_temporal",
-                                      "load_collection", "reduce_dimension", "apply_dimension", "not", "max", "or",
-                                      "and", "run_udf", "save_result", "mask", "array_element", "add_dimension",
-                                      "multiply", "subtract", "divide", "filter_spatial", "merge_cubes", "median",
-                                      "filter_bands"]
+        non_billable_process_ids = {
+            "fahrenheit_to_celsius",
+            "mask_polygon",
+            "mask_scl_dilation",
+            "filter_bbox",
+            "mean",
+            "aggregate_spatial",
+            "discard_result",
+            "filter_temporal",
+            "load_collection",
+            "reduce_dimension",
+            "apply_dimension",
+            "not",
+            "max",
+            "or",
+            "and",
+            "run_udf",
+            "save_result",
+            "mask",
+            "array_element",
+            "add_dimension",
+            "multiply",
+            "subtract",
+            "divide",
+            "filter_spatial",
+            "merge_cubes",
+            "median",
+            "filter_bands",
+        }
 
-        if not billable:
+        billable_process_ids = [process_id for process_id in process_ids if process_id not in non_billable_process_ids]
+
+        if not billable_process_ids:
             return 0.0
 
-        data = {
-            "jobId": batch_job_id,
-            "jobName": title,
-            "executionId": execution_id,
-            "userId": user_id,
-            "sourceId": source_id or self._source_id,
-            "orchestrator": ORCHESTRATOR,
-            "jobStart": started_ms,
-            "jobFinish": finished_ms,
-            "idempotencyKey": f"{execution_id}_{process_id}",
-            "service": process_id,
-            "area": {"value": square_meters, "unit": "square_meter"},
-        }
+        data = [
+            {
+                "jobId": batch_job_id,
+                "jobName": title,
+                "executionId": execution_id,
+                "userId": user_id,
+                "sourceId": source_id or self._source_id,
+                "orchestrator": ORCHESTRATOR,
+                "jobStart": started_ms,
+                "jobFinish": finished_ms,
+                "idempotencyKey": f"{execution_id}_{process_id}",
+                "service": process_id,
+                "area": {"value": square_meters, "unit": "square_meter"},
+            }
+            for process_id in billable_process_ids
+        ]
 
         log.debug(f"logging added value {data} at {self._endpoint}")
 
         access_token = self._access_token_helper.get_access_token()
-        with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
-                                json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
+        with self._session.post(
+            f"{self._endpoint}/addedvalue/bulk",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=data,
+            timeout=REQUESTS_TIMEOUT_SECONDS,
+        ) as resp:
             # TODO: this code path is not followed for retried 500 responses?
             # TODO: doing both `resp.ok` and `resp.raise_for_status` is redundant?
             if not resp.ok:

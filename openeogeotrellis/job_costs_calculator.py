@@ -84,19 +84,16 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             added_value_costs_in_credits = 0
             _log.debug("not logging added value because area is None")
         else:
-            added_value_costs_in_credits = sum(
-                self._etl_api.log_added_value(
-                    batch_job_id=details.job_id,
-                    title=details.job_title,
-                    execution_id=details.execution_id,
-                    user_id=details.user_id,
-                    started_ms=started_ms,
-                    finished_ms=finished_ms,
-                    process_id=process_id,
-                    square_meters=details.area_square_meters,
-                    source_id=details.etl_source_id,
-                )
-                for process_id in details.unique_process_ids
+            added_value_costs_in_credits = self._etl_api.log_added_value(
+                batch_job_id=details.job_id,
+                title=details.job_title,
+                execution_id=details.execution_id,
+                user_id=details.user_id,
+                started_ms=started_ms,
+                finished_ms=finished_ms,
+                process_ids=details.unique_process_ids,
+                square_meters=details.area_square_meters,
+                source_id=details.etl_source_id,
             )
 
         return resource_costs_in_credits + added_value_costs_in_credits
