@@ -76,6 +76,7 @@ def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
 def get_execution_metadata() -> dict:
+    logger.debug("Fetching execution metadata")
     execution_metrics = {}
     try:
         scala_execution_metrics = get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics.get()
@@ -89,6 +90,7 @@ def get_execution_metadata() -> dict:
             }
     except Exception as e:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)
+    logger.debug("Finished fetching execution metadata: %s", execution_metrics)
     return execution_metrics
 
 def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
@@ -139,7 +141,10 @@ def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool 
 
     from openeogeotrellis.metrics_tracking import global_tracker
 
-    python_metrics = global_tracker().as_dict()
+    tracker = global_tracker()
+    logger.debug("Global tracker: %s", tracker)
+    python_metrics = tracker.as_dict()
+    logger.debug("Python metrics: %s", python_metrics)
     sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors", 0)
     sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter", 0)
     usage = {**usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
