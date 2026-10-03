@@ -183,6 +183,7 @@ def finalize_job(
             }
             return assets, written_items
 
+        #this is where we write results and trigger spark execution
         if settings.concurrent_save_results == 1:
             assets_metadata, results_items = unzip(*map(result_write_assets, results))
         elif settings.concurrent_save_results > 1:
@@ -245,6 +246,7 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         result_metadata = assemble(
@@ -280,6 +282,7 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
 
 
 def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings, hooks: JobResultsHooks) -> None:

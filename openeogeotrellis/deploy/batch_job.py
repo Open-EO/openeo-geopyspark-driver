@@ -287,7 +287,7 @@ def run_job(
     output_file = Path(output_file).absolute()
     metadata_file = Path(metadata_file).absolute()
     job_dir = Path(job_dir).absolute()
-    hooks = GeoPySparkJobResultsHooks(job_dir=job_dir, output_file=output_file, dependencies=dependencies)
+    hooks = GeoPySparkJobResultsHooks(job_dir=job_dir, output_file=output_file, dependencies=dependencies, job_options = parsed_job_options)
 
     try:
         logger.info(f"Job spec: {json.dumps(job_specification, indent=1)}")
@@ -391,6 +391,7 @@ def _build_job_results_settings(
         gdalinfo_from_file=backend_config.gdalinfo_from_file,
         gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
         item_collection_glob=get_stac_item_collection_filename(pg_node_id="*"),
+        spark_context_cleanup=job_options.get("spark-context-cleanup", "none"),
     )
 
 
@@ -403,13 +404,14 @@ class GeoPySparkJobResultsHooks:
     See `openeogeotrellis.job_results.settings.JobResultsHooks`.
     """
 
-    def __init__(self, *, job_dir: Path, output_file: Path, dependencies: List[dict]):
+    def __init__(self, *, job_dir: Path, output_file: Path, dependencies: List[dict], job_options: JobOptions):
         self._job_dir = job_dir
         self._output_file = output_file
         self._dependencies = dependencies
         self._is_kube_deploy = ConfigParams().is_kube_deploy
         self._fuse_mount_batchjob_s3_bucket = get_backend_config().fuse_mount_batchjob_s3_bucket
         self._swift_bucket = os.environ.get("SWIFT_BUCKET")
+        self._job_options = job_options
 
     def result_cube_metadata(self, result: SaveResult):
         return batch_job_metadata.result_cube_metadata(result)
@@ -432,6 +434,46 @@ class GeoPySparkJobResultsHooks:
             else:
                 result.options["s3_client"] = S3ClientBuilder.from_bucket(result.options["s3_bucket"])
 
+    def _cleanup_spark_context(self) -> None:
+        """
+        Release the Spark driver's executors once ``save_result`` writing is done, so that later metadata
+        assembly/workspace export steps (which run on the driver only) don't keep YARN/k8s executor
+        resources reserved for no reason.
+
+        ``mode`` is the ``spark-context-cleanup`` job option (default ``"stop"``, the original
+        hard-coded behavior):
+
+        - ``"stop"``: fully shut down the SparkContext (``SparkContext.stop()``). Cheapest/simplest, but
+          also tears down anything that still needs an active SparkContext (e.g. reading accumulator
+          values via ``metrics_tracking``), and prevents submitting any further Spark jobs.
+        - ``"kill-executors"``: only kill the executors (``killExecutors``), keeping the SparkContext
+          itself usable. Frees the same cluster resources (YARN containers / k8s executor pods) without
+          losing the ability to run more Spark jobs or read accumulators afterwards.
+        - ``"none"``: don't touch the SparkContext at all (original, pre-cleanup behavior).
+
+        Note: none of this terminates the driver process/pod itself; the rest of the script (metadata
+        writing, workspace export, ...) keeps running regardless of the chosen mode.
+        """
+        mode = self._job_options.spark_context_cleanup
+        if mode == "none":
+            return
+
+        sc = SparkContext.getOrCreate()
+        if mode == "kill-executors":
+            try:
+                jsc = sc._jsc.sc()
+                executor_ids = jsc.getExecutorIds()
+                logger.info(f"Killing {len(executor_ids)} Spark executor(s) after writing results")
+                jsc.killExecutors(executor_ids)
+            except Exception:
+                logger.warning(
+                    "Failed to kill Spark executors individually; falling back to SparkContext.stop()", exc_info=True
+                )
+        elif mode == "stop":
+            sc.stop()
+        else:
+            logger.warning(f"Unknown spark_context_cleanup mode {mode!r}; leaving SparkContext running")
+
     def after_assets_written(self, assets_metadata: List[dict], job_dir: Path) -> None:
         for asset in assets_metadata:
             href = str(asset["href"])
@@ -442,6 +484,8 @@ class GeoPySparkJobResultsHooks:
                 wait_till_path_available(asset_path)
             add_permissions_with_failsafe(Path(asset["href"]), stat.S_IWGRP)
         logger.info(f"wrote {len(assets_metadata)} assets to {self._output_file}")
+
+        self._cleanup_spark_context()
 
         if any(dependency["card4l"] for dependency in self._dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
