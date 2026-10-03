@@ -1,5 +1,6 @@
 import functools
 import json
+import logging
 import math
 import urllib.parse
 from typing import Dict, Union
@@ -8,6 +9,8 @@ import geopandas
 import shapely.geometry
 import shapely.geometry.base
 from openeo_driver.util.geometry import BoundingBox, reproject_geometry
+
+logger = logging.getLogger(__name__)
 
 
 class BoundingBoxMerger:

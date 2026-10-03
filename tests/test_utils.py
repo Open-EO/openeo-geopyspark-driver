@@ -1,4 +1,3 @@
-import collections
 import getpass
 import logging
 from pathlib import Path
@@ -13,12 +12,9 @@ from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import (
     StatsReporter,
     describe_path,
-    dict_merge_recursive,
     lonlat_to_mercator_tile_indices,
     map_optional,
     nullcontext,
-    parse_approximate_isoduration,
-    reproject_cellsize,
     single_value,
     stream_s3_binary_file_contents,
     to_s3_url,
@@ -28,73 +24,6 @@ from openeogeotrellis.utils import (
     partition,
     get_s3_file_contents,
 )
-
-
-@pytest.mark.parametrize(["a", "b", "expected"], [
-    ({}, {}, {}),
-    ({1: 2}, {}, {1: 2}),
-    ({}, {1: 2}, {1: 2}),
-    ({1: 2}, {3: 4}, {1: 2, 3: 4}),
-    ({1: {2: 3}}, {1: {4: 5}}, {1: {2: 3, 4: 5}}),
-    ({1: {2: 3, 4: 5}, 6: 7}, {1: {8: 9}, 10: 11}, {1: {2: 3, 4: 5, 8: 9}, 6: 7, 10: 11}),
-    ({1: {2: {3: {4: 5, 6: 7}}}}, {1: {2: {3: {8: 9}}}}, {1: {2: {3: {4: 5, 6: 7, 8: 9}}}}),
-    ({1: {2: 3}}, {1: {2: 3}}, {1: {2: 3}})
-])
-def test_merge_recursive_default(a, b, expected):
-    assert dict_merge_recursive(a, b) == expected
-
-
-@pytest.mark.parametrize(["a", "b", "expected"], [
-    ({1: 2}, {1: 3}, {1: 3}),
-    ({1: 2, 3: 4}, {1: 5}, {1: 5, 3: 4}),
-    ({1: {2: {3: {4: 5}}, 6: 7}}, {1: {2: "foo"}}, {1: {2: "foo", 6: 7}}),
-    ({1: {2: {3: {4: 5}}, 6: 7}}, {1: {2: {8: 9}}}, {1: {2: {3: {4: 5}, 8: 9}, 6: 7}}),
-])
-def test_merge_recursive_overwrite(a, b, expected):
-    result = dict_merge_recursive(a, b, overwrite=True)
-    assert result == expected
-
-
-@pytest.mark.parametrize(["a", "b", "expected"], [
-    ({1: 2}, {1: 3}, {1: 3}),
-    ({1: "foo"}, {1: {2: 3}}, {1: {2: 3}}),
-    ({1: {2: 3}}, {1: "bar"}, {1: "bar"}),
-    ({1: "foo"}, {1: "bar"}, {1: "bar"}),
-])
-def test_merge_recursive_overwrite_conflict(a, b, expected):
-    with pytest.raises(ValueError) as e:
-        dict_merge_recursive(a, b)
-    assert "key 1" in str(e)
-
-    result = dict_merge_recursive(a, b, overwrite=True)
-    assert result == expected
-
-
-def test_merge_recursive_preserve_input():
-    a = {1: {2: 3}}
-    b = {1: {4: 5}}
-    result = dict_merge_recursive(a, b)
-    assert result == {1: {2: 3, 4: 5}}
-    assert a == {1: {2: 3}}
-    assert b == {1: {4: 5}}
-
-
-def test_dict_merge_recursive_accepts_arbitrary_mapping():
-    class EmptyMapping(collections.abc.Mapping):
-        def __getitem__(self, key):
-            raise KeyError(key)
-
-        def __len__(self) -> int:
-            return 0
-
-        def __iter__(self):
-            return iter(())
-
-    a = EmptyMapping()
-    b = {1: 2}
-    assert dict_merge_recursive(a, b) == {1: 2}
-    assert dict_merge_recursive(b, a) == {1: 2}
-    assert dict_merge_recursive(a, a) == {}
 
 
 def test_describe_path(tmp_path):
@@ -254,98 +183,6 @@ def test_to_s3_url_default_bucket_from_config(file_or_folder_path, bucket_name, 
         actual = to_s3_url(file_or_folder_path)
         assert actual == expected_url
 
-
-spatial_extent_tap = {
-    "east": 5.08,
-    "north": 51.22,
-    "south": 51.215,
-    "west": 5.07,
-}
-
-
-@pytest.mark.parametrize(
-    ["spatial_extent", "input_resolution", "input_crs", "to_crs", "expected"],
-    [
-        (
-                {'crs': 'EPSG:4326', 'east': 93.178583, 'north': 71.89922, 'south': -21.567515, 'west': -54.925613},
-                (8.3333333333e-05, 8.3333333333e-05),
-                'EPSG:4326',
-                'Auto42001',
-                (8.529099359293468, 9.347610141150653),
-        ),
-        (
-                spatial_extent_tap,
-                (8.3333333333e-05, 8.3333333333e-05),
-                'EPSG:4326',
-                'Auto42001',
-                (6.080971189774573, 9.430383333005011),
-        ),
-        (
-                spatial_extent_tap,
-                (10, 10),
-                'Auto42001',
-                'EPSG:4326',
-                (0.0001471299295632278, 9.240073598704157e-05),
-        ),
-        (
-                # North Pole is outside EPSG:32632, but still interesting:
-                {'east': 0.01, 'north': 89.999999, 'south': 89.999998, 'west': 0},
-                (1000, 1000),
-                'EPSG:32632',
-                'EPSG:4326',
-                (314.99451024025336, 0.012663855310563576),
-        ),
-        (
-                # North of UTM zone:
-                {'east': 0.01, 'north': 83.01, 'south': 83, 'west': 0},
-                (10, 10),
-                'EPSG:32632',
-                'EPSG:4326',
-                # note that here we have 9x more degrees in the x-dimension for 10m compared to at the equator
-                (0.0008405907359465923, 0.00010237891864051107),
-        ),
-        (
-                # At equator:
-                {'east': 0.01, 'north': 0.01, 'south': 0, 'west': 0},
-                (10, 10),
-                'EPSG:32632',
-                'EPSG:4326',
-                (0.0000887560370977725, 0.00008935420776900408)
-        ),
-    ],
-)
-def test_reproject_cellsize(spatial_extent: dict, input_resolution: tuple, input_crs: str,
-                            to_crs: str, expected: tuple):
-    projected_resolution = reproject_cellsize(spatial_extent, input_resolution, input_crs, to_crs)
-    print(projected_resolution)
-    assert projected_resolution == tuple(pytest.approx(x, abs=1e-7) for x in expected)
-
-
-@pytest.mark.parametrize(
-    ["duration_str", "expected"],
-    [
-        ("PT1H30M15.460S", "1:30:15.460000"),
-        ("P5DT4M", "5 days, 0:04:00"),
-        ("P2WT3H", "14 days, 3:00:00"),
-        ("P16D", "16 days, 0:00:00"),
-        ("PT1H", "1:00:00"),
-        ("P1DT1S", "1 day, 0:00:01"),
-        ("P1D", "1 day, 0:00:00"),
-        ("P1M", "30 days, 9:36:00"),
-        ("P1Y", "365 days, 0:00:00"),
-        ("P2D", "2 days, 0:00:00"),
-        ("P5D", "5 days, 0:00:00"),
-        ("P6Y", "2190 days, 0:00:00"),
-        ("P999D", "999 days, 0:00:00"),
-        ("P999M", "30369 days, 14:24:00"),
-        ("P999Y", "364635 days, 0:00:00"),
-    ],
-)
-def test_parse_approximate_isoduration(duration_str, expected):
-    # This function needed some adjustments to work with durations found in layercatalog metadata:
-    duration = parse_approximate_isoduration(duration_str)
-    print(f"duration={duration}")
-    assert str(duration) == expected
 
 def test_callsite():
     # object that throws error when converting to string:

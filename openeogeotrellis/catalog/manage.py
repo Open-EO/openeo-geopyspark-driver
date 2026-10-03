@@ -23,6 +23,7 @@ import copy
 import dataclasses
 import difflib
 import functools
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -34,15 +35,20 @@ from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
-from openeogeotrellis.util.compat import function_supports_kwargs
+from . import DATA_SOURCE_PROPERTIES
+from .enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
 
 _log = logging.getLogger(__name__)
 
 
 class MetadataException(Exception):
     pass
+
+
+def _function_supports_kwargs(function: Callable) -> bool:
+    """Does function accept keyword arguments?"""
+    signature = inspect.signature(function)
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values())
 
 
 CRS_AUTO_42001 = {
@@ -415,6 +421,7 @@ def build_stac_collection_metadata(
     extra_summaries: Optional[dict] = None,
     enrichment_mode: str = ENRICHMENT_MODE.LEGACY_AT_RUNTIME,
     upstream_links_filter: Optional[LinksFilter] = None,
+    default_opensearch_endpoint: Optional[str] = None,
     debug_enrichment: bool = False,
     stac_version: str = "1.0.0",
     stac_extensions: Union[None, List[str], Callable[[List[str]], List[str]]] = None,
@@ -425,6 +432,8 @@ def build_stac_collection_metadata(
     :param upstream_links_filter: optional filter function for upstream links,
         before merging with local links. Only used in `LEGACY_AT_BUILD_TIME` mode.
         This is a pretty awkward API, caused by ad-hoc link handling in legacy enrichment approach.
+    :param default_opensearch_endpoint: OpenSearch endpoint to use for enrichment when the collection
+        doesn't specify one explicitly. Only used in `LEGACY_AT_BUILD_TIME` mode.
     """
     data_source = {
         "type": "stac",
@@ -529,7 +538,11 @@ def build_stac_collection_metadata(
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = True
     elif enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME:
         orig_metadata = copy.deepcopy(metadata)
-        metadata = _legacy_enrich_collection_metadata(metadata, upstream_links_filter=upstream_links_filter)
+        metadata = _legacy_enrich_collection_metadata(
+            metadata,
+            upstream_links_filter=upstream_links_filter,
+            default_opensearch_endpoint=default_opensearch_endpoint,
+        )
         if debug_enrichment:
             diff_lines = dict_compare(orig_metadata, metadata, name1="original", name2="enriched")
             _log.debug(f"Line-by-line diff of metadata enrichment ({len(diff_lines)=}):\n" + "\n".join(diff_lines))
@@ -547,13 +560,20 @@ build_terrascope_stac_collection_metadata = build_stac_collection_metadata
 
 
 def _legacy_enrich_collection_metadata(
-    collection_metadata: dict, *, upstream_links_filter: Optional[LinksFilter] = None
+    collection_metadata: dict,
+    *,
+    upstream_links_filter: Optional[LinksFilter] = None,
+    default_opensearch_endpoint: Optional[str] = None,
 ) -> dict:
     """Legacy metadata enrichment"""
     # Wrap (and unwrap) collection metadata in catalog structure expected by legacy enrichment logic
     cid = collection_metadata["id"]
     catalog = {cid: copy.deepcopy(collection_metadata)}
-    enriched_catalog = enrich_catalog_metadata(catalog, upstream_links_filter=upstream_links_filter)
+    enriched_catalog = enrich_catalog_metadata(
+        catalog,
+        default_opensearch_endpoint=default_opensearch_endpoint,
+        upstream_links_filter=upstream_links_filter,
+    )
     enriched_collection_metadata = enriched_catalog[cid]
 
     # Remove some fields from the metadata
@@ -703,7 +723,7 @@ class _BuildItem:
             "collection_id": self.collection_id,
             "labels": self.labels,
         }.items():
-            if function_has_argument(self.build, arg) or function_supports_kwargs(self.build):
+            if function_has_argument(self.build, arg) or _function_supports_kwargs(self.build):
                 assert arg not in self.kwargs, f"{arg=} should not be in {kwargs=}"
                 kwargs.update({arg: value})
 

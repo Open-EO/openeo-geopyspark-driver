@@ -1,7 +1,9 @@
 import datetime
-from typing import Union
+from typing import Tuple, Union
 
 import dateutil.parser
+import pytz
+from openeo.util import rfc3339
 
 
 # TODO: move these utilities to openeo-python-driver or even openeo-python-client?
@@ -37,3 +39,20 @@ def to_datetime_naive(d: DateTimeLike) -> datetime.datetime:
 def to_datetime_utc_unless_none(d: DateTimeLikeOrNone) -> Union[datetime.datetime, None]:
     """Parse/convert to datetime in UTC, but preserve None."""
     return None if d is None else to_datetime_utc(d)
+
+
+def _normalize_date(date_string: Union[str, None]) -> Union[str, None]:
+    if date_string is not None:
+        date = dateutil.parser.parse(date_string)
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=pytz.UTC)
+        return date.isoformat()
+    return None
+
+
+def normalize_temporal_extent(temporal_extent: Tuple[Union[str, None], Union[str, None]]) -> Tuple[str, str]:
+    start, end = temporal_extent
+    return (
+        _normalize_date(start or "2000-01-01"),  # TODO: better fallback start date?
+        _normalize_date(end or rfc3339.now_utc()),
+    )

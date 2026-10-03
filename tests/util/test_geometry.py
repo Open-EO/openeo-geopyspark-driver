@@ -9,7 +9,12 @@ import shapely.geometry
 
 from openeo_driver.util.geometry import BoundingBox
 
-from openeogeotrellis.util.geometry import BoundingBoxMerger, GeometrySimplifier, GridSnapper, bbox_to_geojson
+from openeogeotrellis.util.geometry import (
+    BoundingBoxMerger,
+    GeometrySimplifier,
+    GridSnapper,
+    bbox_to_geojson,
+)
 from ..data import get_test_data_file
 
 logger = logging.getLogger(__name__)

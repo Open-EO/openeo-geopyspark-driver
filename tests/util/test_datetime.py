@@ -2,7 +2,12 @@ import datetime
 
 import pytest
 
-from openeogeotrellis.util.datetime import to_datetime_naive, to_datetime_utc, to_datetime_utc_unless_none
+from openeogeotrellis.util.datetime import (
+    normalize_temporal_extent,
+    to_datetime_naive,
+    to_datetime_utc,
+    to_datetime_utc_unless_none,
+)
 
 
 @pytest.mark.parametrize(
@@ -80,3 +85,20 @@ def test_to_datetime_naive(obj, expected):
 )
 def test_to_datetime_utc_unless_none(obj, expected):
     assert to_datetime_utc_unless_none(obj) == expected
+
+
+@pytest.mark.parametrize(
+    ["temporal_extent", "expected"],
+    [
+        ((None, None), None),
+        (("2020-01-01", "2020-02-01"), ("2020-01-01T00:00:00+00:00", "2020-02-01T00:00:00+00:00")),
+        ((None, "2020-02-01"), ("2000-01-01T00:00:00+00:00", "2020-02-01T00:00:00+00:00")),
+    ],
+)
+def test_normalize_temporal_extent(temporal_extent, expected):
+    start, end = normalize_temporal_extent(temporal_extent)
+    if expected is None:
+        assert start == "2000-01-01T00:00:00+00:00"
+        assert end is not None
+    else:
+        assert (start, end) == expected
