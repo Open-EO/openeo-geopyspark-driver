@@ -391,6 +391,7 @@ def _build_job_results_settings(
         gdalinfo_from_file=backend_config.gdalinfo_from_file,
         gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
         item_collection_glob=get_stac_item_collection_filename(pg_node_id="*"),
+        spark_context_cleanup=job_options.get("spark-context-cleanup", "none"),
     )
 
 

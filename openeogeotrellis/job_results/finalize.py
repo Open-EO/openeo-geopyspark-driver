@@ -183,6 +183,7 @@ def finalize_job(
             }
             return assets, written_items
 
+        #this is where we write results and trigger spark execution
         if settings.concurrent_save_results == 1:
             assets_metadata, results_items = unzip(*map(result_write_assets, results))
         elif settings.concurrent_save_results > 1:
@@ -245,6 +246,10 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
+        # we no longer need executors here: release Spark resources before writing metadata/exporting
+        _cleanup_spark_context(settings.spark_context_cleanup)
+
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         result_metadata = assemble(
@@ -280,6 +285,49 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
+
+def _cleanup_spark_context(mode: str) -> None:
+    """
+    Release the Spark driver's executors once ``save_result`` writing is done, so that later metadata
+    assembly/workspace export steps (which run on the driver only) don't keep YARN/k8s executor
+    resources reserved for no reason.
+
+    ``mode`` is the ``spark-context-cleanup`` job option (default ``"stop"``, the original
+    hard-coded behavior):
+
+    - ``"stop"``: fully shut down the SparkContext (``SparkContext.stop()``). Cheapest/simplest, but
+      also tears down anything that still needs an active SparkContext (e.g. reading accumulator
+      values via ``metrics_tracking``), and prevents submitting any further Spark jobs.
+    - ``"kill-executors"``: only kill the executors (``killExecutors``), keeping the SparkContext
+      itself usable. Frees the same cluster resources (YARN containers / k8s executor pods) without
+      losing the ability to run more Spark jobs or read accumulators afterwards.
+    - ``"none"``: don't touch the SparkContext at all (original, pre-cleanup behavior).
+
+    Note: none of this terminates the driver process/pod itself; the rest of the script (metadata
+    writing, workspace export, ...) keeps running regardless of the chosen mode.
+    """
+    if mode == "none":
+        return
+
+    from pyspark.core.context import SparkContext
+
+    sc = SparkContext.getOrCreate()
+
+    if mode == "kill-executors":
+        try:
+            jsc = sc._jsc.sc()
+            executor_ids = jsc.getExecutorIds()
+            logger.info(f"Killing {len(executor_ids)} Spark executor(s) after writing results")
+            jsc.killExecutors(executor_ids)
+        except Exception:
+            logger.warning(
+                "Failed to kill Spark executors individually; falling back to SparkContext.stop()", exc_info=True
+            )
+    elif mode == "stop":
+        sc.stop()
+    else:
+        logger.warning(f"Unknown spark_context_cleanup mode {mode!r}; leaving SparkContext running")
 
 
 def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings, hooks: JobResultsHooks) -> None:
