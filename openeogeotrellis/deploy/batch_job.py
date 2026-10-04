@@ -464,14 +464,15 @@ class GeoPySparkJobResultsHooks:
             try:
                 jsc = sc._jsc.sc()
                 executor_ids = jsc.getExecutorIds()
-                logger.info(f"Killing {len(executor_ids)} Spark executor(s) after writing results")
+                logger.info(f"Killing Spark executor(s) after writing results")
                 jsc.killExecutors(executor_ids)
             except Exception:
-                logger.warning(
-                    "Failed to kill Spark executors individually; falling back to SparkContext.stop()", exc_info=True
-                )
+                logger.exception("Failed to kill Spark executors")
         elif mode == "stop":
-            sc.stop()
+            try:
+                sc.stop()
+            except Exception:
+                logger.exception("Failed to stop SparkContext")
         else:
             logger.warning(f"Unknown spark_context_cleanup mode {mode!r}; leaving SparkContext running")
 
