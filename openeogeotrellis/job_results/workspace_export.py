@@ -3,6 +3,7 @@ Exports a batch job result to the workspaces requested through
 `save_result(..., export_workspace=...)`, pre-1.1 and STAC 1.1.
 """
 import json
+import logging
 from functools import partial
 from pathlib import Path
 from typing import Callable, List, Optional, Union
@@ -16,6 +17,7 @@ from openeo_driver.workspacerepository import Workspace, WorkspaceRepository
 
 from .stac_export import write_exported_stac_collection, write_exported_stac_collection_from_item
 
+logger = logging.getLogger(__name__)
 
 def export_result_to_workspaces(
     result: SaveResult,
@@ -41,6 +43,8 @@ def export_result_to_workspaces(
 
     if not workspace_exports:
         return
+
+    logger.info("export_workspace: starting export of %d assets to %d workspaces", len(result_assets_metadata or {}), len(workspace_exports))
 
     if stac11_mode:
         stac_hrefs = [

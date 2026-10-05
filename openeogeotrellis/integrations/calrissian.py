@@ -11,6 +11,7 @@ import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
+import importlib.resources
 
 import dateutil.parser
 import kubernetes.client
@@ -38,20 +39,11 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
 )
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import S3ClientBuilder
-
-try:
-    # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
-    import importlib_resources
-except ImportError:
-    import importlib.resources
-
-    importlib_resources = importlib.resources
 
 
 _log = logging.getLogger(__name__)
@@ -332,7 +324,7 @@ class CwLSource:
         """
         Read CWL from a packaged resource file in importlib.resources-style.
         """
-        content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
+        content = importlib.resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
         return cls(content=content, source=path)
 
 
@@ -1080,6 +1072,7 @@ def cwl_to_stac(
 
     for key in cwl_arguments:
         val = cwl_arguments[key]
+        from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
         if isinstance(val, GeopysparkDataCube):
             save_result = to_save_result(val)  # Is to_save_result needed?
             assert isinstance(save_result, ImageCollectionResult), (

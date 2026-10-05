@@ -88,6 +88,7 @@ def finalize_job(
 
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         result_metadata = assemble(result=results[0], apply_gdal=False, asset_metadata={})
+        logger.debug("finalize 1: using hooks %s for usage_metadata", hooks)
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
 
         write({**result_metadata, **tracker_metadata})
@@ -183,6 +184,7 @@ def finalize_job(
             }
             return assets, written_items
 
+        #this is where we write results and trigger spark execution
         if settings.concurrent_save_results == 1:
             assets_metadata, results_items = unzip(*map(result_write_assets, results))
         elif settings.concurrent_save_results > 1:
@@ -233,6 +235,7 @@ def finalize_job(
         result_metadata = assemble(
             result=last_result, apply_gdal=False, asset_metadata=assets_for_result_metadata, result_items=all_result_items
         )
+        logger.debug("finalize 2: using hooks %s for usage_metadata", hooks)
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
         # TODO: avoid writing non-tracker metadata in `tracker_metadata`
         tracker_metadata["links"].extend(extra_links)
@@ -245,6 +248,7 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         result_metadata = assemble(
@@ -256,6 +260,9 @@ def finalize_job(
 
         assert len(results) == len(assets_metadata)
         assert len(results) == len(results_items)
+
+        hooks.before_export_workspace()
+
         for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
             export_result_to_workspaces(
                 result,
@@ -280,6 +287,7 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
 
 
 def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings, hooks: JobResultsHooks) -> None:

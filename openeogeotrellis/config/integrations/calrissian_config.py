@@ -23,6 +23,7 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "1000",
     "--force-docker-pull",
     "--eval-timeout=600",
+    "--strict-memory-limit",
     # Disable schema-salad's on-disk HTTP document cache (defaults to `$HOME/.cache/salad`).
     # Fetched CWL documents are small, so caching isn't worth the extra failure mode.
     "--no-doc-cache",

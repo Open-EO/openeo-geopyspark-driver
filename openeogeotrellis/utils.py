@@ -841,7 +841,8 @@ def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_
 
 
 # TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
-if sys.version_info >= (3, 10) and (ConfigParams().is_ci_context or "pytest" in sys.modules):
+# TODO: explicit toggle instead of `is_ci_context` anti-pattern or other magic?
+if ConfigParams().is_ci_context or "pytest" in sys.modules:
     from typeguard import typechecked
 
     assert typechecked

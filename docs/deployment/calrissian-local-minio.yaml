@@ -68,7 +68,7 @@ spec:
     spec:
       containers:
       - name: minio
-        image: quay.io/minio/minio
+        image: cgr.dev/chainguard/minio:latest
         args:
         - server
         - /data

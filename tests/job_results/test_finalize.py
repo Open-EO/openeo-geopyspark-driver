@@ -54,6 +54,9 @@ class _RecordingHooks:
     def after_assets_written(self, assets_metadata: List[dict], job_dir: Path) -> None:
         self.calls.append(("after_assets_written", list(assets_metadata), job_dir))
 
+    def before_export_workspace(self) -> None:
+        self.calls.append(("before_export_workspace",))
+
     def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:
         self.calls.append(("localize_asset", href, job_dir))
         return None
