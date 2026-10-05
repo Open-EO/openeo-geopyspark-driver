@@ -2164,6 +2164,7 @@ class GeopysparkDataCube(DriverDataCube):
                 zlevel = format_opts.zlevel
                 tile_size = format_opts.tile_size
                 bigtiff = format_opts.bigtiff
+                add_bands_statistics = format_opts.add_bands_statistics
 
                 def with_gdalinfo(items_by_id: dict) -> dict:
                     for stac_item in items_by_id.values():
@@ -2180,6 +2181,12 @@ class GeopysparkDataCube(DriverDataCube):
                     if with_band_indices:
                         raw_band_indices = asset.bandIndices()
                         band_indices = None if raw_band_indices is None else list(raw_band_indices)
+                        # bands = []
+                        # for band in asset_metadata.get("bands"):
+                        #     band = dict(band)
+                        #     if "statistics" in band:
+                        #         band["statistics"] = dict(band.get("statistics"))
+                        #     bands.append(band)
                     return job_items.WrittenAsset(
                         key=asset_key,
                         path=path if path is not None else str(asset.path()),
@@ -2187,15 +2194,22 @@ class GeopysparkDataCube(DriverDataCube):
                         proj_bbox=tuple(asset_metadata.get("proj:bbox")),
                         proj_shape=tuple(asset_metadata.get("proj:shape")),
                         proj_epsg=asset_metadata.get("proj:epsg"),
+                        nc_bands=bands
                     )
 
                 def to_written_asset_guarded(asset_key, asset) -> "job_items.WrittenAsset":
                     raw_band_indices = asset.bandIndices()
-                    proj_bbox = proj_shape = proj_epsg = None
+                    proj_bbox = proj_shape = proj_epsg = bands = None
                     if asset_metadata := asset.metadata():
                         proj_bbox = tuple(asset_metadata.get("proj:bbox"))
                         proj_shape = tuple(asset_metadata.get("proj:shape"))
                         proj_epsg = asset_metadata.get("proj:epsg")
+                        bands = []
+                        for band in asset_metadata.get("bands"):
+                            band = dict(band)
+                            if "statistics" in band:
+                                band["statistics"] = dict(band.get("statistics"))
+                            bands.append(band)
                     return job_items.WrittenAsset(
                         key=asset_key,
                         path=str(asset.path()),
@@ -2203,6 +2217,7 @@ class GeopysparkDataCube(DriverDataCube):
                         proj_bbox=proj_bbox,
                         proj_shape=proj_shape,
                         proj_epsg=proj_epsg,
+                        nc_bands=bands
                     )
 
                 if stitch:
@@ -2210,6 +2225,7 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
                     gtiff_options.setRetainNoDataTiles(retain_nodata_tiles)
+                    gtiff_options.setAddBandStatistics(add_bands_statistics)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
@@ -2257,6 +2273,7 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
+                    gtiff_options.setAddBandStatistics(add_bands_statistics)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
