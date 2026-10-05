@@ -76,7 +76,6 @@ def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
 def get_execution_metadata() -> dict:
-    logger.debug("Fetching execution metadata")
     execution_metrics = {}
     try:
         scala_execution_metrics = get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics.get()
@@ -90,7 +89,6 @@ def get_execution_metadata() -> dict:
             }
     except Exception as e:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)
-    logger.debug("Finished fetching execution metadata: %s", execution_metrics)
     return execution_metrics
 
 def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
