@@ -10,6 +10,7 @@ from openeogeotrellis.constants import JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.integrations.credit_check import JOB_OPTION_CREDIT_PLANS
 from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.testing import gps_config_overrides
 
 
 def test_initialization_with_defaults():
@@ -72,6 +73,32 @@ def test_from_dict_python_memory_kube(in_python, in_overhead, expected_python, e
     job_options = K8SOptions.from_dict(dict_no_none(**data))
     assert job_options.python_memory == expected_python
     assert job_options.executor_memory_overhead == expected_overhead
+
+
+@pytest.mark.parametrize(
+    "options_class, executor_memory, python_memory, expected",
+    [
+        (JobOptions, "6G", "8G", "6G + 2G + 8G (python-memory)"),
+        (JobOptions, "14G", None, "14G + 2G"),
+        (JobOptions, "14G", "disable", "14G + 2G"),
+        (K8SOptions, "12G", None, "12G + 2G + 1920m (python-memory)"),
+    ],
+)
+def test_executor_memory_error_lists_python_memory(options_class, executor_memory, python_memory, expected):
+    with gps_config_overrides(max_executor_or_driver_memory="15G"):
+        options = options_class.from_dict(
+            dict_no_none(
+                **{
+                    "executor-memory": executor_memory,
+                    "executor-memoryOverhead": "2G",
+                    "python-memory": python_memory,
+                }
+            )
+        )
+        with pytest.raises(OpenEOApiException) as exc:
+            options.validate()
+
+    assert exc.value.message == f"Requested too much executor memory: {expected}, the max for this instance is: 15G"
 
 
 def test_from_dict_with_missing_values():
