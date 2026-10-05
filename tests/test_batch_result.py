@@ -590,7 +590,7 @@ def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
         'readvector1': {
             'process_id': 'read_vector',
             'arguments': {
-                'filename': 'https://artifactory.vgt.vito.be/artifactory/testdata-public/parcels/test_10.geojson'
+                'filename': 'https://auxdata.terrascope.be/openeo/testdata/parcels/test_10.geojson'
             }
         },
         'aggregatespatial1': {
@@ -3971,7 +3971,7 @@ def test_corsa_decompress():
 
 
 def test_predict_onnx_double(tmp_path):
-    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_double.onnx"
+    model = "https://auxdata.terrascope.be/openeo/testdata/openeo/geotrellis-extensions/test_model_double.onnx"
     process_graph = {
         "predictOnnx1": {
             "arguments": {
@@ -4032,7 +4032,7 @@ def test_predict_onnx_double(tmp_path):
 
 
 def test_predict_onnx_reduce_sum(tmp_path):
-    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_sum_double.onnx"
+    model = "https://auxdata.terrascope.be/openeo/testdata/openeo/geotrellis-extensions/test_model_sum_double.onnx"
     process_graph = {
         "predictOnnx1": {
             "arguments": {
