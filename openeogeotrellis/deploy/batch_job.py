@@ -417,7 +417,18 @@ class GeoPySparkJobResultsHooks:
         logger.debug("GeoPySparkJobResultsHooks: getting usage metadata")
         execution_metadata = batch_job_metadata.get_execution_metadata()
         tracker_metadata = batch_job_metadata.get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        return {**execution_metadata, **tracker_metadata}
+        if execution_metadata:
+            tracker_metadata["usage"] = {
+                **tracker_metadata.get("usage", {}),
+                "total_stage_runtime": {"value": execution_metadata["total_stage_runtime"], "unit": "milliseconds"},
+                "total_executor_allocation_time": {
+                    "value": execution_metadata["total_executor_allocation_time"],
+                    "unit": "milliseconds",
+                },
+                "cpu_utilization_ratio": {"value": execution_metadata["cpu_utilization_ratio"], "unit": "fraction"},
+                "total_stage_failures": {"value": execution_metadata["total_stage_failures"], "unit": "count"},
+            }
+        return tracker_metadata
 
     def prepare_result_options(self, result: SaveResult) -> None:
         result.options["use_s3proxy"] = should_proxy_be_used()
