@@ -67,9 +67,9 @@ def test_execution_metrics(tmp_path, clean_execution_metrics):
     assert len(metadata["assets"]) == 1
     assert metadata["usage"] == DictSubSet(
         {
-            "total_stage_runtime": dirty_equals.IsPositiveInt,
-            "total_executor_allocation_time": dirty_equals.IsInt(ge=0),
-            "cpu_utilization_ratio": dirty_equals.IsFloat(ge=0),
-            "total_stage_failures": 0,
+            "total_stage_runtime": {"value": dirty_equals.IsPositiveInt, "unit": "milliseconds"},
+            "total_executor_allocation_time": {"value": dirty_equals.IsInt(ge=0), "unit": "milliseconds"},
+            "cpu_utilization_ratio": {"value": dirty_equals.IsFloat(ge=0), "unit": "fraction"},
+            "total_stage_failures": {"value": 0, "unit": "count"},
         }
     )
