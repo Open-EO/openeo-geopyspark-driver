@@ -620,6 +620,35 @@ class TestPostDryRun:
             "global_extent_per_source": {source_id: expected_extent for source_id in source_ids},
         }
 
+    def test_determine_global_extent_mask(self, dummy_catalog, extract_source_constraints):
+        # Mask cube has a larger extent than the data cube being masked
+        pg = {
+            "data": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 1, "south": 2, "east": 3, "north": 4}},
+            },
+            "maskcube": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 0, "south": 1, "east": 5, "north": 6}},
+            },
+            "mask": {
+                "process_id": "mask",
+                "arguments": {"data": {"from_node": "data"}, "mask": {"from_node": "maskcube"}},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        result = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+
+        # Data cube global extent is NOT inflated by the mask extent
+        assert result["global_extent"] == BoundingBox(1, 2, 3, 4, crs="EPSG:4326")
+        # Per-source: mask gets the larger (full union) extent, data keeps its own
+        per_source = {sid.pg_node_id: bbox for sid, bbox in result["global_extent_per_source"].items()}
+        assert per_source == {
+            "data": BoundingBox(1, 2, 3, 4, crs="EPSG:4326"),
+            "maskcube": BoundingBox(0, 1, 5, 6, crs="EPSG:4326"),
+        }
+
     def test_determine_global_extent_load_collection_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
         dummy_catalog.define_collection_metadata(
             "S123-millidegree", cube_dimensions={"x": {"step": 0.001}, "y": {"step": 0.001}}
