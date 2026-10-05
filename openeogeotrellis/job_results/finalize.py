@@ -277,7 +277,7 @@ def finalize_job(
                 enable_merge=settings.export_workspace_enable_merge,
                 omit_derived_from_links=settings.omit_derived_from_links,
                 attach_derived_from_document=settings.stac11_mode,
-                usage_metadata=hooks.usage_metadata,
+                usage_metadata=tracker_metadata,
                 copy_auxiliary_links=partial(_copy_auxiliary_links, hooks=hooks, cache=auxiliary_links_cache),
             )
     finally:

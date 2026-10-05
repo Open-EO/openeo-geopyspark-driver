@@ -33,7 +33,7 @@ def export_result_to_workspaces(
     attach_derived_from_document: bool = False,
     result_assets_metadata: Optional[dict] = None,
     result_items_metadata: Optional[dict] = None,
-    usage_metadata: Callable[..., dict],
+    usage_metadata: dict,
     copy_auxiliary_links: Callable[..., List[dict]],
 ) -> None:
     workspace_exports = sorted(
