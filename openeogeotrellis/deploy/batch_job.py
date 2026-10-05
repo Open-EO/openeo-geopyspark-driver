@@ -487,7 +487,6 @@ class GeoPySparkJobResultsHooks:
             add_permissions_with_failsafe(Path(asset["href"]), stat.S_IWGRP)
         logger.info(f"wrote {len(assets_metadata)} assets to {self._output_file}")
 
-        self._cleanup_spark_context()
 
         if any(dependency["card4l"] for dependency in self._dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
@@ -530,6 +529,9 @@ class GeoPySparkJobResultsHooks:
                         raise e
 
             batch_job_metadata.transform_stac_metadata(job_dir)
+
+    def before_export_workspace(self) -> None:
+        self._cleanup_spark_context()
 
     def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:
         return localize_s3_asset(href, job_dir)

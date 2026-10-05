@@ -69,6 +69,10 @@ class JobResultsHooks(Protocol):
         """Run once assets are physically written: FUSE availability wait, permissions, CARD4L."""
         ...
 
+    def before_export_workspace(self) -> None:
+        """Run once, right before exporting results to workspaces (e.g. release Spark executors)."""
+        ...
+
     def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:
         """Download a (possibly S3) asset href to a local file for gdalinfo, or ``None`` if not needed."""
         ...

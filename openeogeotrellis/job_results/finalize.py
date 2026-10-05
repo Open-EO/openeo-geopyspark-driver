@@ -260,6 +260,9 @@ def finalize_job(
 
         assert len(results) == len(assets_metadata)
         assert len(results) == len(results_items)
+
+        hooks.before_export_workspace()
+
         for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
             export_result_to_workspaces(
                 result,
