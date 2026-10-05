@@ -1194,9 +1194,8 @@ class GeopysparkDataCube(DriverDataCube):
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         if not reprojected_polygon.is_valid:
-            reprojected_polygon_made_valid = shapely.constructive.make_valid(reprojected_polygon, method="structure")
-            _log.warning(f"mask_polygon: Had to apply make_valid on reprojected polygon {layer_crs}.")
-            reprojected_polygon = reprojected_polygon_made_valid
+            _log.warning(f"mask_polygon: Will apply make_valid on reprojected polygon {layer_crs}.")
+            reprojected_polygon = shapely.constructive.make_valid(reprojected_polygon, method="structure")
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         rasterizer_options = gps.RasterizerOptions()
