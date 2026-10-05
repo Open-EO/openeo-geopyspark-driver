@@ -240,13 +240,7 @@ def main(argv: List[str]) -> None:
             else:
                 run_driver()
         finally:
-            try:
-                get_jvm().com.azavea.gdal.GDALWarp.deinit()
-            except Py4JError as e:
-                if str(e) == "com.azavea.gdal.GDALWarp does not exist in the JVM":
-                    logger.debug(f"intentionally swallowing exception {e}", exc_info=True)
-                else:
-                    raise
+            pass
 
 
 @log_memory
@@ -531,6 +525,13 @@ class GeoPySparkJobResultsHooks:
             batch_job_metadata.transform_stac_metadata(job_dir)
 
     def before_export_workspace(self) -> None:
+        try:
+            get_jvm().com.azavea.gdal.GDALWarp.deinit()
+        except Py4JError as e:
+            if str(e) == "com.azavea.gdal.GDALWarp does not exist in the JVM":
+                logger.debug(f"intentionally swallowing exception {e}", exc_info=True)
+            else:
+                raise
         self._cleanup_spark_context()
 
     def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:
