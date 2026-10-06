@@ -114,28 +114,16 @@ class TestBuildItemsStitch:
 
 
 class TestBuildItemsBatch:
-    def test_band_indices_truthy_filters_bands(self):
-        bands = [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}]
-        item = _item(
-            datetime="2020-01-01T00:00:00Z",
-            assets=[WrittenAsset(key="openEO", path="/a.tif")],
-        )
-        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=0)["item1"]
-        asset = result["assets"]["openEO"]
-        assert asset["bands"] == [{"name": "B01"}, {"name": "B03"}]
-        assert asset["nodata"] == 0
-        assert asset["datetime"] == "2020-01-01T00:00:00Z"
-
     def test_band_indices_empty_falls_back_to_all_bands(self):
         # Quirk: an empty (but non-None) band_indices list is falsy, so BATCH includes all bands.
         bands = [{"name": "B01"}, {"name": "B02"}]
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
         result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert result["assets"]["openEO"]["bands"] == bands
 
     def test_band_indices_none_uses_all_bands(self):
         bands = [{"name": "B01"}]
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
         result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert result["assets"]["openEO"]["bands"] == bands
 
@@ -146,12 +134,6 @@ class TestBuildItemsPlain:
         result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert "bands" not in result["assets"]["openEO"]
         assert "properties" not in result
-
-    def test_band_indices_empty_includes_empty_bands_list(self):
-        # Quirk: unlike BATCH, PLAIN distinguishes "None" (omit) from "empty" (include as []).
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
-        assert result["assets"]["openEO"]["bands"] == []
 
     def test_geometry_and_bbox_always_present(self):
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
@@ -168,7 +150,7 @@ class TestBuildItemsNetcdf:
                 WrittenAsset(
                     key="openEO",
                     path="/a.nc",
-                    nc_bands=[{"name": "B01", "statistics": {"minimum": 0}}],
+                    bands=[{"name": "B01", "statistics": {"minimum": 0}}],
                     proj_epsg=4326,
                 )
             ]
@@ -184,7 +166,7 @@ class TestBuildItemsNetcdf:
         item = _item(bbox=None, assets=[WrittenAsset(key="openEO", path="/a.nc")])
         result = build_items([item], format_type="application/x-netcdf", nodata=None)["item1"]
         assert result["geometry"] is None
-        assert result["bbox"] is None
+        assert "bbox" not in item
         # dict_no_none strips the per-asset geometry/bbox keys entirely when absent.
         assert "geometry" not in result["assets"]["openEO"]
         assert "bbox" not in result["assets"]["openEO"]

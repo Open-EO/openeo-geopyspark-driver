@@ -2191,7 +2191,7 @@ class GeopysparkDataCube(DriverDataCube):
                         proj_bbox=tuple(asset_metadata.get("proj:bbox")),
                         proj_shape=tuple(asset_metadata.get("proj:shape")),
                         proj_epsg=asset_metadata.get("proj:epsg"),
-                        nc_bands=bands
+                        bands=bands
                     )
 
                 def to_written_asset_guarded(asset_key, asset) -> "job_items.WrittenAsset":
@@ -2213,7 +2213,7 @@ class GeopysparkDataCube(DriverDataCube):
                         proj_bbox=proj_bbox,
                         proj_shape=proj_shape,
                         proj_epsg=proj_epsg,
-                        nc_bands=bands
+                        bands=bands
                     )
 
                 if stitch:
@@ -2494,7 +2494,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 proj_bbox=tuple(asset_metadata.get("proj:bbox")),
                                 proj_shape=tuple(asset_metadata.get("proj:shape")),
                                 proj_epsg=asset_metadata.get("proj:epsg"),
-                                nc_bands=nc_bands,
+                                bands=nc_bands,
                             )
                         )
                     written.append(

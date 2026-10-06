@@ -143,7 +143,7 @@ class WrittenAsset:
     proj_bbox: Optional[Tuple[float, ...]] = None
     proj_shape: Optional[Tuple[int, ...]] = None
     proj_epsg: Optional[int] = None
-    nc_bands: Optional[List[dict]] = None
+    bands: Optional[List[dict]] = None
 
 
 @dataclass(frozen=True)
@@ -177,8 +177,8 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
                 "nodata": nodata,
                 "geometry": mapping(geometry) if geometry is not None else None,
                 "bbox": bbox,
-                "bands": a.nc_bands,
-                "raster:bands": a.nc_bands,
+                "bands": a.bands,
+                "raster:bands": a.bands,
                 "proj:bbox": a.proj_bbox,
                 "proj:shape": a.proj_shape,
                 "proj:epsg": a.proj_epsg,
@@ -188,7 +188,7 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
     return dict_no_none({
         "id": item.id,
         "properties": properties,
-        "geometry": mapping(geometry),
+        "geometry": mapping(geometry) if geometry is not None else None,
         "bbox": bbox,
         "assets": assets,
     })
