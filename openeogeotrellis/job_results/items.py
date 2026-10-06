@@ -194,9 +194,7 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
     })
 
 
-def build_items(
-    written: Sequence[WrittenItem], *, format_type: str, nodata: Any = None
-) -> Dict[str, dict]:
+def build_items(written: Sequence[WrittenItem], *, format_type: str, nodata: Any = None) -> Dict[str, dict]:
     return {item.id: build_item(item, format_type, nodata) for item in written}
 
 

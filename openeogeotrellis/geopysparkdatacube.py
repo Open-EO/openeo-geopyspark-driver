@@ -2133,6 +2133,24 @@ class GeopysparkDataCube(DriverDataCube):
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
 
+        def to_written_asset(asset_key, asset) -> "job_items.WrittenAsset":
+            asset_metadata = asset.metadata()
+            bands = []
+
+            for band in asset_metadata.getOrDefault("bands", []):
+                band = dict(band)
+                if "statistics" in band:
+                    band["statistics"] = dict(band.get("statistics"))
+                bands.append(band)
+            return job_items.WrittenAsset(
+                key=asset_key,
+                path=str(asset.path()),
+                proj_bbox=tuple(asset_metadata.get("proj:bbox")),
+                proj_shape=tuple(asset_metadata.get("proj:shape")),
+                proj_epsg=asset_metadata.get("proj:epsg"),
+                bands=bands
+            )
+
         if format in ["GTIFF", "PNG"]:
             def get_color_cmap():
                 if (colormap is not None):
@@ -2174,24 +2192,6 @@ class GeopysparkDataCube(DriverDataCube):
                             save_directory=save_directory,
                         )
                     return items_by_id
-
-                def to_written_asset(asset_key, asset) -> "job_items.WrittenAsset":
-                    asset_metadata = asset.metadata()
-                    bands = []
-
-                    for band in asset_metadata.getOrDefault("bands",[]):
-                        band = dict(band)
-                        if "statistics" in band:
-                            band["statistics"] = dict(band.get("statistics"))
-                        bands.append(band)
-                    return job_items.WrittenAsset(
-                        key=asset_key,
-                        path=str(asset.path()),
-                        proj_bbox=tuple(asset_metadata.get("proj:bbox")),
-                        proj_shape=tuple(asset_metadata.get("proj:shape")),
-                        proj_epsg=asset_metadata.get("proj:epsg"),
-                        bands=bands
-                    )
 
                 if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -2453,35 +2453,19 @@ class GeopysparkDataCube(DriverDataCube):
                     bands_metadata[band_name][tag] = str(value)
 
             def netcdf_items(java_items) -> dict:
-                written = []
-                for java_item in java_items:
-                    written_assets = []
-                    for asset_key, asset in java_item.assets().items():
-                        asset_metadata = asset.metadata()
-                        nc_bands = []
-                        for band in asset_metadata.get("bands"):
-                            band = dict(band)
-                            if "statistics" in band:
-                                band["statistics"] = dict(band.get("statistics"))
-                            nc_bands.append(band)
-                        written_assets.append(
-                            job_items.WrittenAsset(
-                                key=asset_key,
-                                path=asset.path(),
-                                proj_bbox=tuple(asset_metadata.get("proj:bbox")),
-                                proj_shape=tuple(asset_metadata.get("proj:shape")),
-                                proj_epsg=asset_metadata.get("proj:epsg"),
-                                bands=nc_bands,
-                            )
-                        )
-                    written.append(
-                        job_items.WrittenItem(
-                            id=java_item.id(),
-                            bbox=to_native_bbox(java_item.bbox()),
-                            crs=max_level.layer_metadata.crs,
-                            assets=written_assets,
-                        )
+                written = [
+                    job_items.WrittenItem(
+                        id=java_item.id(),
+                        datetime=java_item.datetime(),
+                        bbox=to_native_bbox(java_item.bbox()),
+                        crs=max_level.layer_metadata.crs,
+                        assets=[
+                            to_written_asset(k, a)
+                            for k, a in java_item.assets().items()
+                        ],
                     )
+                    for java_item in java_items
+                ]
                 return job_items.build_items(written, format_type="application/x-netcdf", nodata=nodata)
 
             if batch_mode and sample_by_feature:
