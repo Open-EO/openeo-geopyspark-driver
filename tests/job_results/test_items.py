@@ -165,8 +165,8 @@ class TestBuildItemsNetcdf:
     def test_netcdf_item_without_bbox_has_no_geometry(self):
         item = _item(bbox=None, assets=[WrittenAsset(key="openEO", path="/a.nc")])
         result = build_items([item], format_type="application/x-netcdf", nodata=None)["item1"]
-        assert result["geometry"] is None
-        assert "bbox" not in item
+        assert "geometry" not in result
+        assert "bbox" not in result
         # dict_no_none strips the per-asset geometry/bbox keys entirely when absent.
         assert "geometry" not in result["assets"]["openEO"]
         assert "bbox" not in result["assets"]["openEO"]
