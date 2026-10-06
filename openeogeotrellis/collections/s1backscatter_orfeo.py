@@ -615,7 +615,7 @@ class S1BackscatterOrfeo:
         return nbNoData > threshold
 
     @staticmethod
-    @functools.lru_cache(10,False)
+    @functools.lru_cache(2,False)
     def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff: pathlib.Path, log_prefix, noise_removal, orfeo_memory,
                            sar_calibration_lut, epsg:int, target_resolution = (10.0,10.0)):
         otb = _import_orfeo_toolbox()
@@ -780,8 +780,9 @@ class S1BackscatterOrfeo:
                             )
                             if isinstance(data,str):
                                 import rasterio
-                                ds = rasterio.open(data,driver="GTiff")
-                                tile_data[b] = ds.read(1)
+                                with rasterio.open(data, driver="GTiff") as ds:
+                                    tile_data[b] = ds.read(1)
+                                shutil.rmtree(os.path.dirname(data), ignore_errors=True)
                             else:
                                 tile_data[b] = data
 
@@ -1341,6 +1342,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             if full_product_download:
                 shutil.rmtree(creo_path)
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
+            S1BackscatterOrfeo.configure_pipeline.cache_clear()
             return tiles
 
         paths = list(per_product.keys().collect())
