@@ -618,6 +618,19 @@ class TestGpsProcessing:
                     gpsCube.fancy_cube_op(factor=2, label="y")
                     m.openeo.geotrelliscommon.CubeProcessRegistry.invoke.assert_called_once()
 
+                    # Cube arguments must be replaced by their RDD at the same pyramid level.
+                    otherLayer = MagicMock(spec=TiledRasterLayer)
+                    otherLayer.layer_type = LayerType.SPATIAL
+                    otherCube = GeopysparkDataCube(Pyramid({0: otherLayer}))
+                    invoke = m.openeo.geotrelliscommon.CubeProcessRegistry.invoke
+                    invoke.reset_mock()
+                    gpsCube.fancy_cube_op(other=otherCube, cubes=[otherCube], factor=2)
+                    invoke.assert_called_once()
+                    _, pid, invoke_kwargs = invoke.call_args.args
+                    assert pid == "fancy_cube_op"
+                    other_rdd = otherLayer.srdd.rdd.return_value
+                    assert invoke_kwargs == {"other": other_rdd, "cubes": [other_rdd], "factor": 2}
+
 
         class MyCube(DriverDataCube):
             def __init__(self):
