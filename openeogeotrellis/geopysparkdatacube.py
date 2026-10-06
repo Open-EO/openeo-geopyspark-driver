@@ -2181,12 +2181,12 @@ class GeopysparkDataCube(DriverDataCube):
                     if with_band_indices:
                         raw_band_indices = asset.bandIndices()
                         band_indices = None if raw_band_indices is None else list(raw_band_indices)
-                        # bands = []
-                        # for band in asset_metadata.get("bands"):
-                        #     band = dict(band)
-                        #     if "statistics" in band:
-                        #         band["statistics"] = dict(band.get("statistics"))
-                        #     bands.append(band)
+                        bands = []
+                        for band in asset_metadata.get("bands"):
+                            band = dict(band)
+                            if "statistics" in band:
+                                band["statistics"] = dict(band.get("statistics"))
+                            bands.append(band)
                     return job_items.WrittenAsset(
                         key=asset_key,
                         path=path if path is not None else str(asset.path()),

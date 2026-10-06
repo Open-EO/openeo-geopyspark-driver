@@ -255,8 +255,6 @@ def _plain_item(item: WrittenItem, bands: List[dict], nodata: Any) -> dict:
                 "proj:epsg": a.proj_epsg,
             }
         )
-        if a.band_indices is not None:
-            asset["bands"] = [band for i, band in enumerate(bands) if i in a.band_indices]
         asset["geometry"] = mapping(geometry)
         asset["bbox"] = geometry.bounds
         assets[a.key] = asset
