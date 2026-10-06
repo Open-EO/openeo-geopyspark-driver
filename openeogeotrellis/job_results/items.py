@@ -183,91 +183,7 @@ def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: 
     return reproject_geometry(box(xmin, ymin, xmax, ymax), src_crs=crs, dst_crs="EPSG:4326")
 
 
-def _stitch_item(item: WrittenItem) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    assets = {}
-    for a in item.assets:
-        assets[a.key] = dict_no_none(
-            {
-                "href": a.path,
-                "geometry": mapping(geometry),
-                "bbox": geometry.bounds,
-                "type": "image/tiff; application=geotiff",
-                "roles": ["data"],
-                "bands": a.nc_bands,
-                "raster:bands": a.nc_bands,
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-    return {
-        "id": item.id,
-        "properties": {"datetime": item.datetime},
-        "geometry": mapping(geometry),
-        "bbox": geometry.bounds,
-        "assets": assets,
-    }
-
-
-def _batch_item(item: WrittenItem, nodata: Any) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    assets = {}
-    for a in item.assets:
-        assets[a.key] = dict_no_none(
-            {
-                "href": a.path,
-                "type": "image/tiff; application=geotiff",
-                "roles": ["data"],
-                "bands": a.nc_bands,
-                "raster:bands": a.nc_bands,
-                "nodata": nodata,
-                "datetime": item.datetime,
-                "geometry": mapping(geometry),
-                "bbox": geometry.bounds,
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-    return {
-        "id": item.id,
-        "properties": {"datetime": item.datetime},
-        "geometry": mapping(geometry),
-        "bbox": geometry.bounds,
-        "assets": assets,
-    }
-
-
-def _plain_item(item: WrittenItem, nodata: Any) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    assets = {}
-    for a in item.assets:
-        asset = dict_no_none(
-            {
-                "href": a.path,
-                "type": "image/tiff; application=geotiff",
-                "roles": ["data"],
-                "nodata": nodata,
-                "bands": a.nc_bands,
-                "raster:bands": a.nc_bands,
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-        asset["geometry"] = mapping(geometry)
-        asset["bbox"] = geometry.bounds
-        assets[a.key] = asset
-    return {
-        "id": item.id,
-        "geometry": mapping(geometry),
-        "bbox": geometry.bounds,
-        "assets": assets,
-    }
-
-
-def _netcdf_item(item: WrittenItem, nodata: Any) -> dict:
+def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
     geometry = _to_latlng_geometry(item.bbox, item.crs)
     bbox = geometry.bounds if geometry is not None else None
     assets = {}
@@ -275,7 +191,7 @@ def _netcdf_item(item: WrittenItem, nodata: Any) -> dict:
         assets[a.key] = dict_no_none(
             {
                 "href": a.path,
-                "type": "application/x-netcdf",
+                "type": format_type,
                 "roles": ["data"],
                 "nodata": nodata,
                 "geometry": mapping(geometry) if geometry is not None else None,
@@ -287,27 +203,20 @@ def _netcdf_item(item: WrittenItem, nodata: Any) -> dict:
                 "proj:epsg": a.proj_epsg,
             }
         )
-    return {
+    properties = {"datetime": item.datetime} if item.datetime is not None else None
+    return dict_no_none({
         "id": item.id,
-        "geometry": mapping(geometry) if geometry is not None else None,
+        "properties": properties,
+        "geometry": mapping(geometry),
         "bbox": bbox,
         "assets": assets,
-    }
-
-
-_BUILDERS = {
-    Variant.STITCH: lambda item, nodata: _stitch_item(item),
-    Variant.BATCH: _batch_item,
-    Variant.PLAIN: _plain_item,
-    Variant.NETCDF: lambda item, nodata: _netcdf_item(item, nodata),
-}
+    })
 
 
 def build_items(
-    written: Sequence[WrittenItem], *, variant: Variant, nodata: Any = None
+    written: Sequence[WrittenItem], *, format_type: str, nodata: Any = None
 ) -> Dict[str, dict]:
-    builder = _BUILDERS[variant]
-    return {item.id: builder(item, nodata) for item in written}
+    return {item.id: build_item(item, format_type, nodata) for item in written}
 
 
 def single_asset_item(*, asset_key: str, asset: dict, item_extra: Optional[dict] = None) -> Dict[str, dict]:
