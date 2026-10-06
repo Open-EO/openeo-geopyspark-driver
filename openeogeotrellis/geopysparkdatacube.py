@@ -2188,7 +2188,6 @@ class GeopysparkDataCube(DriverDataCube):
                     return job_items.WrittenAsset(
                         key=asset_key,
                         path=path if path is not None else str(asset.path()),
-                        band_indices=band_indices,
                         proj_bbox=tuple(asset_metadata.get("proj:bbox")),
                         proj_shape=tuple(asset_metadata.get("proj:shape")),
                         proj_epsg=asset_metadata.get("proj:epsg"),
@@ -2211,7 +2210,6 @@ class GeopysparkDataCube(DriverDataCube):
                     return job_items.WrittenAsset(
                         key=asset_key,
                         path=str(asset.path()),
-                        band_indices=None if raw_band_indices is None else list(raw_band_indices),
                         proj_bbox=proj_bbox,
                         proj_shape=proj_shape,
                         proj_epsg=proj_epsg,
@@ -2407,7 +2405,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 bbox=to_native_bbox(java_item.bbox()),
                                 crs=max_level.layer_metadata.crs,
                                 assets=[
-                                    to_written_asset(k, a, with_band_indices=True)
+                                    to_written_asset(k, a)
                                     for k, a in java_item.assets().items()
                                 ],
                             )

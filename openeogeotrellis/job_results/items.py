@@ -194,6 +194,8 @@ def _stitch_item(item: WrittenItem) -> dict:
                 "bbox": geometry.bounds,
                 "type": "image/tiff; application=geotiff",
                 "roles": ["data"],
+                "bands": a.nc_bands,
+                "raster:bands": a.nc_bands,
                 "proj:bbox": a.proj_bbox,
                 "proj:shape": a.proj_shape,
                 "proj:epsg": a.proj_epsg,
