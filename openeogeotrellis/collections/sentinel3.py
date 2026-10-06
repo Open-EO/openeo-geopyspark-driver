@@ -52,7 +52,10 @@ OLCI_PRODUCT_TYPES = [OLCI_PRODUCT_TYPE, "OL_2_LFR___", "OL_2_WFR___"]
 OLCI_TIE_POINT_FILES = ["tie_geometries", "tie_meteo"]
 OLCI_TIE_GEO_COORDINATES_FILE = "tie_geo_coordinates.nc"
 OLCI_TIE_AZIMUTH_BANDS = ["OAA", "SAA"]
-# margin (in degrees) around the tile to take tie points into account for interpolation
+# OLCI tie points are spaced much further apart (and irregularly) than the regular pixel grid
+# (typically every 64 pixels across track). Margin (in degrees) around the tile to take tie
+# points into account for interpolation, so that the tile is always fully covered by the
+# triangulation (avoiding NaN values near the tile edges due to extrapolation).
 OLCI_TIE_POINT_MARGIN = 0.5
 
 
@@ -760,6 +763,15 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         return None
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
+    if tie_point_bands:
+        tie_geofile = os.path.join(creo_path, OLCI_TIE_GEO_COORDINATES_FILE)
+        _, tie_source_coordinates, tie_data_mask = _read_latlonfile(
+            bbox_tile, tie_geofile, lat_band="latitude", lon_band="longitude",
+            interpolation_margin=OLCI_TIE_POINT_MARGIN)
+    else:
+        tie_source_coordinates = None
+        tie_data_mask = None
+
     if product_type == SLSTR_PRODUCT_TYPE:
         angle_geofile = os.path.join(creo_path, 'geodetic_tx.nc')
         _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
@@ -823,8 +835,18 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
     if not tie_point_bands:
         return reprojected_data
 
-    tie_point_data = interpolate_olci_tie_point_bands(
-        creo_path=creo_path, band_names=tie_point_bands, bbox=bbox_tile, target_coordinates=tile_coordinates
+    tie_point_data, _ = do_reproject(
+        product_type,
+        final_grid_resolution,
+        creo_path,
+        tie_point_bands,
+        source_coordinates=None,
+        target_coordinates=None,
+        data_mask=None,
+        angle_source_coordinates=tie_source_coordinates,
+        target_coordinates_with_rim=tile_coordinates,
+        angle_data_mask=tie_data_mask,
+        digital_numbers=False,
     )
 
     # merge regular and tie point bands, preserving the requested band order
@@ -857,102 +879,6 @@ def _parse_olci_tie_point_band(band_name: str) -> Tuple[str, str, Optional[int]]
         except ValueError:
             pass
     raise ValueError(f"Invalid OLCI tie point band {band_name!r}, expected 'file:variable' or 'file:variable:index'")
-
-
-def interpolate_olci_tie_point_bands(
-    creo_path, band_names: List[str], bbox, target_coordinates: np.ndarray, margin: float = OLCI_TIE_POINT_MARGIN
-) -> np.ndarray:
-    """
-    Read OLCI tie point grid bands (tie_geometries.nc, tie_meteo.nc) and linearly interpolate them
-    onto the target grid.
-
-    The tie points are georeferenced with the tie_geo_coordinates.nc file of the same OLCI product,
-    so the native (sub-sampled) OLCI tie point grid is used. Values are returned as physical
-    values (scaled, with fill values replaced by NaN). Azimuth angles are interpolated through
-    their sine and cosine to handle the wrap-around at +/-180 degrees.
-
-    :param creo_path: Path to the OLCI product (.SEN3 directory)
-    :param band_names: List of band names like "tie_geometries:SZA" or "tie_meteo:humidity:3"
-    :param bbox: Bounding box [xmin, ymin, xmax, ymax] of the target tile (lon/lat)
-    :param target_coordinates: Array of shape (rows, cols, 2) containing target [lon, lat] pixel centers
-    :param margin: Margin (in degrees) around the bbox to select tie points
-    :return: Array of shape (len(band_names), rows, cols)
-    """
-    from scipy.interpolate import LinearNDInterpolator
-    from scipy.spatial import Delaunay
-
-    creo_path = pathlib.Path(creo_path)
-    target_shape = target_coordinates.shape[:2]
-
-    with xr.open_dataset(creo_path / OLCI_TIE_GEO_COORDINATES_FILE) as geo_ds:
-        lat = geo_ds["latitude"].values.astype(np.float64)
-        lon = geo_ds["longitude"].values.astype(np.float64)
-
-    xmin, ymin, xmax, ymax = bbox
-    mask = (
-        (lat >= ymin - margin)
-        & (lat <= ymax + margin)
-        & (lon >= xmin - margin)
-        & (lon <= xmax + margin)
-        & np.isfinite(lat)
-        & np.isfinite(lon)
-    )
-
-    result = np.full((len(band_names),) + target_shape, np.nan, dtype=np.float32)
-    if np.count_nonzero(mask) < 3:
-        logger.warning(f"Not enough OLCI tie points found in {creo_path} for bbox {bbox}")
-        return result
-
-    points = np.column_stack((lon[mask], lat[mask]))
-    try:
-        triangulation = Delaunay(points)
-    except Exception as e:
-        logger.warning(f"Failed to triangulate OLCI tie points in {creo_path} for bbox {bbox}: {e!r}")
-        return result
-    target_points = target_coordinates.reshape(-1, 2)
-
-    def interpolate(values: np.ndarray) -> np.ndarray:
-        interpolator = LinearNDInterpolator(triangulation, values, fill_value=np.nan)
-        return interpolator(target_points).reshape(target_shape)
-
-    datasets = {}
-    try:
-        for i, band_name in enumerate(band_names):
-            file_name, variable, index = _parse_olci_tie_point_band(band_name)
-            logger.info(f"Interpolating OLCI tie point band {band_name}")
-            if file_name not in datasets:
-                datasets[file_name] = xr.open_dataset(creo_path / f"{file_name}.nc", mask_and_scale=True)
-            data_array = datasets[file_name][variable]
-            extra_dims = [d for d in data_array.dims if d not in ("tie_rows", "tie_columns")]
-            if index is not None:
-                if len(extra_dims) != 1:
-                    raise ValueError(f"Band {band_name!r}: variable {variable!r} has no extra dimension to index")
-                data_array = data_array.isel({extra_dims[0]: index})
-            elif extra_dims:
-                raise ValueError(
-                    f"Band {band_name!r}: variable {variable!r} has extra dimension(s) {extra_dims},"
-                    f" select one with '{file_name}:{variable}:<index>'"
-                )
-            data_array = data_array.transpose("tie_rows", "tie_columns")
-            if data_array.shape != lat.shape:
-                raise ValueError(
-                    f"Band {band_name!r} has shape {data_array.shape}, which does not match"
-                    f" the OLCI tie point grid {lat.shape}"
-                )
-            values = data_array.values.astype(np.float64)[mask]
-
-            if variable in OLCI_TIE_AZIMUTH_BANDS:
-                radians = np.deg2rad(values)
-                sin_interpolated = interpolate(np.sin(radians))
-                cos_interpolated = interpolate(np.cos(radians))
-                result[i] = np.rad2deg(np.arctan2(sin_interpolated, cos_interpolated))
-            else:
-                result[i] = interpolate(values)
-    finally:
-        for ds in datasets.values():
-            ds.close()
-
-    return result
 
 
 def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
@@ -1130,31 +1056,62 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
     :return: Tuple of (reprojected_data, is_empty) where reprojected_data is an array of
         reprojected band data and is_empty is True if no valid data was found
     """
+    from scipy.interpolate import LinearNDInterpolator
 
     is_empty = False
     logger.info(f"load_collection: Reprojecting {product_type}, with path: {creo_path}, resolution {final_grid_resolution}, and bands {band_names}")
     ### create LUT for radiances
-    _, LUT = create_index_LUT(source_coordinates,
-                                     target_coordinates,
-                                     2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
+    if source_coordinates is not None:
+        _, LUT = create_index_LUT(source_coordinates,
+                                         target_coordinates,
+                                         2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
+    else:
+        LUT = None
 
-    ### create LUT for angle files
-    if angle_source_coordinates is not None:
+    ### create LUT for angle files (SLSTR/RBT only; OLCI tie point bands use a Delaunay
+    ### triangulation on real coordinates instead, see `tie_triangulation` below)
+    if angle_source_coordinates is not None and not (
+        product_type in OLCI_PRODUCT_TYPES and any(_is_olci_tie_point_band(b) for b in band_names)
+    ):
         _, LUT_angles = create_index_LUT(angle_source_coordinates,
                                          target_coordinates_with_rim,
                                          2 * final_grid_resolution)
     else:
         LUT_angles = None
 
+    ### OLCI tie point grids (tie_geometries.nc, tie_meteo.nc) are much coarser and irregularly
+    ### spaced compared to the main image grid, so instead of a nearest-neighbour LUT we build a
+    ### Delaunay triangulation on the real tie point coordinates, and interpolate linearly onto
+    ### the real target pixel coordinates (`target_coordinates_with_rim`, which for this case
+    ### simply holds the plain target grid, without any rim padding)
+    tie_triangulation = None
+    if angle_source_coordinates is not None and product_type in OLCI_PRODUCT_TYPES and any(
+        _is_olci_tie_point_band(b) for b in band_names
+    ):
+        from scipy.spatial import Delaunay
+        if len(angle_source_coordinates) < 3:
+            logger.warning(f"Not enough OLCI tie points found in {creo_path}")
+        else:
+            try:
+                tie_triangulation = Delaunay(angle_source_coordinates)
+            except Exception as e:
+                logger.warning(f"Failed to triangulate OLCI tie points in {creo_path}: {e!r}")
+
     varOut = []
 
-    for band_name in band_names:
-        logger.info(" Reprojecting %s" % band_name)
+    for full_band_name in band_names:
+        logger.info(" Reprojecting %s" % full_band_name)
 
-        if ":" in band_name:
-            base_name, band_name = band_name.split(":")  # TODO: avoid mutating band_name
+        is_olci_tie_point = product_type in OLCI_PRODUCT_TYPES and _is_olci_tie_point_band(full_band_name)
+        if is_olci_tie_point:
+            base_name, band_name, var_index = _parse_olci_tie_point_band(full_band_name)
+        elif ":" in full_band_name:
+            base_name, band_name = full_band_name.split(":")  # TODO: avoid mutating band_name
+            var_index = None
         else:
-            base_name = band_name
+            base_name = full_band_name
+            band_name = full_band_name
+            var_index = None
 
         in_file = os.path.join(creo_path, base_name + '.nc')
 
@@ -1174,13 +1131,18 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                 return band_name
             raise ValueError(band_name)
 
-        def readAndReproject(data_mask_,LUT):
-            band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask_)
+        def readAndReproject(data_mask_, LUT, var_index=None, spatial_dims=None):
+            band_data, band_settings = read_band(
+                in_file, in_band=variable_name(band_name), data_mask=data_mask_,
+                var_index=var_index, spatial_dims=spatial_dims,
+            )
             flat = band_data.flatten()
             #inconvenient approach for compatibility with old xarray version
             flat_mask = data_mask_.where(data_mask_, drop=True).data.flatten()
             flat_mask[np.isnan(flat_mask)] = 0
             filtered = flat[flat_mask.astype(np.bool_)]
+            if LUT is None:
+                return band_settings, filtered
             return band_settings,apply_LUT_on_band(filtered, LUT, band_settings.get('_FillValue', None))
 
         if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", "sat_azimuth_tn", "sat_zenith_tn",]:
@@ -1190,6 +1152,42 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
             reprojected_data = interpolated[RIM_PIXELS:-RIM_PIXELS, RIM_PIXELS:-RIM_PIXELS]
         elif product_type == "SL_1_RBT___" and band_name in ["S1_radiance_an", "S2_radiance_an", "S3_radiance_an", "S4_radiance_an", "S5_radiance_an", "S6_radiance_an"]:
             band_settings, reprojected_data = readAndReproject(angle_data_mask, LUT_angles)
+        elif is_olci_tie_point:
+            # OLCI tie point grids: read the (sparse, sub-sampled) values, convert to physical
+            # units, and linearly interpolate (using real coordinates) onto the target grid.
+            band_settings, filtered = readAndReproject(
+                angle_data_mask, None, var_index=var_index, spatial_dims=("tie_rows", "tie_columns")
+            )
+            # Values need to be converted to physical units before interpolating: this is required
+            # for the sin/cos azimuth trick below, and makes fill values (as NaN) interpolation-safe.
+            # Tie point bands are therefore always returned as physical values, regardless of
+            # `digital_numbers`.
+            filtered = filtered.astype(np.float64)
+            fill_value = band_settings.get('_FillValue')
+            if fill_value is not None:
+                filtered[filtered == fill_value] = np.nan
+            if 'scale_factor' in band_settings or 'add_offset' in band_settings:
+                filtered = filtered * band_settings.get('scale_factor', 1.0) + band_settings.get('add_offset', 0.0)
+
+            target_shape = target_coordinates_with_rim.shape[:-1]
+            target_points = target_coordinates_with_rim.reshape(-1, 2)
+
+            def interpolate_tie_points(values: np.ndarray) -> np.ndarray:
+                if tie_triangulation is None:
+                    return np.full(target_shape, np.nan, dtype=np.float32)
+                interpolator = LinearNDInterpolator(tie_triangulation, values, fill_value=np.nan)
+                return interpolator(target_points).reshape(target_shape)
+
+            if band_name in OLCI_TIE_AZIMUTH_BANDS:
+                radians = np.deg2rad(filtered)
+                sin_interpolated = interpolate_tie_points(np.sin(radians))
+                cos_interpolated = interpolate_tie_points(np.cos(radians))
+                reprojected_data = np.rad2deg(np.arctan2(sin_interpolated, cos_interpolated))
+            else:
+                reprojected_data = interpolate_tie_points(filtered)
+            # already converted to physical values above; avoid the generic post-processing below
+            # from re-applying the fill value / scaling
+            band_settings = {k: v for k, v in band_settings.items() if k not in ('_FillValue', 'scale_factor', 'add_offset')}
         else:
             band_settings, reprojected_data = readAndReproject(data_mask, LUT)
 
@@ -1339,7 +1337,8 @@ def create_index_LUT(coordinates, target_coordinates, max_distance):
     return distances, lut_indices
 
 
-def read_band(in_file, in_band, data_mask, get_data_array=True):
+def read_band(in_file, in_band, data_mask, get_data_array=True, var_index: Optional[int] = None,
+              spatial_dims: Optional[Tuple[str, str]] = None):
     """
     Get array and settings (metadata) from the input file.
 
@@ -1348,6 +1347,14 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
     :param data_mask: Mask for valid data
     :param get_data_array: If True, return input_array and settings;
         if False, return only the settings (metadata)
+    :param var_index: If the variable has an extra (non-spatial) dimension, select this index
+        along that dimension, e.g. to select a single pressure level of an OLCI tie point
+        variable like "humidity" (only used if `spatial_dims` is given)
+    :param spatial_dims: Names of the two spatial dimensions of the variable. If given, the
+        variable must not have any other dimensions, unless `var_index` is used to select a
+        single entry along that one remaining extra dimension (used for OLCI tie point bands,
+        whose variables have dimensions ("tie_rows", "tie_columns") and optionally one extra
+        dimension, e.g. "tie_pressure_levels")
     :return: Tuple of (data_array, settings) where data_array is the numpy array from
         the NetCDF band and settings is a dict containing the band's metadata
         (_FillValue, name, dtype, units, etc.)
@@ -1406,7 +1413,20 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
         settings["dtype"] = 'float32'
 
     if get_data_array:
-        data_array = dataset[in_band].where(data_mask, drop=True).data
+        data_array_full = dataset[in_band]
+        if spatial_dims is not None:
+            extra_dims = [d for d in data_array_full.dims if d not in spatial_dims]
+            if var_index is not None:
+                if len(extra_dims) != 1:
+                    raise ValueError(
+                        f"Variable {in_band!r} has no single extra dimension to index with 'var_index'"
+                    )
+                data_array_full = data_array_full.isel({extra_dims[0]: var_index})
+            elif extra_dims:
+                raise ValueError(
+                    f"Variable {in_band!r} has extra dimension(s) {extra_dims}, select one with an index"
+                )
+        data_array = data_array_full.where(data_mask, drop=True).data
     else:
         data_array = None
     dataset.close()
