@@ -186,6 +186,7 @@ def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: 
 def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
     geometry = _to_latlng_geometry(item.bbox, item.crs)
     bbox = geometry.bounds if geometry is not None else None
+    datetime = item.datetime
     assets = {}
     for a in item.assets:
         assets[a.key] = dict_no_none(
@@ -193,6 +194,7 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
                 "href": a.path,
                 "type": format_type,
                 "roles": ["data"],
+                "datetime": datetime,
                 "nodata": nodata,
                 "geometry": mapping(geometry) if geometry is not None else None,
                 "bbox": bbox,
@@ -203,7 +205,7 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
                 "proj:epsg": a.proj_epsg,
             }
         )
-    properties = {"datetime": item.datetime} if item.datetime is not None else None
+    properties = {"datetime": datetime} if datetime is not None else None
     return dict_no_none({
         "id": item.id,
         "properties": properties,
