@@ -2328,16 +2328,6 @@ class GeopysparkDataCube(DriverDataCube):
                             0,
                         )
 
-                    # Validated eagerly in SaveResultFormatOptions.parse(): separate_asset_per_band
-                    # is not supported with tile_grid.
-
-                    variant = job_items.select_variant(
-                        stitch=False,
-                        tile_grid=tile_grid,
-                        batch_mode=batch_mode,
-                        is_temporal_layer=is_temporal_layer,
-                        sample_by_feature=sample_by_feature,
-                    )
 
                     if batch_mode and is_temporal_layer:
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(

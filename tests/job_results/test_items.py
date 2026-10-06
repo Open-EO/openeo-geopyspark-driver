@@ -3,12 +3,10 @@ from openeo_driver.errors import OpenEOApiException
 
 from openeogeotrellis.job_results.items import (
     SaveResultFormatOptions,
-    Variant,
     WrittenAsset,
     WrittenItem,
     add_gdalinfo_objects,
     build_items,
-    select_variant,
     single_asset_item,
 )
 
@@ -85,44 +83,6 @@ class TestSaveResultFormatOptionsParse:
         options.validate_sample_by_feature_with_separate_asset_per_band()  # does not raise
 
 
-class TestSelectVariant:
-    def test_stitch_wins_regardless_of_other_flags(self):
-        assert (
-            select_variant(stitch=True, tile_grid="g", batch_mode=True, is_temporal_layer=True, sample_by_feature=True)
-            == Variant.STITCH
-        )
-
-    def test_batch_temporal(self):
-        assert (
-            select_variant(stitch=False, tile_grid=None, batch_mode=True, is_temporal_layer=True, sample_by_feature=False)
-            == Variant.BATCH
-        )
-
-    def test_batch_spatial_sample_by_feature(self):
-        assert (
-            select_variant(
-                stitch=False, tile_grid=None, batch_mode=True, is_temporal_layer=False, sample_by_feature=True
-            )
-            == Variant.BATCH
-        )
-
-    def test_plain_when_not_batch(self):
-        assert (
-            select_variant(
-                stitch=False, tile_grid="g", batch_mode=False, is_temporal_layer=False, sample_by_feature=True
-            )
-            == Variant.PLAIN
-        )
-
-    def test_plain_when_batch_spatial_without_sample_by_feature(self):
-        assert (
-            select_variant(
-                stitch=False, tile_grid=None, batch_mode=True, is_temporal_layer=False, sample_by_feature=False
-            )
-            == Variant.PLAIN
-        )
-
-
 def _item(**kwargs):
     kwargs.setdefault("id", "item1")
     kwargs.setdefault("bbox", (10.0, 40.0, 11.0, 41.0))
@@ -136,7 +96,7 @@ class TestBuildItemsStitch:
             datetime="2020-01-01T00:00:00Z",
             assets=[WrittenAsset(key="openEO", path="/a.tif", proj_bbox=(1, 2, 3, 4), proj_shape=(5, 6), proj_epsg=4326)],
         )
-        items = build_items([item], variant=Variant.STITCH)
+        items = build_items([item], format_type="image/tiff; application=geotiff")
         result = items["item1"]
         assert result["properties"] == {"datetime": "2020-01-01T00:00:00Z"}
         asset = result["assets"]["openEO"]
@@ -147,7 +107,7 @@ class TestBuildItemsStitch:
 
     def test_stitch_item_proj_absent_when_none(self):
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], variant=Variant.STITCH)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
         asset = result["assets"]["openEO"]
         assert "proj:bbox" not in asset
         assert "proj:epsg" not in asset
@@ -158,9 +118,9 @@ class TestBuildItemsBatch:
         bands = [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}]
         item = _item(
             datetime="2020-01-01T00:00:00Z",
-            assets=[WrittenAsset(key="openEO", path="/a.tif", band_indices=[0, 2])],
+            assets=[WrittenAsset(key="openEO", path="/a.tif")],
         )
-        result = build_items([item], variant=Variant.BATCH, bands=bands, nodata=0)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=0)["item1"]
         asset = result["assets"]["openEO"]
         assert asset["bands"] == [{"name": "B01"}, {"name": "B03"}]
         assert asset["nodata"] == 0
@@ -169,33 +129,33 @@ class TestBuildItemsBatch:
     def test_band_indices_empty_falls_back_to_all_bands(self):
         # Quirk: an empty (but non-None) band_indices list is falsy, so BATCH includes all bands.
         bands = [{"name": "B01"}, {"name": "B02"}]
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", band_indices=[])])
-        result = build_items([item], variant=Variant.BATCH, bands=bands, nodata=None)["item1"]
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
+        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert result["assets"]["openEO"]["bands"] == bands
 
     def test_band_indices_none_uses_all_bands(self):
         bands = [{"name": "B01"}]
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", band_indices=None)])
-        result = build_items([item], variant=Variant.BATCH, bands=bands, nodata=None)["item1"]
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
+        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert result["assets"]["openEO"]["bands"] == bands
 
 
 class TestBuildItemsPlain:
     def test_band_indices_none_omits_bands_key(self):
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", band_indices=None)])
-        result = build_items([item], variant=Variant.PLAIN, bands=[{"name": "B01"}], nodata=None)["item1"]
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
+        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert "bands" not in result["assets"]["openEO"]
         assert "properties" not in result
 
     def test_band_indices_empty_includes_empty_bands_list(self):
         # Quirk: unlike BATCH, PLAIN distinguishes "None" (omit) from "empty" (include as []).
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", band_indices=[])])
-        result = build_items([item], variant=Variant.PLAIN, bands=[{"name": "B01"}], nodata=None)["item1"]
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
+        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         assert result["assets"]["openEO"]["bands"] == []
 
     def test_geometry_and_bbox_always_present(self):
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], variant=Variant.PLAIN, bands=[], nodata=None)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
         asset = result["assets"]["openEO"]
         assert asset["geometry"]["type"] == "Polygon"
         assert len(asset["bbox"]) == 4
@@ -213,7 +173,7 @@ class TestBuildItemsNetcdf:
                 )
             ]
         )
-        result = build_items([item], variant=Variant.NETCDF, nodata=-1)["item1"]
+        result = build_items([item], format_type="application/x-netcdf", nodata=-1)["item1"]
         assert "properties" not in result
         asset = result["assets"]["openEO"]
         assert asset["bands"] == asset["raster:bands"] == [{"name": "B01", "statistics": {"minimum": 0}}]
@@ -222,7 +182,7 @@ class TestBuildItemsNetcdf:
 
     def test_netcdf_item_without_bbox_has_no_geometry(self):
         item = _item(bbox=None, assets=[WrittenAsset(key="openEO", path="/a.nc")])
-        result = build_items([item], variant=Variant.NETCDF, nodata=None)["item1"]
+        result = build_items([item], format_type="application/x-netcdf", nodata=None)["item1"]
         assert result["geometry"] is None
         assert result["bbox"] is None
         # dict_no_none strips the per-asset geometry/bbox keys entirely when absent.

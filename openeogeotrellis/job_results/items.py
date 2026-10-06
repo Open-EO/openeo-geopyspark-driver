@@ -155,27 +155,6 @@ class WrittenItem:
     assets: List[WrittenAsset] = field(default_factory=list)
 
 
-class Variant(str, Enum):
-    """Which item/asset shape to build from a list of ``WrittenItem``s."""
-
-    STITCH = "stitch"  # stitched GTIFF, with or without tile_grid
-    BATCH = "batch"  # batch-mode GTIFF, temporal or spatial+sample_by_feature
-    PLAIN = "plain"  # non-stitched, non-batch GTIFF, with or without tile_grid
-    NETCDF = "netcdf"  # NetCDF written through the JVM writers
-
-
-def select_variant(
-    *, stitch: bool, tile_grid: Optional[str], batch_mode: bool, is_temporal_layer: bool, sample_by_feature: bool
-) -> Variant:
-    if stitch:
-        return Variant.STITCH
-    if batch_mode and is_temporal_layer:
-        return Variant.BATCH
-    if batch_mode and not is_temporal_layer and sample_by_feature:
-        return Variant.BATCH
-    return Variant.PLAIN
-
-
 def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: Any) -> Optional[Polygon]:
     if bbox is None:
         return None
