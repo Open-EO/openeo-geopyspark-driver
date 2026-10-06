@@ -2175,18 +2175,16 @@ class GeopysparkDataCube(DriverDataCube):
                         )
                     return items_by_id
 
-                def to_written_asset(asset_key, asset, *, path=None, with_band_indices=False) -> "job_items.WrittenAsset":
+                def to_written_asset(asset_key, asset, *, path=None) -> "job_items.WrittenAsset":
                     asset_metadata = asset.metadata()
                     band_indices = None
-                    if with_band_indices:
-                        raw_band_indices = asset.bandIndices()
-                        band_indices = None if raw_band_indices is None else list(raw_band_indices)
-                        bands = []
-                        for band in asset_metadata.get("bands"):
-                            band = dict(band)
-                            if "statistics" in band:
-                                band["statistics"] = dict(band.get("statistics"))
-                            bands.append(band)
+                    bands = []
+
+                    for band in asset_metadata.getOrDefault("bands",[]):
+                        band = dict(band)
+                        if "statistics" in band:
+                            band["statistics"] = dict(band.get("statistics"))
+                        bands.append(band)
                     return job_items.WrittenAsset(
                         key=asset_key,
                         path=path if path is not None else str(asset.path()),
@@ -2205,7 +2203,7 @@ class GeopysparkDataCube(DriverDataCube):
                         proj_shape = tuple(asset_metadata.get("proj:shape"))
                         proj_epsg = asset_metadata.get("proj:epsg")
                         bands = []
-                        for band in asset_metadata.get("bands"):
+                        for band in asset_metadata.getOrDefault("bands",[]):
                             band = dict(band)
                             if "statistics" in band:
                                 band["statistics"] = dict(band.get("statistics"))
@@ -2444,7 +2442,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 bbox=to_native_bbox(java_item.bbox()),
                                 crs=max_level.layer_metadata.crs,
                                 assets=[
-                                    to_written_asset(k, a, with_band_indices=True)
+                                    to_written_asset(k, a)
                                     for k, a in java_item.assets().items()
                                 ],
                             )

@@ -140,7 +140,6 @@ class SaveResultFormatOptions:
 class WrittenAsset:
     key: str
     path: str
-    band_indices: Optional[List[int]] = None
     proj_bbox: Optional[Tuple[float, ...]] = None
     proj_shape: Optional[Tuple[int, ...]] = None
     proj_epsg: Optional[int] = None
