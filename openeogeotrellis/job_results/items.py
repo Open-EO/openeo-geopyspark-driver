@@ -210,7 +210,7 @@ def _stitch_item(item: WrittenItem) -> dict:
     }
 
 
-def _batch_item(item: WrittenItem, bands: List[dict], nodata: Any) -> dict:
+def _batch_item(item: WrittenItem, nodata: Any) -> dict:
     geometry = _to_latlng_geometry(item.bbox, item.crs)
     assets = {}
     for a in item.assets:
@@ -239,7 +239,7 @@ def _batch_item(item: WrittenItem, bands: List[dict], nodata: Any) -> dict:
     }
 
 
-def _plain_item(item: WrittenItem, bands: List[dict], nodata: Any) -> dict:
+def _plain_item(item: WrittenItem, nodata: Any) -> dict:
     geometry = _to_latlng_geometry(item.bbox, item.crs)
     assets = {}
     for a in item.assets:
@@ -296,18 +296,18 @@ def _netcdf_item(item: WrittenItem, nodata: Any) -> dict:
 
 
 _BUILDERS = {
-    Variant.STITCH: lambda item, bands, nodata: _stitch_item(item),
+    Variant.STITCH: lambda item, nodata: _stitch_item(item),
     Variant.BATCH: _batch_item,
     Variant.PLAIN: _plain_item,
-    Variant.NETCDF: lambda item, bands, nodata: _netcdf_item(item, nodata),
+    Variant.NETCDF: lambda item, nodata: _netcdf_item(item, nodata),
 }
 
 
 def build_items(
-    written: Sequence[WrittenItem], *, variant: Variant, bands: Optional[List[dict]] = None, nodata: Any = None
+    written: Sequence[WrittenItem], *, variant: Variant, nodata: Any = None
 ) -> Dict[str, dict]:
     builder = _BUILDERS[variant]
-    return {item.id: builder(item, bands, nodata) for item in written}
+    return {item.id: builder(item, nodata) for item in written}
 
 
 def single_asset_item(*, asset_key: str, asset: dict, item_extra: Optional[dict] = None) -> Dict[str, dict]:

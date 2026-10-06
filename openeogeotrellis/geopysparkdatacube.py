@@ -2382,7 +2382,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, variant=variant, bands=bands, nodata=nodata)
+                            job_items.build_items(written, variant=variant, nodata=nodata)
                         )
                     elif batch_mode and not is_temporal_layer and sample_by_feature:
                         format_opts.validate_sample_by_feature_with_separate_asset_per_band()
@@ -2412,7 +2412,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, variant=variant, bands=bands, nodata=nodata)
+                            job_items.build_items(written, variant=variant, nodata=nodata)
                         )  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
@@ -2447,7 +2447,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, variant=variant, bands=bands, nodata=nodata)
+                            job_items.build_items(written, variant=variant, nodata=nodata)
                         )
             else:
                 if not save_filename.endswith(".png"):
