@@ -80,10 +80,12 @@ class JobOptions:
         },
     )  # TODO add description on how this increases requested memory
 
-    soft_errors: str = field(
+    soft_errors: float = field(
         default=get_backend_config().default_soft_errors,
         metadata={
-            "description": "Ratio of soft-errors to allow in load_collection/load_stac and sar_backscatter. Reading errors can occur due to corrupted files or intermittent cloud issues."
+            "description": "Ratio of soft-errors to allow in load_collection/load_stac and sar_backscatter. Reading errors can occur due to corrupted files or intermittent cloud issues.",
+            "minimum": 0,
+            "maximum": 1,
         },
     )
     max_executors: int = field(
@@ -339,8 +341,9 @@ class JobOptions:
                 continue
             default = get_default(field)
             schema = cls.python_type_to_json_schema(field.type)
-            if "enum" in field.metadata:
-                schema["enum"] = field.metadata["enum"]
+            for key in ("enum", "minimum", "maximum"):
+                if key in field.metadata:
+                    schema[key] = field.metadata[key]
 
             options.append({
                 "name": field.metadata.get("name", field.name.replace("_","-")),
