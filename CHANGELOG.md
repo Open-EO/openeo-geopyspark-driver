@@ -18,6 +18,8 @@ without compromising stable operations.
 - Batch job metadata: report Spark execution metrics (`total_stage_runtime`, `total_executor_allocation_time`, `cpu_utilization_ratio`, `total_stage_failures`)
 - Kubernetes batch jobs: also enable OpenTelemetry metrics export on the Spark driver (previously only the executors emitted these metrics), including the `prom-scala` container port used for scraping
 - sar_backscatter: reduce default for max_processing_area_pixels to 1024, avoids to go out of memory and require increasing memory
+- Sentinel-3 OLCI L1B: support angles and meteo bands ([#1848](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1848))
+
 
 ## 0.73.0
 
