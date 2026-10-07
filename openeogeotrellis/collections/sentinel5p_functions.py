@@ -185,13 +185,19 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
         if not was_ok and is_ok:
             start_ok = i
         elif was_ok and not is_ok:
-            polygon = get_bounding_polygon_specific(lat[start_ok:i, :], lon[start_ok:i, :])
-            if polygon.is_valid:
-                polygons.append(polygon)
-            else:
-                _log.warning(f"Invalid polygon ignored for rows {start_ok} to {i}")
+            from openeo_driver.util.geometry import split_polygons_on_wrap_point
+
+            polygon = get_bounding_polygon_specific(lat[start_ok:i, :], _unwrap_longitude(lon[start_ok:i, :]))
+            polygons.extend(split_polygons_on_wrap_point(polygon).geoms)
         was_ok = is_ok
     return MultiPolygon(polygons)
+
+
+def _unwrap_longitude(lon: np.ndarray) -> np.ndarray:
+    """Make longitudes continuous (no jumps at the antimeridian), so values can go beyond [-180, 180]."""
+    lon = np.unwrap(lon, period=360, axis=1)
+    first_column = np.unwrap(lon[:, 0], period=360)
+    return lon + (first_column - lon[:, 0])[:, np.newaxis]
 
 
 @typechecked
