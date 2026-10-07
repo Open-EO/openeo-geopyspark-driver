@@ -78,7 +78,7 @@ def _get_tracker(tracker_id: str = ""):
 def get_execution_metadata() -> dict:
     execution_metrics = {}
     try:
-        scala_execution_metrics = get_jvm().org.openeo.sparklisteners.ExecutionMetrics.get()
+        scala_execution_metrics = get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics.get()
         total_stage_runtime = scala_execution_metrics.totalStageRuntimeMillis()
         if total_stage_runtime != 0:
             execution_metrics = {
@@ -139,7 +139,10 @@ def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool 
 
     from openeogeotrellis.metrics_tracking import global_tracker
 
-    python_metrics = global_tracker().as_dict()
+    tracker = global_tracker()
+    logger.debug("Global tracker: %s", tracker)
+    python_metrics = tracker.as_dict()
+    logger.debug("Python metrics: %s", python_metrics)
     sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors", 0)
     sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter", 0)
     usage = {**usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}

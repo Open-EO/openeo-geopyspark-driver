@@ -12,8 +12,7 @@ class _FakeWorkspaceRepository:
         return self._workspaces[workspace_id]
 
 
-def _usage_metadata(*, omit_derived_from_links: bool = False) -> dict:
-    return {"usage": {}, "links": [], "auxiliary_links": []}
+_USAGE_METADATA = {"usage": {}, "links": [], "auxiliary_links": []}
 
 
 def _copy_auxiliary_links(*, auxiliary_links, job_dir, for_export_workspace) -> list:
@@ -58,7 +57,7 @@ def test_export_pre11_file_by_file(tmp_path):
         remove_exported_assets=False,
         enable_merge=False,
         result_assets_metadata=result_metadata["assets"],
-        usage_metadata=_usage_metadata,
+        usage_metadata=_USAGE_METADATA,
         copy_auxiliary_links=_copy_auxiliary_links,
     )
 
@@ -94,7 +93,7 @@ def test_export_pre11_remove_exported_assets(tmp_path):
         remove_exported_assets=True,
         enable_merge=False,
         result_assets_metadata=result_metadata["assets"],
-        usage_metadata=_usage_metadata,
+        usage_metadata=_USAGE_METADATA,
         copy_auxiliary_links=_copy_auxiliary_links,
     )
 
@@ -136,7 +135,7 @@ def test_export_stac11_file_by_file(tmp_path):
         enable_merge=False,
         result_items_metadata=item_metadata,
         attach_derived_from_document=True,
-        usage_metadata=_usage_metadata,
+        usage_metadata=_USAGE_METADATA,
         copy_auxiliary_links=_copy_auxiliary_links,
     )
 
@@ -170,7 +169,7 @@ def test_export_merge_uses_workspace_merges_by_default(tmp_path, monkeypatch):
         remove_exported_assets=False,
         enable_merge=True,
         result_assets_metadata=result_metadata["assets"],
-        usage_metadata=_usage_metadata,
+        usage_metadata=_USAGE_METADATA,
         copy_auxiliary_links=_copy_auxiliary_links,
     )
 
