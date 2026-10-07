@@ -12,7 +12,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any, Optional, Sequence
+
+import antimeridian
+import shapely.geometry
 from shapely.geometry import Point, Polygon, box
+from shapely.geometry.polygon import orient
 from shapely.geometry.base import BaseGeometry
 import numpy as np
 from netCDF4 import Dataset, num2date
@@ -185,10 +189,10 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
         if not was_ok and is_ok:
             start_ok = i
         elif was_ok and not is_ok:
-            from openeo_driver.util.geometry import split_polygons_on_wrap_point
-
             polygon = get_bounding_polygon_specific(lat[start_ok:i, :], _unwrap_longitude(lon[start_ok:i, :]))
-            polygons.extend(split_polygons_on_wrap_point(polygon).geoms)
+            # Orient counter-clockwise, as expected by antimeridian.fix_shape
+            fixed = shapely.geometry.shape(antimeridian.fix_shape(orient(polygon)))
+            polygons.extend(fixed.geoms if isinstance(fixed, MultiPolygon) else [fixed])
         was_ok = is_ok
     return MultiPolygon(polygons)
 
