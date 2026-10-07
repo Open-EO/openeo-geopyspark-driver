@@ -1,6 +1,7 @@
 import collections
 import getpass
 import logging
+from contextlib import nullcontext
 from pathlib import Path
 
 import botocore.exceptions
@@ -16,7 +17,6 @@ from openeogeotrellis.utils import (
     dict_merge_recursive,
     lonlat_to_mercator_tile_indices,
     map_optional,
-    nullcontext,
     parse_approximate_isoduration,
     reproject_cellsize,
     single_value,
@@ -148,11 +148,6 @@ def test_describe_path(tmp_path):
 ])
 def test_lonlat_to_mercator_tile_indices(lon, lat, zoom, flip_y, expected):
     assert lonlat_to_mercator_tile_indices(longitude=lon, latitude=lat, zoom=zoom, flip_y=flip_y) == expected
-
-
-def test_nullcontext():
-    with nullcontext() as n:
-        assert n is None
 
 
 def test_single_value():
@@ -418,5 +413,3 @@ def test_partition():
 
     assert list(even) == [0, 2, 4, 6, 8]
     assert list(odd) == [1, 3, 5, 7, 9]
-
-
