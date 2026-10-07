@@ -85,7 +85,9 @@ def get_execution_metadata() -> dict:
                 "total_stage_runtime": total_stage_runtime,
                 "total_executor_allocation_time": scala_execution_metrics.executorAllocationTimeMillis(),
                 "cpu_utilization_ratio": scala_execution_metrics.cpuUtilizationRatio(),
+                "total_task_failures": scala_execution_metrics.totalTaskFailures(),
                 "total_stage_failures": scala_execution_metrics.totalStageFailures(),
+                "peak_execution_memory": scala_execution_metrics.peakExecutionMemoryBytes(),
             }
     except Exception as e:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)

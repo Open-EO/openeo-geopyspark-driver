@@ -7,12 +7,15 @@ from pyspark import SparkContext
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
+from openeogeotrellis.deploy.batch_job_metadata import get_execution_metadata
 from openeogeotrellis.utils import get_jvm
 
 
 def _reset_execution_metrics():
     execution_metrics = getattr(get_jvm().org.openeo.geotrelliscommon, "ExecutionMetrics$")
-    getattr(execution_metrics, "MODULE$").store(get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(0, 0, 0.0, 0))
+    getattr(execution_metrics, "MODULE$").store(
+        get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(0, 0, 0.0, 0, 0, 0)
+    )
 
 
 @pytest.fixture
@@ -21,6 +24,24 @@ def clean_execution_metrics():
     _reset_execution_metrics()
     yield
     _reset_execution_metrics()
+
+
+def test_get_execution_metadata(clean_execution_metrics):
+    assert get_execution_metadata() == {}
+
+    execution_metrics = getattr(get_jvm().org.openeo.geotrelliscommon, "ExecutionMetrics$")
+    getattr(execution_metrics, "MODULE$").store(
+        get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(1234, 2345, 0.5, 2, 3, 4096)
+    )
+
+    assert get_execution_metadata() == {
+        "total_stage_runtime": 1234,
+        "total_executor_allocation_time": 2345,
+        "cpu_utilization_ratio": 0.5,
+        "total_task_failures": 3,
+        "total_stage_failures": 2,
+        "peak_execution_memory": 4096,
+    }
 
 
 def test_execution_metrics(tmp_path, clean_execution_metrics):
@@ -65,11 +86,13 @@ def test_execution_metrics(tmp_path, clean_execution_metrics):
     metadata = read_json(metadata_file)
     assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
     assert len(metadata["assets"]) == 1
+    assert "total_stage_runtime" not in metadata["usage"]
+    assert "total_executor_allocation_time" not in metadata["usage"]
     assert metadata["usage"] == DictSubSet(
         {
-            "total_stage_runtime": {"value": dirty_equals.IsPositiveInt, "unit": "milliseconds"},
-            "total_executor_allocation_time": {"value": dirty_equals.IsInt(ge=0), "unit": "milliseconds"},
             "cpu_utilization_ratio": {"value": dirty_equals.IsFloat(ge=0), "unit": "fraction"},
             "total_stage_failures": {"value": 0, "unit": "count"},
+            "total_task_failures": {"value": 0, "unit": "count"},
+            "peak_execution_memory": {"value": dirty_equals.IsInt(ge=0), "unit": "bytes"},
         }
     )
