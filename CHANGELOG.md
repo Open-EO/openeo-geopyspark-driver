@@ -12,10 +12,12 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## 0.74.0
+## In progress: 0.74.0
 
 - Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
-
+- Batch job metadata: report Spark execution metrics (`total_stage_runtime`, `total_executor_allocation_time`, `cpu_utilization_ratio`, `total_stage_failures`)
+- Kubernetes batch jobs: also enable OpenTelemetry metrics export on the Spark driver (previously only the executors emitted these metrics), including the `prom-scala` container port used for scraping
+- sar_backscatter: reduce default for max_processing_area_pixels to 1024, avoids to go out of memory and require increasing memory
 
 ## 0.73.0
 
