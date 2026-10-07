@@ -420,13 +420,10 @@ class GeoPySparkJobResultsHooks:
         if execution_metadata:
             tracker_metadata["usage"] = {
                 **tracker_metadata.get("usage", {}),
-                "total_stage_runtime": {"value": execution_metadata["total_stage_runtime"], "unit": "milliseconds"},
-                "total_executor_allocation_time": {
-                    "value": execution_metadata["total_executor_allocation_time"],
-                    "unit": "milliseconds",
-                },
                 "cpu_utilization_ratio": {"value": execution_metadata["cpu_utilization_ratio"], "unit": "fraction"},
+                "total_task_failures": {"value": execution_metadata["total_task_failures"], "unit": "count"},
                 "total_stage_failures": {"value": execution_metadata["total_stage_failures"], "unit": "count"},
+                "peak_execution_memory": {"value": execution_metadata["peak_execution_memory"], "unit": "bytes"},
             }
         return tracker_metadata
 
