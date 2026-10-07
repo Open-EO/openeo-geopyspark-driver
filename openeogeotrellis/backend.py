@@ -2447,9 +2447,6 @@ class GpsBatchJobs(backend.BatchJobs):
     ) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
-            return iter(())
-
         return elasticsearch_logs(
             job_id=job_id, create_time=job_info.created, offset=offset, level=level
         )

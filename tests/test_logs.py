@@ -1,10 +1,27 @@
 
+from datetime import datetime
+from types import SimpleNamespace
+
 import mock
 import pytest
 from elasticsearch.exceptions import ConnectionTimeout, TransportError
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.jobregistry import JOB_STATUS
 
+from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.logs import elasticsearch_logs
+
+
+@pytest.mark.parametrize("status", [JOB_STATUS.CREATED, JOB_STATUS.QUEUED])
+def test_get_job_logs_before_start(status):
+    created = datetime(2024, 1, 1)
+    entry = {"level": "info", "message": "Job submitted"}
+    with mock.patch.object(GpsBatchJobs, "get_job_info", return_value=SimpleNamespace(status=status, created=created)), \
+         mock.patch("openeogeotrellis.backend.elasticsearch_logs", return_value=iter([entry])) as search_logs:
+        jobs = object.__new__(GpsBatchJobs)
+        assert list(jobs.get_log_entries("job-foo", user_id="alice", offset="offset", level="debug")) == [entry]
+
+    search_logs.assert_called_once_with(job_id="job-foo", create_time=created, offset="offset", level="debug")
 
 
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
