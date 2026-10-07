@@ -210,8 +210,17 @@ class JobOptions:
         python_memory = 0 if self.python_memory == JOB_OPTION_DISABLE else byte_string_as(self.python_memory or "0b")
         if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + python_memory > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
+            python_memory_display = ""
+            if python_memory:
+                if python_memory % (1024**3) == 0:
+                    size = f"{python_memory // (1024 ** 3)}G"
+                elif python_memory % (1024**2) == 0:
+                    size = f"{python_memory // (1024 ** 2)}m"
+                else:
+                    size = self.python_memory
+                python_memory_display = f" + {size} (python-memory)"
             raise OpenEOApiException(
-                message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}{python_memory_display}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
 
         if byte_string_as(self.driver_memory) + byte_string_as(self.driver_memory_overhead) > byte_string_as(
