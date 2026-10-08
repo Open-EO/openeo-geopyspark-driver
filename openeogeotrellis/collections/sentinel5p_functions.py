@@ -624,6 +624,8 @@ def resample_data(
     resampled_lon, resampled_lat = create_resample_grid(spatial_extent, resample_resolution)
     interpolated_data["latitude"] = resampled_lat
     interpolated_data["longitude"] = resampled_lon
+    if "bounding_polygon" in data:
+        interpolated_data["bounding_polygon"] = data["bounding_polygon"]
 
     # Prepare coordinates for interpolation
     source_coordinates = np.stack((data["longitude"].ravel(), data["latitude"].ravel()), axis=-1)
