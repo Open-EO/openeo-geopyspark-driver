@@ -688,17 +688,15 @@ class TestSentinel5:
         https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819
         """
         process_graph = {
-            "process_graph": {
-                "loadcollection1": {
-                    "process_id": "load_collection",
-                    "arguments": {
-                        "bands": ["aerosol_index_354_388"],
-                        "id": "SENTINEL5P_L2_AER_AI",
-                        "spatial_extent": {"east": 8, "north": 54, "south": 50, "west": 3},
-                        "temporal_extent": ["2023-06-29T13:00:00.000000Z", "2023-06-29T23:00:00.000000Z"],
-                    },
-                    "result": True,
-                }
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["aerosol_index_354_388"],
+                    "id": "SENTINEL5P_L2_AER_AI",
+                    "spatial_extent": {"east": 8, "north": 54, "south": 50, "west": 3},
+                    "temporal_extent": ["2023-06-29T13:00:00.000000Z", "2023-06-29T23:00:00.000000Z"],
+                },
+                "result": True,
             },
         }
         response = api110.check_result(process_graph)
