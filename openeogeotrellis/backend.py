@@ -1731,9 +1731,9 @@ class GpsBatchJobs(backend.BatchJobs):
         isKube = ConfigParams().is_kube_deploy
 
         if isKube:
-            options = K8SOptions.from_dict(job_options)
+            options = K8SOptions.from_dict(job_options, process_graph=job_process_graph)
         else:
-            options = JobOptions.from_dict(job_options)
+            options = JobOptions.from_dict(job_options, process_graph=job_process_graph)
         options.validate()
 
         # Job-options are validated at this point

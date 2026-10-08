@@ -185,3 +185,43 @@ class TestCreditPlansJobOption:
     def test_credit_plans_multiple_plans_accepted(self):
         job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a", "plan-b"]})
         assert job_options.credit_plans == ["plan-a", "plan-b"]
+
+
+_PG_SIMPLE = {
+    "load": {"process_id": "load_collection", "arguments": {"id": "S2"}},
+    "save": {
+        "process_id": "save_result",
+        "arguments": {"data": {"from_node": "load"}, "format": "GTiff"},
+        "result": True,
+    },
+}
+_PG_COMPLEX = {
+    "load": {"process_id": "load_collection", "arguments": {"id": "S2"}},
+    "filter": {"process_id": "filter_bands", "arguments": {"data": {"from_node": "load"}, "bands": ["B04"]}},
+    "ndvi": {"process_id": "ndvi", "arguments": {"data": {"from_node": "filter"}}},
+    "save": {
+        "process_id": "save_result",
+        "arguments": {"data": {"from_node": "ndvi"}, "format": "GTiff"},
+        "result": True,
+    },
+}
+
+
+@pytest.mark.parametrize(
+    ["job_options", "process_graph", "expected"],
+    [
+        ({"allow_dynamic_job_options": True}, _PG_SIMPLE, "1G"),
+        ({"allow_dynamic_job_options": "true"}, _PG_SIMPLE, "1G"),
+        ({"allow_dynamic_job_options": True}, _PG_COMPLEX, get_backend_config().default_executor_memory),
+        ({"allow_dynamic_job_options": False}, _PG_SIMPLE, get_backend_config().default_executor_memory),
+        ({"allow_dynamic_job_options": "false"}, _PG_SIMPLE, get_backend_config().default_executor_memory),
+        ({}, _PG_SIMPLE, get_backend_config().default_executor_memory),
+        ({"allow_dynamic_job_options": True}, None, get_backend_config().default_executor_memory),
+        ({"allow_dynamic_job_options": True, "executor-memory": "4G"}, _PG_SIMPLE, "4G"),
+    ],
+)
+@pytest.mark.parametrize("options_class", [JobOptions, K8SOptions])
+def test_allow_dynamic_job_options_executor_memory(options_class, job_options, process_graph, expected):
+    options = options_class.from_dict(job_options, process_graph=process_graph)
+    assert options.executor_memory == expected
+    options.validate()
