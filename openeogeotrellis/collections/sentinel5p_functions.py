@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import antimeridian
-import shapely.geometry
-from shapely.geometry import Point, Polygon, box
-from shapely.geometry.polygon import orient
-from shapely.geometry.base import BaseGeometry
 import numpy as np
+import shapely.geometry
 from netCDF4 import Dataset, num2date
+from shapely.geometry import Point, Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.polygon import orient
 
 from openeogeotrellis.utils import typechecked
 
@@ -181,7 +181,7 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> MultiPolygon:
     # return get_bounding_polygon_specific(lat, lon)
 
     rows_ok = np.max(np.abs(lat), axis=1) < latitude_threshold
-    polygons = []
+    polygons: list = []
     start_ok = None
     for i in range(lat.shape[0] + 1):
         is_ok = i < lat.shape[0] and rows_ok[i]

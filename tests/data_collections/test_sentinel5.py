@@ -29,7 +29,10 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_product
-from openeogeotrellis.collections.sentinel5p_functions import all_gases, parse_gas_from_filename
+from openeogeotrellis.collections.sentinel5p_functions import (
+    all_gases,
+    parse_gas_from_filename,
+)
 
 np.random.seed(42)
 
@@ -321,9 +324,9 @@ def test_invalid_time_exception():
         "filename": "no_existing_file.nc",
         "temporal_extent": temporal_extent_invalid,
     }
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(Exception) as exc_info:
         _ = load_level2_data(params)
-    assert ["Input temporal extent is not in the file" in str(excinfo.value)]
+    assert ["Input temporal extent is not in the file" in str(exc_info.value)]
 
 
 @pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3", "aer_ai", "cloud", "aer_lh"])
@@ -710,7 +713,7 @@ class TestSentinel5:
         unique, counts = np.unique(ds.compressed(), return_counts=True)
         most_common = sorted(zip(unique, counts), key=lambda x: x[1], reverse=True)[:5]
         print(f"Most common values: {most_common}")
-        # assert a popular value does not go over 500 occurences:
+        # assert a popular value does not go over 500 occurrences:
         assert all(count < 500 for _, count in most_common)
 
     def test_invalid_spatial_extent_exception(self):
@@ -719,9 +722,9 @@ class TestSentinel5:
             "spatial_extent": self.spatial_extent_invalid,
             "temporal_extent": None,
         }
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exc_info:
             _ = load_level2_data(params)
-        assert "Input spatial extent is not in the file" in str(excinfo.value)
+        assert "Input spatial extent is not in the file" in str(exc_info.value)
 
     def test_data_availability_exception(self):
         """Valid temporal and spatial extents in the file but when combined there is no data."""
@@ -730,9 +733,9 @@ class TestSentinel5:
             "spatial_extent": self.spatial_extent_normal,
             "temporal_extent": [datetime(2024, 9, 2, 10, 5, 0), datetime(2024, 9, 2, 10, 10, 0)],
         }
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exc_info:
             _ = load_level2_data(params)
-        assert "No data is available for given spatial and temporal extent" in str(excinfo.value)
+        assert "No data is available for given spatial and temporal extent" in str(exc_info.value)
 
     def test_data_availability_based_on_filter_exception(self):
         """No data based on filter_value."""
@@ -742,9 +745,9 @@ class TestSentinel5:
             "temporal_extent": self.temporal_extent_valid,
             "filter_value": 0.5,
         }
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exc_info:
             _ = load_level2_data(params)
-        assert "No data is available after applying quality filter" in str(excinfo.value)
+        assert "No data is available after applying quality filter" in str(exc_info.value)
 
     def test_data_loading_co(self, tmp_path):
         """Test if it loads all bands, data and shape of bands."""

@@ -62,13 +62,16 @@ from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
     get_gas_variables,
+    get_mask_from_polygon,
     interpolate,
     load_data_from_file,
     parse_gas_from_filename,
     resample_data,
-    get_mask_from_polygon,
 )
-from openeogeotrellis.load_stac import spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.load_stac import (
+    construct_item_collection,
+    spatiotemporal_extent_from_load_params,
+)
 from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
@@ -169,24 +172,6 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     # apply quality filtering
     final_data = apply_quality_filter(data, bands, "qa_value_mask")
     return final_data
-
-
-def _save_mask_polygon_for_debugging(polygon: shapely.geometry.base.BaseGeometry, creo_path: Union[Path, str]) -> None:
-    """Dump the spatial mask polygon (raw data's bounding polygon) to a GeoJSON file in the system temp folder.
-
-    This is purely a debugging aid (see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819)
-    to allow inspecting the mask polygon that is used to blank out pixels outside the swath, in case of
-    masking-related artifacts in the output.
-    """
-    try:
-        creo_path = Path(creo_path)
-        out_dir = Path(tempfile.gettempdir()) / "openeo"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{creo_path.name}.geojson"
-        out_path.write_text(json.dumps(shapely.geometry.mapping(polygon)))
-        logger.info(f"Saved Sentinel-5P mask polygon for debugging to {out_path}")
-    except Exception:
-        logger.warning("Failed to save Sentinel-5P mask polygon for debugging", exc_info=True)
 
 
 @typechecked
