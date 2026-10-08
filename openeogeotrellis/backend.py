@@ -778,6 +778,17 @@ Example usage:
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
+        start, end = dt.datetime.fromisoformat(from_date), dt.datetime.fromisoformat(to_date)
+        source_assets = [
+            (uri, timestamp, asset_band_names)
+            for uri, timestamp, asset_band_names in source_assets
+            if start <= dt.datetime.fromisoformat(timestamp) < end
+        ]
+        if not source_assets:
+            raise load_stac.NoDataAvailableException(
+                message=f"No result assets of job {job_id} available for temporal extent {temporal_extent}."
+            )
+
         jvm = get_jvm()
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()

@@ -3054,6 +3054,17 @@ class TestLoadResult:
                 },
             ),
             (
+                {"temporal_extent": ["2022-09-07", "2022-09-12"]},
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (1, 2, 73, 92),
+                    "ts": ["2022-09-07 00:00:00"],
+                    "bands": ["B02", "B03"],
+                    "xs": [644765.0, 644775.0, 645485.0],
+                    "ys": [5675445.0, 5675455.0, 5676355.0],
+                },
+            ),
+            (
                 {"bands": ["B03"]},
                 {
                     "dims": ["t", "bands", "x", "y"],
@@ -3109,6 +3120,25 @@ class TestLoadResult:
         assert result["coords"]["y"]["data"] == ListSubSet(expected["ys"])
         data = np.array(result["data"])
         assert data.shape == expected["shape"]
+
+    def test_load_result_job_id_no_matching_dates(self, api110, job_registry, batch_job_output_root):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+        _setup_existing_job(
+            job_id=job_id,
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            job_registry=job_registry,
+        )
+
+        process_graph = {
+            "lc": {
+                "process_id": "load_result",
+                "arguments": {"id": job_id, "temporal_extent": ["2022-09-08", "2022-09-12"]},
+                "result": True,
+            },
+        }
+        response = api110.result(process_graph).assert_status_code(400)
+        assert "NoDataAvailable" in response.text
 
     def test_load_result_url_basic(
         self,
