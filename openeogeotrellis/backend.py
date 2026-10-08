@@ -701,14 +701,13 @@ Example usage:
                 requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
                 return requested_bbox_lonlat.as_polygon().intersects(shapely.geometry.box(*item.bbox))
 
-            uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
-                                                              asset.extra_fields.get("eo:bands", []))
-                                  for item in job_results.get_items()
-                                  if intersects_spatial_extent(item)
-                                  for asset in item.get_assets().values()
-                                  if asset.media_type == "image/tiff; application=geotiff"}
-
-            timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
+            uris_with_metadata = {
+                asset.get_absolute_href(): (item.datetime.isoformat(), asset.extra_fields.get("eo:bands", []))
+                for item in job_results.get_items()
+                if intersects_spatial_extent(item)
+                for asset in item.get_assets().values()
+                if asset.media_type == "image/tiff; application=geotiff"
+            }
             logger.info(f"{len(uris_with_metadata)=}")
 
             try:
@@ -718,6 +717,10 @@ Example usage:
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
+            source_assets = [
+                (uri, timestamp, [eo_band["name"] for eo_band in eo_bands])
+                for uri, (timestamp, eo_bands) in uris_with_metadata.items()
+            ]
             job_results_bbox = BoundingBox.from_wsen_tuple(
                 job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
             )
@@ -744,8 +747,7 @@ Example usage:
                     message=f"Cannot load results of job {job_id} because they lack timestamp information.",
                     status_code=400)
 
-            timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
-            logger.info(f"{timestamped_uris=}")
+            logger.info(f"{len(paths_with_metadata)=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
@@ -754,6 +756,10 @@ Example usage:
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
+            source_assets = [
+                (path, timestamp, [band.name for band in asset_bands])
+                for path, (timestamp, asset_bands) in paths_with_metadata.items()
+            ]
             job_info = self.batch_jobs.get_job_info(job_id, user_id)
             job_results_bbox = BoundingBox.from_wsen_tuple(
                 job_info.bbox, crs="EPSG:4326"
@@ -774,7 +780,39 @@ Example usage:
 
         jvm = get_jvm()
 
-        pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
+        opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+        for uri, timestamp, asset_band_names in source_assets:
+            feature = (
+                jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+                .withId(uri)
+                .withCollectionId(job_id)
+                .withNominalDate(timestamp)
+                .withBBox(*map(float, job_results_bbox.as_wsen_tuple()))
+                .withCRS(f"EPSG:{job_results_epsg}")
+                .addLink(uri, "data", 1.0, 0.0, asset_band_names)
+                .build()
+            )
+            opensearch_client.addFeature(feature)
+
+        raster_path = jvm.geotrellis.raster.geotiff.GeoTiffPath(source_assets[0][0])
+        raster_source = jvm.geotrellis.raster.geotiff.GeoTiffRasterSource(
+            raster_path, jvm.scala.Option.empty(), jvm.scala.Option.empty()
+        )
+        source_cell_size = raster_source.cellSize()
+        max_spatial_resolution = jvm.geotrellis.raster.CellSize(
+            float(source_cell_size.width()), float(source_cell_size.height())
+        )
+        pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+            opensearch_client,
+            job_id,
+            band_names,
+            None,
+            max_spatial_resolution,
+            False,
+            0.0,
+        )
+        metadata_properties = jvm.java.util.Collections.emptyMap()
+        correlation_id = ""
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
@@ -792,8 +830,6 @@ Example usage:
                 getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
             ).reproject(projected_polygons, job_results_epsg)
 
-            metadata_properties = None
-            correlation_id = None
             data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
             getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
@@ -804,10 +840,11 @@ Example usage:
                 extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
                 extent_crs = requested_bbox.crs
             else:
-                extent = extent_crs = None
+                extent = jvm.geotrellis.vector.Extent(*job_results_bbox.as_wsen_tuple())
+                extent_crs = job_results_bbox.crs
 
             pyramid = pyramid_factory.pyramid_seq(
-                extent, extent_crs, from_date, to_date
+                extent, extent_crs, from_date, to_date, metadata_properties, correlation_id
             )
 
         metadata = metadata.filter_bbox(

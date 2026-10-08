@@ -19,6 +19,7 @@ without compromising stable operations.
 - Kubernetes batch jobs: also enable OpenTelemetry metrics export on the Spark driver (previously only the executors emitted these metrics), including the `prom-scala` container port used for scraping
 - sar_backscatter: reduce default for max_processing_area_pixels to 1024, avoids to go out of memory and require increasing memory
 - Sentinel-3 OLCI L1B: support angles and meteo bands ([#1848](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1848))
+- `load_result`: use the file-based pyramid factory for loading result GeoTIFFs
 
 
 ## 0.73.0

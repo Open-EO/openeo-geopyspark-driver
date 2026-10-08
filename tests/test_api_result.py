@@ -2927,8 +2927,7 @@ def _setup_metadata_request_mocking(
         if link["rel"] == "item":
             path = api.extract_path(link["href"])
             item_metadata = api.get(path).assert_status_code(200).json
-            # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
-            # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
+            # Change asset URLs to local paths so the GeoTrellis raster reader can read the data directly.
             for k in item_metadata["assets"]:
                 item_metadata["assets"][k]["href"] = f"file://{results_dir / k!s}"
             requests_mock.get(link["href"], json=item_metadata)
