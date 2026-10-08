@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import calendar
 import glob
+import json
 import logging
 import os.path
 import re
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -13,6 +13,7 @@ from typing import Any, Optional, Union
 import numpy as np
 import pytest
 import rasterio
+import shapely.geometry
 import xarray
 from shapely.geometry.multipolygon import MultiPolygon
 
@@ -434,6 +435,16 @@ def assert_tif_file_is_healthy(tif_path):
         raise AssertionError("\n".join(issues))
 
 
+@typechecked
+def verify_bounding_polygon_is_valid(data: dict, tmp_path: Optional[Path] = None):
+    bounding_polygon = data["bounding_polygon"]
+    if tmp_path:
+        assert isinstance(bounding_polygon, MultiPolygon)
+        output_path = tmp_path / "bounding_polygon.geojson"
+        output_path.write_text(json.dumps(shapely.geometry.mapping(bounding_polygon), indent=2))
+    assert bounding_polygon.is_valid
+
+
 # Directory (under /eodata) known to contain at least one real product file for each gas/product
 # short name, used to cross-check the `FILTER_VALUE` configured in `all_gases` against the
 # `qa_value` variable's `comment` attribute embedded in the actual netCDF product.
@@ -737,7 +748,7 @@ class TestSentinel5:
             _ = load_level2_data(params)
         assert "No data is available after applying quality filter" in str(excinfo.value)
 
-    def test_data_loading_co(self):
+    def test_data_loading_co(self, tmp_path):
         """Test if it loads all bands, data and shape of bands."""
         params = {
             "filename": self.filename,
@@ -757,8 +768,9 @@ class TestSentinel5:
         assert np.allclose(data["carbonmonoxide_total_column_corrected"], co_corr, equal_nan=True)
         assert data["carbonmonoxide_total_column"].shape == (3, 3)
         assert data["qa_value"].shape == (3, 3)
+        verify_bounding_polygon_is_valid(data, tmp_path)
 
-    def test_data_loading_with_resampling(self):
+    def test_data_loading_with_resampling(self, tmp_path):
         params = {
             "filename": self.filename,
             "spatial_extent": [35, 24, 35.05, 24.05],
@@ -779,8 +791,9 @@ class TestSentinel5:
         assert np.allclose(data["carbonmonoxide_total_column"].ravel(), co, equal_nan=True)
         assert np.allclose(data["latitude"].ravel(), lat, equal_nan=True)
         assert np.allclose(data["longitude"].ravel(), lon, equal_nan=True)
+        verify_bounding_polygon_is_valid(data, tmp_path)
 
-    def test_data_loading_with_antimeridian_crossing(self):
+    def test_data_loading_with_antimeridian_crossing(self, tmp_path):
         """Test loading data that crosses the antimeridian."""
         params = {
             "filename": str(self.filename_anti),
@@ -818,8 +831,11 @@ class TestSentinel5:
             data2["carbonmonoxide_total_column_corrected"][:, -5:],
             equal_nan=True,
         )
+        verify_bounding_polygon_is_valid(data)
+        verify_bounding_polygon_is_valid(data1)
+        verify_bounding_polygon_is_valid(data2)
 
-    def test_data_loading_with_complex_bounding_box_01(self):
+    def test_data_loading_with_complex_bounding_box_01(self, tmp_path):
         nc_file_path = Path(
             fix_eodata_path(
                 "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
@@ -833,11 +849,9 @@ class TestSentinel5:
             "filter_value": 0.0,
         }
         data = load_level2_data(params)
-        bp = data["bounding_polygon"]
-        assert isinstance(bp, MultiPolygon)
-        assert bp.is_valid
+        verify_bounding_polygon_is_valid(data, tmp_path)
 
-    def test_data_loading_with_complex_bounding_box_02(self):
+    def test_data_loading_with_complex_bounding_box_02(self, tmp_path):
         """
         This product has bad anti-meridian wrapping. The polygon probably needs to be split.
         """
@@ -853,11 +867,9 @@ class TestSentinel5:
             "bands": ["aerosol_index_354_388", "bounding_polygon"],
         }
         data = load_level2_data(params)
-        bp = data["bounding_polygon"]
-        assert isinstance(bp, MultiPolygon)
-        assert bp.is_valid
+        verify_bounding_polygon_is_valid(data, tmp_path)
 
-    def test_data_loading_no2(self):
+    def test_data_loading_no2(self, tmp_path):
         """Test if it loads all bands, data and shape of bands."""
         params = {
             "filename": self.filename_no2,
@@ -873,3 +885,4 @@ class TestSentinel5:
         assert "qa_value" in data
         assert np.allclose(data["nitrogendioxide_tropospheric_column"], no2_act, equal_nan=True)
         assert data["nitrogendioxide_tropospheric_column"].shape == data["qa_value"].shape
+        verify_bounding_polygon_is_valid(data, tmp_path)

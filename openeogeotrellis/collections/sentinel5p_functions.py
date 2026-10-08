@@ -174,7 +174,7 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
 
 
 @typechecked
-def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> BaseGeometry:
+def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> MultiPolygon:
     assert lat.ndim == 2 and lon.ndim == 2
     assert lat.shape == lon.shape
     latitude_threshold = 85
