@@ -126,6 +126,32 @@ def assert_listing_shared_options(options):
             assert opt["schema"] == {"type": "array", "items": {"type": "string"}}
 
 
+def test_soft_errors_schema():
+    option = next(option for option in JobOptions.list_options() if option["name"] == "soft-errors")
+    assert option["default"] == 0.1
+    assert option["schema"] == {"type": "number", "minimum": 0, "maximum": 1}
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (0.4, "0.4"),
+        (True, "1.0"),
+        (False, "0.0"),
+        ("true", "1.0"),
+        ("false", "0.0"),
+    ],
+)
+def test_soft_errors_arg(value, expected):
+    assert JobOptions.from_dict({"soft-errors": value}).soft_errors_arg() == expected
+
+
+@pytest.mark.parametrize("value", [-0.1, 1.1])
+def test_soft_errors_arg_out_of_range(value):
+    with pytest.raises(OpenEOApiException):
+        JobOptions.from_dict({"soft-errors": value}).soft_errors_arg()
+
+
 def test_list_options_k8s():
     options = K8SOptions.list_options(public_only=False)
     assert_listing_shared_options(options)

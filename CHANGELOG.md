@@ -37,6 +37,7 @@ without compromising stable operations.
 - Kubernetes batch jobs: support mounting batch job results from a single shared PersistentVolumeClaim (each job using its own `subPath`) instead of creating a PersistentVolume and PersistentVolumeClaim per job, through the new `shared_results_pvc` config.
 - Produce BigTiff GeoTiffs by default ([Open-EO/openeo-geotrellis-extensions#678](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/678), [Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 - Make `export_workspace` merge by default; its `merge` argument points to the STAC resource itself ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
+- Advertise the `soft-errors` job option as a ratio between 0 and 1 instead of a string ([#1327](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1327)).
 
 
 ## 0.72.0
