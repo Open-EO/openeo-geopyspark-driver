@@ -85,7 +85,9 @@ def get_execution_metadata() -> dict:
                 "total_stage_runtime": total_stage_runtime,
                 "total_executor_allocation_time": scala_execution_metrics.executorAllocationTimeMillis(),
                 "cpu_utilization_ratio": scala_execution_metrics.cpuUtilizationRatio(),
+                "total_task_failures": scala_execution_metrics.totalTaskFailures(),
                 "total_stage_failures": scala_execution_metrics.totalStageFailures(),
+                "peak_execution_memory": scala_execution_metrics.peakExecutionMemoryBytes(),
             }
     except Exception as e:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)
@@ -139,7 +141,10 @@ def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool 
 
     from openeogeotrellis.metrics_tracking import global_tracker
 
-    python_metrics = global_tracker().as_dict()
+    tracker = global_tracker()
+    logger.debug("Global tracker: %s", tracker)
+    python_metrics = tracker.as_dict()
+    logger.debug("Python metrics: %s", python_metrics)
     sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors", 0)
     sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter", 0)
     usage = {**usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}

@@ -140,11 +140,10 @@ class SaveResultFormatOptions:
 class WrittenAsset:
     key: str
     path: str
-    band_indices: Optional[List[int]] = None
     proj_bbox: Optional[Tuple[float, ...]] = None
     proj_shape: Optional[Tuple[int, ...]] = None
     proj_epsg: Optional[int] = None
-    nc_bands: Optional[List[dict]] = None
+    bands: Optional[List[dict]] = None
 
 
 @dataclass(frozen=True)
@@ -156,27 +155,6 @@ class WrittenItem:
     assets: List[WrittenAsset] = field(default_factory=list)
 
 
-class Variant(str, Enum):
-    """Which item/asset shape to build from a list of ``WrittenItem``s."""
-
-    STITCH = "stitch"  # stitched GTIFF, with or without tile_grid
-    BATCH = "batch"  # batch-mode GTIFF, temporal or spatial+sample_by_feature
-    PLAIN = "plain"  # non-stitched, non-batch GTIFF, with or without tile_grid
-    NETCDF = "netcdf"  # NetCDF written through the JVM writers
-
-
-def select_variant(
-    *, stitch: bool, tile_grid: Optional[str], batch_mode: bool, is_temporal_layer: bool, sample_by_feature: bool
-) -> Variant:
-    if stitch:
-        return Variant.STITCH
-    if batch_mode and is_temporal_layer:
-        return Variant.BATCH
-    if batch_mode and not is_temporal_layer and sample_by_feature:
-        return Variant.BATCH
-    return Variant.PLAIN
-
-
 def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: Any) -> Optional[Polygon]:
     if bbox is None:
         return None
@@ -184,128 +162,40 @@ def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: 
     return reproject_geometry(box(xmin, ymin, xmax, ymax), src_crs=crs, dst_crs="EPSG:4326")
 
 
-def _stitch_item(item: WrittenItem) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    assets = {}
-    for a in item.assets:
-        assets[a.key] = dict_no_none(
-            {
-                "href": a.path,
-                "geometry": mapping(geometry),
-                "bbox": geometry.bounds,
-                "type": "image/tiff; application=geotiff",
-                "roles": ["data"],
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-    return {
-        "id": item.id,
-        "properties": {"datetime": item.datetime},
-        "geometry": mapping(geometry),
-        "bbox": geometry.bounds,
-        "assets": assets,
-    }
-
-
-def _batch_item(item: WrittenItem, bands: List[dict], nodata: Any) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    assets = {}
-    for a in item.assets:
-        assets[a.key] = dict_no_none(
-            {
-                "href": a.path,
-                "type": "image/tiff; application=geotiff",
-                "roles": ["data"],
-                "bands": ([band for i, band in enumerate(bands) if i in a.band_indices] if a.band_indices else bands),
-                "nodata": nodata,
-                "datetime": item.datetime,
-                "geometry": mapping(geometry),
-                "bbox": geometry.bounds,
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-    return {
-        "id": item.id,
-        "properties": {"datetime": item.datetime},
-        "geometry": mapping(geometry),
-        "bbox": geometry.bounds,
-        "assets": assets,
-    }
-
-
-def _plain_item(item: WrittenItem, bands: List[dict], nodata: Any) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    assets = {}
-    for a in item.assets:
-        asset = dict_no_none(
-            {
-                "href": a.path,
-                "type": "image/tiff; application=geotiff",
-                "roles": ["data"],
-                "nodata": nodata,
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-        if a.band_indices is not None:
-            asset["bands"] = [band for i, band in enumerate(bands) if i in a.band_indices]
-        asset["geometry"] = mapping(geometry)
-        asset["bbox"] = geometry.bounds
-        assets[a.key] = asset
-    return {
-        "id": item.id,
-        "geometry": mapping(geometry),
-        "bbox": geometry.bounds,
-        "assets": assets,
-    }
-
-
-def _netcdf_item(item: WrittenItem, nodata: Any) -> dict:
+def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
     geometry = _to_latlng_geometry(item.bbox, item.crs)
     bbox = geometry.bounds if geometry is not None else None
+    datetime = item.datetime
     assets = {}
     for a in item.assets:
         assets[a.key] = dict_no_none(
             {
                 "href": a.path,
-                "type": "application/x-netcdf",
+                "type": format_type,
                 "roles": ["data"],
+                "datetime": datetime,
                 "nodata": nodata,
                 "geometry": mapping(geometry) if geometry is not None else None,
                 "bbox": bbox,
-                "bands": a.nc_bands,
-                "raster:bands": a.nc_bands,
+                "bands": a.bands,
+                "raster:bands": a.bands,
                 "proj:bbox": a.proj_bbox,
                 "proj:shape": a.proj_shape,
                 "proj:epsg": a.proj_epsg,
             }
         )
-    return {
+    properties = {"datetime": datetime} if datetime is not None else None
+    return dict_no_none({
         "id": item.id,
+        "properties": properties,
         "geometry": mapping(geometry) if geometry is not None else None,
         "bbox": bbox,
         "assets": assets,
-    }
+    })
 
 
-_BUILDERS = {
-    Variant.STITCH: lambda item, bands, nodata: _stitch_item(item),
-    Variant.BATCH: _batch_item,
-    Variant.PLAIN: _plain_item,
-    Variant.NETCDF: lambda item, bands, nodata: _netcdf_item(item, nodata),
-}
-
-
-def build_items(
-    written: Sequence[WrittenItem], *, variant: Variant, bands: Optional[List[dict]] = None, nodata: Any = None
-) -> Dict[str, dict]:
-    builder = _BUILDERS[variant]
-    return {item.id: builder(item, bands, nodata) for item in written}
+def build_items(written: Sequence[WrittenItem], *, format_type: str, nodata: Any = None) -> Dict[str, dict]:
+    return {item.id: build_item(item, format_type, nodata) for item in written}
 
 
 def single_asset_item(*, asset_key: str, asset: dict, item_extra: Optional[dict] = None) -> Dict[str, dict]:

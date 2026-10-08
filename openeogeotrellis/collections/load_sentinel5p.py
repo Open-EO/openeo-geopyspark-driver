@@ -40,16 +40,18 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import tempfile
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
 import shapely.geometry
+from openeo.util import rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.geometry import BoundingBox
 from py4j.java_gateway import JavaObject
@@ -60,13 +62,16 @@ from openeogeotrellis.collections.sentinel5p_functions import (
     adapt_coordinates,
     apply_quality_filter,
     get_gas_variables,
+    get_mask_from_polygon,
     interpolate,
     load_data_from_file,
     parse_gas_from_filename,
     resample_data,
-    get_mask_from_polygon,
 )
-from openeogeotrellis.load_stac import spatiotemporal_extent_from_load_params, construct_item_collection
+from openeogeotrellis.load_stac import (
+    construct_item_collection,
+    spatiotemporal_extent_from_load_params,
+)
 from openeogeotrellis.utils import typechecked
 
 logger = logging.getLogger(__name__)
@@ -104,6 +109,10 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
 
     # check the spatial extent and temporal extent keys
     spatial_extent = params.get("spatial_extent", None)
+    if isinstance(spatial_extent, BoundingBox):
+        spatial_extent = spatial_extent.as_wsen_tuple()
+    elif isinstance(spatial_extent, dict):
+        spatial_extent = BoundingBox.from_dict(spatial_extent).as_wsen_tuple()
     if spatial_extent is not None:
         assert isinstance(spatial_extent, Sequence)
 
@@ -111,6 +120,7 @@ def load_level2_data(params: dict) -> dict[str, np.ndarray]:
     # check if temporal_extent is made of datetime objects
     if temporal_extent is not None:
         assert isinstance(temporal_extent, Sequence)
+        temporal_extent = [rfc3339.parse_datetime(x) if isinstance(x, str) else x for x in temporal_extent]
         if not all(isinstance(x, datetime) for x in temporal_extent):
             raise Exception("temporal_extent should be made of datetime objects.")
     # check the band names and filter_value
