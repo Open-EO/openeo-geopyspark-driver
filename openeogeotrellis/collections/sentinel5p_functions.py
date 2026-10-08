@@ -9,13 +9,22 @@ Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-l
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Optional, Sequence
-from shapely.geometry import Point, Polygon
+
+import antimeridian
 import numpy as np
+import shapely.geometry
 from netCDF4 import Dataset, num2date
+from shapely.geometry import Point, Polygon
+from shapely.geometry.base import BaseGeometry
+from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.polygon import orient
 
 from openeogeotrellis.utils import typechecked
+
+_log = logging.getLogger(__name__)
 
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
@@ -165,7 +174,38 @@ def get_gas_variables(gas_type: str, collection_id: Optional[str] = None) -> tup
 
 
 @typechecked
-def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
+def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> MultiPolygon:
+    assert lat.ndim == 2 and lon.ndim == 2
+    assert lat.shape == lon.shape
+    latitude_threshold = 85
+    # return get_bounding_polygon_specific(lat, lon)
+
+    rows_ok = np.max(np.abs(lat), axis=1) < latitude_threshold
+    polygons: list = []
+    start_ok = None
+    for i in range(lat.shape[0] + 1):
+        is_ok = i < lat.shape[0] and rows_ok[i]
+        if start_ok is None and is_ok:
+            start_ok = i
+        elif start_ok is not None and not is_ok:
+            if i - start_ok >= 2:  # A polygon needs at least 2 rows (exclusive end index i).
+                polygon = get_bounding_polygon_specific(lat[start_ok:i, :], _unwrap_longitude(lon[start_ok:i, :]))
+                # Orient counter-clockwise, as expected by antimeridian.fix_shape
+                fixed = shapely.geometry.shape(antimeridian.fix_shape(orient(polygon)))
+                polygons.extend(fixed.geoms if isinstance(fixed, MultiPolygon) else [fixed])
+            start_ok = None
+    return MultiPolygon(polygons)
+
+
+def _unwrap_longitude(lon: np.ndarray) -> np.ndarray:
+    """Make longitudes continuous (no jumps at the antimeridian), so values can go beyond [-180, 180]."""
+    lon = np.unwrap(lon, period=360, axis=1)
+    first_column = np.unwrap(lon[:, 0], period=360)
+    return lon + (first_column - lon[:, 0])[:, np.newaxis]
+
+
+@typechecked
+def get_bounding_polygon_specific(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     """Get bounding polygon from lat-lon arrays.
 
     Args:
@@ -179,7 +219,8 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     """
 
     def expand_edge(edge, neighbor):
-        return edge + (neighbor - edge) * 0.5  # only expand the edge by half the distance to the neighbor
+        # Expand the edge outwards by half the distance to the neighbor, to cover the full pixel footprint
+        return edge - (neighbor - edge) * 0.5
 
     # Bottom (row 0)
     bottom_lat = expand_edge(lat[0, :], lat[1, :]).flatten()
@@ -197,17 +238,18 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     polygon_lat = np.concatenate([top_lat, right_lat[-2::-1], bottom_lat[::-1][1:], left_lat[1:-1]])
     polygon_lon = np.concatenate([top_lon, right_lon[-2::-1], bottom_lon[::-1][1:], left_lon[1:-1]])
     polygon = Polygon(zip(polygon_lon, polygon_lat))
+    # assert polygon.is_valid
     return polygon
 
 
 @typechecked
-def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: Polygon) -> np.ndarray:
+def get_mask_from_polygon(lon: np.ndarray, lat: np.ndarray, polygon: BaseGeometry) -> np.ndarray:
     """Mask coordinates (lat,lon) that are not inside the polygon.
 
     Args:
         lon (2d Array of float): Pixel centers longitude.
         lat (2d Array of float): Pixel centers latitude.
-        polygon (shapely Polygon): Polygon to mask the coordinates.
+        polygon (shapely geometry): Polygon (or MultiPolygon) to mask the coordinates.
 
     Returns:
         mask (Array of bool): Boolean mask for the coordinates inside the polygon.
@@ -315,6 +357,9 @@ def load_data_from_file(
         data = {}
         for band in bands:
             try:
+                if band == "bounding_polygon":
+                    # Allow to keep it as debug information
+                    continue
                 var_path = variable_loc_in_file[band]
                 band_data = f[var_path][0]  # 0 is for time dimension
                 # get band data based on combined mask
@@ -463,7 +508,7 @@ def fill_and_mask_data(band_data: np.ndarray, spatio_temporal_mask: np.ndarray):
     # fill nan values where data is not valid
     if hasattr(band_data, "filled"):
         if np.issubdtype(band_data.dtype, np.integer):
-            print(f"converting to float to fill with nan. (Was {band_data.dtype})")
+            _log.info(f"converting to float to fill with nan. (Was {band_data.dtype})")
             band_data = band_data.astype(float)
         band_data = band_data.filled(np.nan)
     # set data to nan based on the spatial-temporal extent.
@@ -579,6 +624,8 @@ def resample_data(
     resampled_lon, resampled_lat = create_resample_grid(spatial_extent, resample_resolution)
     interpolated_data["latitude"] = resampled_lat
     interpolated_data["longitude"] = resampled_lon
+    if "bounding_polygon" in data:
+        interpolated_data["bounding_polygon"] = data["bounding_polygon"]
 
     # Prepare coordinates for interpolation
     source_coordinates = np.stack((data["longitude"].ravel(), data["latitude"].ravel()), axis=-1)
@@ -621,7 +668,9 @@ def apply_quality_filter(
     filtered_data = {}
     quality_mask = data[quality_band]
     for key, val in data.items():
-        if key in bands:
+        if key == "bounding_polygon":
+            filtered_data[key] = val  # copy unchanged
+        elif key in bands:
             filtered_data[key] = np.where(quality_mask, val, np.nan)
         elif (key not in bands) & (key != quality_band):
             filtered_data[key] = val  # copy metadata
