@@ -30,7 +30,7 @@ from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
-from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -617,6 +617,19 @@ class TestGpsProcessing:
                 with mock.patch.object(gpsCube, "_create_tilelayer", return_value=layerMock) as create_tl:
                     gpsCube.fancy_cube_op(factor=2, label="y")
                     m.openeo.geotrelliscommon.CubeProcessRegistry.invoke.assert_called_once()
+
+                    # Cube arguments must be replaced by their RDD at the same pyramid level.
+                    otherLayer = MagicMock(spec=TiledRasterLayer)
+                    otherLayer.layer_type = LayerType.SPATIAL
+                    otherCube = GeopysparkDataCube(Pyramid({0: otherLayer}))
+                    invoke = m.openeo.geotrelliscommon.CubeProcessRegistry.invoke
+                    invoke.reset_mock()
+                    gpsCube.fancy_cube_op(other=otherCube, cubes=[otherCube], factor=2)
+                    invoke.assert_called_once()
+                    _, pid, invoke_kwargs = invoke.call_args.args
+                    assert pid == "fancy_cube_op"
+                    other_rdd = otherLayer.srdd.rdd.return_value
+                    assert invoke_kwargs == {"other": other_rdd, "cubes": [other_rdd], "factor": 2}
 
 
         class MyCube(DriverDataCube):
@@ -1326,7 +1339,7 @@ class TestGpsBatchJobs:
         "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
         return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
     )
-    def test_start_k8s_job_persists_results_metadata_uri(
+    def test_start_k8s_job_persists_results_metadata_uri_and_infra_id(
         self,
         mock_get_spark_pod_status,
         mock_create_spark_pod,
@@ -1338,15 +1351,19 @@ class TestGpsBatchJobs:
         job_registry,
         mock_s3_bucket,
         fast_sleep,
+        monkeypatch,
     ):
-        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        monkeypatch.setenv("ETL_INFRA_ID", "my-test-dev")
+        with gps_config_overrides(infra_id=GpsBackendConfig().infra_id):
+            self._create_dummy_batch_job(backend_implementation, self._dummy_user)
 
-        job_id, job = next(iter(job_registry.db.items()))
-        assert job.get("results_metadata_uri") is None
+            job_id, job = next(iter(job_registry.db.items()))
+            assert job.get("results_metadata_uri") is None
 
-        backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+            backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
         mock_create_spark_pod.assert_called_once()
         assert job.get("results_metadata_uri") == f"s3://{mock_s3_bucket.name}/batch_jobs/{job_id}/job_metadata.json"
+        assert job["infra_id"] == "my-test-dev"
 
     @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())

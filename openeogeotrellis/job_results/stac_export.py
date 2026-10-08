@@ -20,7 +20,7 @@ def write_exported_stac_collection(
     asset_keys: List[str],
     omit_derived_from_links: bool = False,
     job_id: str,
-    usage_metadata: Callable[..., dict],
+    usage_metadata: dict,
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
@@ -86,7 +86,7 @@ def write_exported_stac_collection(
             [item_link(item_file) for item_file in item_files]
             + [
                 link
-                for link in usage_metadata(omit_derived_from_links=omit_derived_from_links).get("links", [])
+                for link in usage_metadata.get("links", [])
                 if link["rel"] == "derived_from"
             ]
         ),
@@ -107,7 +107,7 @@ def write_exported_stac_collection_from_item(
     omit_derived_from_links: bool,
     attach_derived_from_document: bool,
     job_id: str,
-    usage_metadata: Callable[..., dict],
+    usage_metadata: dict,
     copy_auxiliary_links: Callable[..., List[dict]],
 ) -> List[Path]:  # TODO: change to Set?
     item_assets = dict()
@@ -191,7 +191,7 @@ def write_exported_stac_collection_from_item(
             "properties": dict_no_none(properties),
             "links": (
                 copy_auxiliary_links(
-                    auxiliary_links=usage_metadata().get("auxiliary_links", []),
+                    auxiliary_links=usage_metadata.get("auxiliary_links", []),
                     job_dir=job_dir,
                     for_export_workspace=True,
                 )
@@ -211,9 +211,7 @@ def write_exported_stac_collection_from_item(
 
     derived_from_links = [
         link
-        for link in usage_metadata(
-            omit_derived_from_links=omit_derived_from_links or attach_derived_from_document
-        ).get("links", [])
+        for link in usage_metadata.get("links", [])
         if link["rel"] == "derived_from"
     ]
 

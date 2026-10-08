@@ -1,4 +1,6 @@
 import unittest
+
+import pytest
 from pathlib import Path
 from unittest import skip
 
@@ -527,3 +529,113 @@ class TestFilterUrlsByTimeliness:
         """If timeliness is valid but no URL matches (e.g., NRT not available for SYNERGY), return all."""
         result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "NR")
         assert result == self.SYNERGY_URLS
+
+
+def _create_synthetic_olci_product(path: Path) -> Path:
+    """Create a minimal OLCI L1B product with a full resolution grid and a (sub-sampled) tie point grid."""
+    product = path / "S3A_OL_1_EFR____SYNTHETIC.SEN3"
+    product.mkdir()
+
+    rows, columns = 40, 64
+    lon_1d = np.linspace(3.0, 6.15, columns)
+    lat_1d = np.linspace(52.0, 50.05, rows)
+    lon, lat = np.meshgrid(lon_1d, lat_1d)
+    geo_scale = 1e-6
+    xr.Dataset(
+        {
+            "latitude": (("rows", "columns"), np.round(lat / geo_scale).astype(np.int32), {"scale_factor": geo_scale}),
+            "longitude": (("rows", "columns"), np.round(lon / geo_scale).astype(np.int32), {"scale_factor": geo_scale}),
+        }
+    ).to_netcdf(product / "geo_coordinates.nc")
+    xr.Dataset(
+        {"Oa01_radiance": (("rows", "columns"), np.full((rows, columns), 100, dtype=np.uint16), {"scale_factor": 0.5, "add_offset": 0.0})}
+    ).to_netcdf(product / "Oa01_radiance.nc")
+
+    # tie point grid: every 8th column (the OLCI tie grid has a different resolution than the image grid)
+    tie_lon, tie_lat = np.meshgrid(np.linspace(2.5, 6.5, 9), np.linspace(52.5, 49.5, rows))
+    xr.Dataset(
+        {
+            "latitude": (("tie_rows", "tie_columns"), tie_lat),
+            "longitude": (("tie_rows", "tie_columns"), tie_lon),
+        }
+    ).to_netcdf(product / "tie_geo_coordinates.nc")
+
+    angle_scale = 1e-6
+    sza = 30.0 + (tie_lon - 2.5)  # linear in longitude
+    saa = np.where(tie_lon < 4.5, 179.0, -179.0)  # wraps around +/-180
+    xr.Dataset(
+        {
+            "SZA": (("tie_rows", "tie_columns"), np.round(sza / angle_scale).astype(np.uint32), {"scale_factor": angle_scale}),
+            "SAA": (("tie_rows", "tie_columns"), np.round(saa / angle_scale).astype(np.int32), {"scale_factor": angle_scale}),
+        }
+    ).to_netcdf(product / "tie_geometries.nc")
+
+    humidity = np.stack([np.full(tie_lon.shape, 10.0 * (level + 1)) for level in range(3)], axis=-1)
+    xr.Dataset(
+        {
+            "total_ozone": (("tie_rows", "tie_columns"), np.full(tie_lon.shape, 0.007, dtype=np.float32)),
+            "humidity": (("tie_rows", "tie_columns", "tie_pressure_levels"), humidity.astype(np.float32)),
+        }
+    ).to_netcdf(product / "tie_meteo.nc")
+    return product
+
+
+@pytest.mark.parametrize("reprojection_type", [DEFAULT_REPROJECTION_TYPE, REPROJECTION_TYPE_BINNING])
+def test_read_olci_tie_point_bands(tmp_path, reprojection_type):
+    product = _create_synthetic_olci_product(tmp_path)
+    resolution = 0.05
+    bbox = [3.5, 50.5, 5.5, 51.5]
+    band_names = [
+        "tie_geometries:SZA",
+        "Oa01_radiance",
+        "tie_geometries:SAA",
+        "tie_meteo:total_ozone",
+        "tie_meteo:humidity:2",
+    ]
+
+    result = create_s3_toa(
+        OLCI_PRODUCT_TYPE,
+        product,
+        band_names,
+        bbox,
+        digital_numbers=False,
+        final_grid_resolution=resolution,
+        reprojection_type=reprojection_type,
+    )
+
+    tile_coordinates, tile_shape = create_final_grid(bbox, resolution=resolution)
+    assert result.shape == (len(band_names),) + tile_shape
+    target_lon = tile_coordinates[:, 0].reshape(tile_shape)
+
+    sza, radiance, saa, ozone, humidity = result
+    assert_allclose(sza, 30.0 + (target_lon - 2.5), atol=1e-4)
+    assert np.count_nonzero(np.isfinite(radiance)) > 0
+    assert_allclose(radiance[np.isfinite(radiance)], 50.0)
+    # azimuth interpolated across the +/-180 wrap stays close to 180 (not around 0)
+    assert np.all(np.abs(np.abs(saa) - 180.0) <= 1.0 + 1e-4)
+    assert_allclose(ozone, 0.007, rtol=1e-5)
+    assert_allclose(humidity, 30.0)
+
+
+def test_read_olci_tie_point_bands_only(tmp_path):
+    product = _create_synthetic_olci_product(tmp_path)
+    result = create_s3_toa(
+        OLCI_PRODUCT_TYPE, product, ["tie_geometries:SZA"], [3.5, 50.5, 5.5, 51.5], digital_numbers=False, final_grid_resolution=0.05
+    )
+    assert result.shape[0] == 1
+    assert np.isfinite(result).all()
+
+
+def test_read_olci_tie_point_band_requires_index_for_3d_variable(tmp_path):
+    product = _create_synthetic_olci_product(tmp_path)
+    with pytest.raises(ValueError, match="extra dimension"):
+        create_s3_toa(
+            OLCI_PRODUCT_TYPE, product, ["tie_meteo:humidity"], [3.5, 50.5, 5.5, 51.5], digital_numbers=False, final_grid_resolution=0.05
+        )
+
+
+def test_tie_point_bands_not_supported_for_slstr():
+    with pytest.raises(ValueError, match="only supported for OLCI"):
+        create_s3_toa(
+            SLSTR_PRODUCT_TYPE, Path("/does/not/exist"), ["tie_geometries:SZA"], [3.5, 50.5, 5.5, 51.5], digital_numbers=False, final_grid_resolution=0.05
+        )

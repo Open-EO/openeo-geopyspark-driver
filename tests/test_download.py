@@ -185,6 +185,10 @@ class TestDownload:
                     dirty_equals.IsPartialDict(name="band_one"),
                     dirty_equals.IsPartialDict(name="band_two"),
                 ],
+                "raster:bands": [
+                    dirty_equals.IsPartialDict(name="band_one"),
+                    dirty_equals.IsPartialDict(name="band_two"),
+                ],
                 "bbox": dirty_equals.IsListOrTuple(length=4),
                 "datetime": "2017-09-25T11:37:00Z",
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),

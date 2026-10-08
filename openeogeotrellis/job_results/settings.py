@@ -33,6 +33,7 @@ class JobResultsSettings:
     gdalinfo_from_file: bool
     gdalinfo_use_subprocess: bool
     item_collection_glob: str  # filename pattern for derived_from item collections (load_stac coupling)
+    spark_context_cleanup: str = "none"  # job option, default "stop"; one of "stop", "kill-executors", "none"
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,10 @@ class JobResultsHooks(Protocol):
 
     def after_assets_written(self, assets_metadata: List[dict], job_dir: Path) -> None:
         """Run once assets are physically written: FUSE availability wait, permissions, CARD4L."""
+        ...
+
+    def before_export_workspace(self) -> None:
+        """Run once, right before exporting results to workspaces (e.g. release Spark executors)."""
         ...
 
     def localize_asset(self, href: str, job_dir: Path) -> Optional[Path]:

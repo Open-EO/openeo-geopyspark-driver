@@ -375,6 +375,11 @@ class GpsBackendConfig(OpenEoBackendConfig):
     batch_job_config_dir: Path = Path("/opt/job_config")
 
     """
+    The ID identifying the infrastructure on which execution happens
+    """
+    infra_id: str = attrs.Factory(lambda: os.environ.get("ETL_INFRA_ID", ""))
+
+    """
     A mapping of region names to proxy endpoints
     """
     s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)

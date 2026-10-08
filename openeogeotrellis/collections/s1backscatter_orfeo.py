@@ -16,6 +16,8 @@ from datetime import datetime
 from multiprocessing import Process
 from typing import Dict, Tuple, Union, List, Optional
 
+from rasterio import DatasetReader
+
 import geopyspark
 import numpy
 import numpy as np
@@ -107,6 +109,31 @@ def get_area_in_square_kilometers(projected_polygons: any) -> str:
         logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
         area_to_display = "unknown "
     return f"{area_to_display}km²"
+
+
+def _get_process_memory_mb() -> float:
+    """
+    Best-effort way to get current resident memory usage (RSS) of this (Python) process, in megabytes.
+    Used for diagnosing/monitoring memory usage of Spark executor (Python) workers.
+    """
+    try:
+        # Current RSS, as reported by the kernel (Linux only).
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    kb = int(line.split()[1])
+                    return kb / 1024
+    except Exception:
+        pass
+    try:
+        import resource
+
+        # Fallback: peak RSS (not current, but still useful as a rough indication).
+        # Note: ru_maxrss unit is KB on Linux, but bytes on macOS.
+        maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return maxrss / (1024 * 1024) if sys.platform == "darwin" else maxrss / 1024
+    except Exception:
+        return float("nan")
 
 
 class S1BackscatterOrfeo:
@@ -595,7 +622,8 @@ class S1BackscatterOrfeo:
 
                 logger.info(
                     f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
-                    f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
+                    f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)},"
+                    f" process memory (RSS): {_get_process_memory_mb():.1f}MB"
                 )
                 return data, 0
             else:
@@ -615,7 +643,7 @@ class S1BackscatterOrfeo:
         return nbNoData > threshold
 
     @staticmethod
-    @functools.lru_cache(10,False)
+    @functools.lru_cache(2,False)
     def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff: pathlib.Path, log_prefix, noise_removal, orfeo_memory,
                            sar_calibration_lut, epsg:int, target_resolution = (10.0,10.0)):
         otb = _import_orfeo_toolbox()
@@ -780,8 +808,9 @@ class S1BackscatterOrfeo:
                             )
                             if isinstance(data,str):
                                 import rasterio
-                                ds = rasterio.open(data,driver="GTiff")
-                                tile_data[b] = ds.read(1)
+                                with rasterio.open(data, driver="GTiff") as ds:
+                                    tile_data[b] = ds.read(1)
+                                shutil.rmtree(os.path.dirname(data), ignore_errors=True)
                             else:
                                 tile_data[b] = data
 
@@ -1115,7 +1144,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
-        max_processing_area_pixels = sar_backscatter_arguments.options.get("max_processing_area_pixels", 2048)
+        max_processing_area_pixels = sar_backscatter_arguments.options.get("max_processing_area_pixels", 1024)
         orfeo_memory = sar_backscatter_arguments.options.get("otb_memory", 256)
 
         # Geoid for orthorectification: get from options, fallback on config.
@@ -1178,6 +1207,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             log_prefix = f"p{os.getpid()}-prod{prod_id}"
             logger.info(f"{log_prefix} creo path {creo_path}")
             logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
+            logger.info(f"{log_prefix} Process memory (RSS) at start: {_get_process_memory_mb():.1f}MB")
 
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
@@ -1223,7 +1253,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
             if not band_tiffs:
-                return []
+                return
 
 
             dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
@@ -1234,7 +1264,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             msg = f"{log_prefix} Process {creo_path} "
 
-            tiles = []
+            tile_count = 0
 
             with dem_dir_context as dem_dir:
                 for col_start in range(col_min, col_max+1, MAX_KEYS):
@@ -1316,7 +1346,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                             if debug_mode:
                                                 logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
                                             tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
-                                            tiles.append((key, tile))
+                                            tile_count += 1
+                                            yield key, tile
+                                    dataset: DatasetReader
+                                    for dataset in ds:
+                                        dataset.close()
                                     ds = None
                                     for file in orfeo_bands:
                                         os.remove(file)
@@ -1331,17 +1365,27 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                     c = col - col_start_local
                                     r = row - row_start_local
                                     key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                                    tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
+                                    tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size].copy()
                                     if not (tile==nodata).all():
                                         if debug_mode:
                                             logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                                         tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
-                                        tiles.append((key, tile))
+                                        tile_count += 1
+                                        yield key, tile
+                                orfeo_bands = []
+
+                        logger.info(
+                            f"{log_prefix} Processed block col[{col_start}:{col_end}] row[{row_start}:{row_end}],"
+                            f" tiles so far: {tile_count}, process memory (RSS): {_get_process_memory_mb():.1f}MB"
+                        )
 
             if full_product_download:
                 shutil.rmtree(creo_path)
-            logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
-            return tiles
+            logger.info(
+                f"{log_prefix} Layout extent split in {tile_count} tiles."
+                f" Process memory (RSS) at end: {_get_process_memory_mb():.1f}MB"
+            )
+            S1BackscatterOrfeo.configure_pipeline.cache_clear()
 
         paths = list(per_product.keys().collect())
 
