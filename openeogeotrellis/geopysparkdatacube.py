@@ -143,6 +143,22 @@ class GeopysparkDataCube(DriverDataCube):
             _log.debug("CubeProcessRegistry not available, skipping dynamic method generation: %s", e)
             return
 
+        def _cube_args_to_rdds(value, level):
+            """
+            Replace GeopysparkDataCube arguments with their underlying Scala RDD
+            (at the given pyramid level, or max level when ``level`` is None),
+            since py4j can not convert Python cube objects.
+            """
+            if isinstance(value, GeopysparkDataCube):
+                if level is None:
+                    return value.get_max_level().srdd.rdd()
+                return value.pyramid.levels[level].srdd.rdd()
+            if isinstance(value, dict):
+                return {k: _cube_args_to_rdds(v, level) for k, v in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [_cube_args_to_rdds(v, level) for v in value]
+            return value
+
         added = []
         for proc in processes:
             process_id: str = proc["id"]
@@ -158,11 +174,11 @@ class GeopysparkDataCube(DriverDataCube):
                     reg = jvm_.org.openeo.geotrelliscommon.CubeProcessRegistry
                     if ret == "datacube":
                         return self._apply_to_levels_geotrellis_rdd(
-                            lambda rdd, _level: reg.invoke(rdd, pid, kwargs)
+                            lambda rdd, level: reg.invoke(rdd, pid, _cube_args_to_rdds(kwargs, level))
                         )
                     else:
                         rdd = self.get_max_level().srdd.rdd()
-                        return reg.invoke(rdd, pid, kwargs)
+                        return reg.invoke(rdd, pid, _cube_args_to_rdds(kwargs, None))
 
                 _method.__name__ = pid
                 _method.__qualname__ = f"{cls.__name__}.{pid}"
