@@ -180,20 +180,20 @@ def get_bounding_polygon(lat: np.ndarray, lon: np.ndarray) -> MultiPolygon:
     latitude_threshold = 85
     # return get_bounding_polygon_specific(lat, lon)
 
+    rows_ok = np.max(np.abs(lat), axis=1) < latitude_threshold
     polygons = []
     start_ok = None
-    was_ok = False
-    for i in range(lat.shape[0]):
-        max_lat = max(abs(lat[i, :]))
-        is_ok = max_lat < latitude_threshold and i < lat.shape[0] - 1
-        if not was_ok and is_ok:
+    for i in range(lat.shape[0] + 1):
+        is_ok = i < lat.shape[0] and rows_ok[i]
+        if start_ok is None and is_ok:
             start_ok = i
-        elif was_ok and not is_ok:
-            polygon = get_bounding_polygon_specific(lat[start_ok:i, :], _unwrap_longitude(lon[start_ok:i, :]))
-            # Orient counter-clockwise, as expected by antimeridian.fix_shape
-            fixed = shapely.geometry.shape(antimeridian.fix_shape(orient(polygon)))
-            polygons.extend(fixed.geoms if isinstance(fixed, MultiPolygon) else [fixed])
-        was_ok = is_ok
+        elif start_ok is not None and not is_ok:
+            if i - start_ok >= 2:  # A polygon needs at least 2 rows (exclusive end index i).
+                polygon = get_bounding_polygon_specific(lat[start_ok:i, :], _unwrap_longitude(lon[start_ok:i, :]))
+                # Orient counter-clockwise, as expected by antimeridian.fix_shape
+                fixed = shapely.geometry.shape(antimeridian.fix_shape(orient(polygon)))
+                polygons.extend(fixed.geoms if isinstance(fixed, MultiPolygon) else [fixed])
+            start_ok = None
     return MultiPolygon(polygons)
 
 
@@ -219,7 +219,8 @@ def get_bounding_polygon_specific(lat: np.ndarray, lon: np.ndarray) -> Polygon:
     """
 
     def expand_edge(edge, neighbor):
-        return edge + (neighbor - edge) * 0.5  # only expand the edge by half the distance to the neighbor
+        # Expand the edge outwards by half the distance to the neighbor, to cover the full pixel footprint
+        return edge - (neighbor - edge) * 0.5
 
     # Bottom (row 0)
     bottom_lat = expand_edge(lat[0, :], lat[1, :]).flatten()
