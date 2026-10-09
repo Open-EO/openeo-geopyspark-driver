@@ -24,6 +24,8 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "--force-docker-pull",
     "--eval-timeout=600",
     "--strict-memory-limit",
+    # Fallback Docker image for CWL tools that don't specify their own `DockerRequirement`.
+    f"--default-container={DEFAULT_INPUT_STAGING_IMAGE}",
     # Disable schema-salad's on-disk HTTP document cache (defaults to `$HOME/.cache/salad`).
     # Fetched CWL documents are small, so caching isn't worth the extra failure mode.
     "--no-doc-cache",
