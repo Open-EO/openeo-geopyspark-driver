@@ -99,7 +99,7 @@ setup(
         "Bottleneck~=1.4.0",
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         "jep_openeo_numpy==4.1.2; python_version == '3.11'", # Required because Jep needs to compile against numpy 2.x
-        "jep; python_version >= '3.12'", # temporary as custom build is not yet available
+        #"jep; python_version >= '3.12'", # disabled because requires java_home, TODO:build custom wheel
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",
