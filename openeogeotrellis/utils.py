@@ -379,16 +379,6 @@ def lonlat_to_mercator_tile_indices(
     return tx, ty
 
 
-@contextlib.contextmanager
-def nullcontext():
-    """
-    Context manager that does nothing.
-
-    Backport of Python 3.7 `contextlib.nullcontext`
-    """
-    yield
-
-
 def single_value(xs):
     """
     If the values in the collection are the same, return that value.

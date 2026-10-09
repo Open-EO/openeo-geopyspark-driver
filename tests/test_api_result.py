@@ -32,7 +32,7 @@ from mock import MagicMock
 from numpy.testing import assert_equal
 
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.backend import UserDefinedProcesses
+from openeo_driver.backend import LoadParameters, UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
     TEST_USER,
@@ -51,6 +51,7 @@ from openeo_driver.util.geometry import (
     as_geojson_feature,
     as_geojson_feature_collection,
 )
+from openeo_driver.utils import EvalEnv
 from pystac import (
     Asset,
     Catalog,
@@ -65,6 +66,7 @@ from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
+from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.job_results.raster_metadata import read_gdal_info
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import _LoadStacContext
@@ -2927,14 +2929,86 @@ def _setup_metadata_request_mocking(
         if link["rel"] == "item":
             path = api.extract_path(link["href"])
             item_metadata = api.get(path).assert_status_code(200).json
-            # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
-            # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
+            # Change asset URLs to local paths so the GeoTrellis raster reader can read the data directly.
             for k in item_metadata["assets"]:
                 item_metadata["assets"][k]["href"] = f"file://{results_dir / k!s}"
             requests_mock.get(link["href"], json=item_metadata)
 
 
 class TestLoadResult:
+    @pytest.mark.parametrize("source", ["job_id", "url"])
+    @pytest.mark.parametrize(
+        ["pyramid_levels", "expected_cell_size"],
+        [
+            ("all", (11.1319, 17.7717)),
+            ("single", (7.2978, 11.3167)),
+        ],
+    )
+    def test_load_result_uses_asset_bboxes_and_geographic_cell_size(
+        self, backend_implementation, source, pyramid_levels, expected_cell_size
+    ):
+        job_id = "j-sharded"
+        bboxes = [(5.073, 51.212, 5.078, 51.220), (5.078, 51.212, 5.083, 51.220)]
+        collection_bbox = (5.073, 51.212, 5.083, 51.220)
+        asset_bboxes = [*bboxes, None]
+        env = EvalEnv(values={"pyramid_levels": pyramid_levels})
+        with (
+            mock.patch("openeogeotrellis.backend.get_jvm") as get_jvm,
+            mock.patch("openeogeotrellis.backend.GeopysparkDataCube"),
+            mock.patch("openeogeotrellis.backend.gps.Pyramid"),
+        ):
+            jvm = get_jvm.return_value
+            raster_source = jvm.geotrellis.raster.geotiff.GeoTiffRasterSource.return_value
+            raster_source.crs.return_value.toString.return_value = "EPSG:4326"
+            raster_source.cellSize.return_value.width.return_value = 0.0001
+            raster_source.cellSize.return_value.height.return_value = 0.0001
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory.return_value
+            factory.pyramid_seq.return_value.size.return_value = 0
+            factory.datacube_seq.return_value.size.return_value = 0
+            if source == "job_id":
+                assets = {
+                    f"shard-{i}.tif": {
+                        "href": f"/tmp/shard-{i}.tif",
+                        "datetime": "2022-09-12T00:00:00Z",
+                        "bands": [Band("B02")],
+                        "bbox": bbox,
+                        "type": "image/tiff; application=geotiff",
+                    }
+                    for i, bbox in enumerate(asset_bboxes)
+                }
+                with (
+                    mock.patch.object(backend_implementation.batch_jobs, "get_result_assets", return_value=assets),
+                    mock.patch.object(
+                        backend_implementation.batch_jobs,
+                        "get_job_info",
+                        return_value=mock.Mock(bbox=collection_bbox, epsg=32631),
+                    ),
+                ):
+                    backend_implementation.load_result(job_id, TEST_USER, LoadParameters(), env)
+            else:
+                items = []
+                for i, bbox in enumerate(asset_bboxes):
+                    asset = mock.Mock(
+                        media_type="image/tiff; application=geotiff",
+                        extra_fields={"eo:bands": [{"name": "B02"}]},
+                    )
+                    asset.get_absolute_href.return_value = f"file:///tmp/shard-{i}.tif"
+                    item = mock.Mock(bbox=bbox, datetime=dt.datetime(2022, 9, 12, tzinfo=dt.timezone.utc))
+                    item.get_assets.return_value = {"data": asset}
+                    items.append(item)
+                collection = mock.Mock()
+                collection.get_items.return_value = items
+                collection.extent.spatial.bboxes = [collection_bbox]
+                with mock.patch("openeogeotrellis.backend.pystac.Collection.from_file", return_value=collection):
+                    result_id = f"https://example.test/jobs/{job_id}/results"
+                    backend_implementation.load_result(result_id, TEST_USER, LoadParameters(), env)
+
+            builder = get_jvm.return_value.org.openeo.opensearch.OpenSearchResponses.featureBuilder.return_value
+            with_bbox = builder.withId.return_value.withCollectionId.return_value.withNominalDate.return_value.withBBox
+            assert with_bbox.call_args_list == [mock.call(*bbox) for bbox in [*bboxes, collection_bbox]]
+            cell_width, cell_height = jvm.geotrellis.raster.CellSize.call_args.args
+            assert (cell_width, cell_height) == pytest.approx(expected_cell_size, rel=1e-4)
+
     def test_load_result_job_id_basic(
         self, api110, job_registry, batch_job_output_root
     ):
@@ -3055,6 +3129,17 @@ class TestLoadResult:
                 },
             ),
             (
+                {"temporal_extent": ["2022-09-07", "2022-09-12"]},
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (1, 2, 73, 92),
+                    "ts": ["2022-09-07 00:00:00"],
+                    "bands": ["B02", "B03"],
+                    "xs": [644765.0, 644775.0, 645485.0],
+                    "ys": [5675445.0, 5675455.0, 5676355.0],
+                },
+            ),
+            (
                 {"bands": ["B03"]},
                 {
                     "dims": ["t", "bands", "x", "y"],
@@ -3110,6 +3195,25 @@ class TestLoadResult:
         assert result["coords"]["y"]["data"] == ListSubSet(expected["ys"])
         data = np.array(result["data"])
         assert data.shape == expected["shape"]
+
+    def test_load_result_job_id_no_matching_dates(self, api110, job_registry, batch_job_output_root):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+        _setup_existing_job(
+            job_id=job_id,
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            job_registry=job_registry,
+        )
+
+        process_graph = {
+            "lc": {
+                "process_id": "load_result",
+                "arguments": {"id": job_id, "temporal_extent": ["2022-09-08", "2022-09-12"]},
+                "result": True,
+            },
+        }
+        response = api110.result(process_graph).assert_status_code(400)
+        assert "NoDataAvailable" in response.text
 
     def test_load_result_url_basic(
         self,

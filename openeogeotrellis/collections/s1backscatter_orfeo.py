@@ -12,6 +12,7 @@ import sys
 import tempfile
 import types
 import zipfile
+from contextlib import nullcontext
 from datetime import datetime
 from multiprocessing import Process
 from typing import Dict, Tuple, Union, List, Optional
@@ -38,8 +39,12 @@ from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.load_stac import PropertyFilterPGMap
 from openeogeotrellis.util.runtime import in_batch_job_context
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
-    ensure_executor_logging, download_s3_directory
+from openeogeotrellis.utils import (
+    lonlat_to_mercator_tile_indices,
+    get_jvm,
+    ensure_executor_logging,
+    download_s3_directory,
+)
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
