@@ -2068,12 +2068,13 @@ class GeopysparkDataCube(DriverDataCube):
 
         :return: STAC items dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md
         """
-        bucket = str(get_backend_config().s3_bucket_name)
+        format_options = format_options or {}
+        bucket = format_options.get("s3_bucket") or str(get_backend_config().s3_bucket_name)
         filename = str(filename)
         directory = str(pathlib.Path(filename).parent)
-        s3_filename = "s3://{b}{f}".format(b=bucket, f=filename)
-        s3_directory = "s3://{b}{d}".format(b=bucket, d=directory)
-        format_options = format_options or {}
+        s3_filename = "s3://{b}/{f}".format(b=bucket, f=filename.lstrip("/"))
+        s3_directory = "s3://{b}/{d}".format(b=bucket, d=directory.lstrip("/"))
+
         format_opts = job_items.SaveResultFormatOptions.parse(
             format, format_options, has_temporal_dimension=self.metadata.has_temporal_dimension()
         )
@@ -2108,7 +2109,8 @@ class GeopysparkDataCube(DriverDataCube):
             crop_extent = None
 
 
-        _log.info(f"save_result format {format} with bounds {crop_bounds} and options {format_options}")
+        loggable_options = {k: v for k, v in format_options.items() if k != "s3_client"}
+        _log.info(f"save_result format {format} with bounds {crop_bounds} and options {loggable_options}")
         if self.metadata.temporal_extent:
             date_from, date_to = self.metadata.temporal_extent
             crop_dates = (pd.Timestamp(date_from), pd.Timestamp(date_to))
@@ -2133,8 +2135,18 @@ class GeopysparkDataCube(DriverDataCube):
         retain_nodata_tiles = format_opts.retain_nodata_tiles
         filepath_per_band = format_opts.filepath_per_band
 
-        save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
-        save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
+        if batch_mode and any(
+            [
+                format_options.get("use_s3proxy"),
+                ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket,
+            ]
+        ):
+            # Write straight to the job bucket via the S3 API (s3proxy) instead of the local/FUSE path.
+            save_filename = s3_filename
+            save_directory = s3_directory
+        else:
+            save_filename = filename
+            save_directory = directory
 
         def to_written_asset(asset_key, asset) -> "job_items.WrittenAsset":
             asset_metadata = asset.metadata()

@@ -415,15 +415,12 @@ class GeoPySparkJobResultsHooks:
 
     def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
         logger.debug("GeoPySparkJobResultsHooks: getting usage metadata")
-        execution_metadata = batch_job_metadata.get_execution_metadata()
+        execution_metadata = batch_job_metadata.get_execution_metadata(log_level=self._job_options.log_level)
         tracker_metadata = batch_job_metadata.get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         if execution_metadata:
             tracker_metadata["usage"] = {
                 **tracker_metadata.get("usage", {}),
-                "cpu_utilization_ratio": {"value": execution_metadata["cpu_utilization_ratio"], "unit": "fraction"},
-                "total_task_failures": {"value": execution_metadata["total_task_failures"], "unit": "count"},
-                "total_stage_failures": {"value": execution_metadata["total_stage_failures"], "unit": "count"},
-                "peak_execution_memory": {"value": execution_metadata["peak_execution_memory"], "unit": "bytes"},
+                **execution_metadata,
             }
         return tracker_metadata
 
