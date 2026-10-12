@@ -75,20 +75,25 @@ def transform_stac_metadata(job_dir: Path):
 def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
-def get_execution_metadata() -> dict:
+def get_execution_metadata(*, log_level: str) -> dict:
     execution_metrics = {}
     try:
         scala_execution_metrics = get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics.get()
         total_stage_runtime = scala_execution_metrics.totalStageRuntimeMillis()
         if total_stage_runtime != 0:
             execution_metrics = {
-                "total_stage_runtime": total_stage_runtime,
-                "total_executor_allocation_time": scala_execution_metrics.executorAllocationTimeMillis(),
-                "cpu_utilization_ratio": scala_execution_metrics.cpuUtilizationRatio(),
-                "total_task_failures": scala_execution_metrics.totalTaskFailures(),
-                "total_stage_failures": scala_execution_metrics.totalStageFailures(),
-                "peak_execution_memory": scala_execution_metrics.peakExecutionMemoryBytes(),
+                "cpu_utilization_ratio": {
+                    "value": scala_execution_metrics.cpuUtilizationRatio(), "unit": "fraction"
+                },
+                "total_stage_failures": {"value": scala_execution_metrics.totalStageFailures(), "unit": "count"},
             }
+            if log_level.lower() == "debug":
+                execution_metrics.update({
+                    "total_task_failures": {"value": scala_execution_metrics.totalTaskFailures(), "unit": "count"},
+                    "peak_execution_memory": {
+                        "value": scala_execution_metrics.peakExecutionMemoryBytes(), "unit": "bytes"
+                    },
+                })
     except Exception as e:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)
     return execution_metrics
