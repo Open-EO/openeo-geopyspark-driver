@@ -333,6 +333,8 @@ class CalrissianJobLauncher:
     Helper class to launch a Calrissian job on Kubernetes.
     """
 
+    _POD_ANNOTATIONS = {"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"}
+
     # Hard code given the small but predictable requirements
     _HARD_CODED_STAGE_JOB_RESOURCES = {
         "limits": {"memory": "10Mi"},
@@ -556,6 +558,7 @@ class CalrissianJobLauncher:
                     ),
                     metadata=kubernetes.client.V1ObjectMeta(
                         labels={"correlation_id": self._calrissian_launch_config.correlation_id},
+                        annotations=self._POD_ANNOTATIONS,
                     ),
                 ),
                 backoff_limit=self._backoff_limit,
@@ -692,6 +695,7 @@ class CalrissianJobLauncher:
                     ),
                     metadata=kubernetes.client.V1ObjectMeta(
                         labels=labels_dict,
+                        annotations=self._POD_ANNOTATIONS,
                     ),
                 ),
                 backoff_limit=self._backoff_limit,
