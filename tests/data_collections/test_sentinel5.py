@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import calendar
 import glob
+import json
 import logging
 import os.path
 import re
-import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 import pytest
 import rasterio
+import shapely.geometry
 import xarray
+from shapely.geometry.multipolygon import MultiPolygon
 
 from openeogeotrellis.utils import typechecked
 
@@ -27,7 +29,10 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_product
-from openeogeotrellis.collections.sentinel5p_functions import all_gases, parse_gas_from_filename
+from openeogeotrellis.collections.sentinel5p_functions import (
+    all_gases,
+    parse_gas_from_filename,
+)
 
 np.random.seed(42)
 
@@ -319,9 +324,9 @@ def test_invalid_time_exception():
         "filename": "no_existing_file.nc",
         "temporal_extent": temporal_extent_invalid,
     }
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(Exception) as exc_info:
         _ = load_level2_data(params)
-    assert ["Input temporal extent is not in the file" in str(excinfo.value)]
+    assert ["Input temporal extent is not in the file" in str(exc_info.value)]
 
 
 @pytest.mark.parametrize("product_name", ["no2", "ch4", "so2", "hcho", "o3", "aer_ai", "cloud", "aer_lh"])
@@ -354,9 +359,54 @@ def test_read_product_default_bands_per_product(synthetic_products, product_name
 # ---------------------------------------------------------------------------
 
 requires_eodata = pytest.mark.skipif(
-    not os.path.exists("/eodata") or not os.listdir("/eodata"),
+    (not os.path.exists("/eodata_CACHE/eodata") or not os.listdir("/eodata_CACHE/eodata"))
+    and (not os.path.exists("/eodata") or not os.listdir("/eodata"))
+    and (
+        not "AWS_ACCESS_KEY_ID" in os.environ
+        and not "AWS_ENDPOINT_URL_S3" in os.environ
+        and not "AWS_S3_ENDPOINT" in os.environ
+    ),
     reason="requires mounting /eodata.",
 )
+
+
+def fix_eodata_path(path: Union[Path, str]) -> Union[Path, str]:
+    p = str(path)
+    if p.startswith("/eodata/"):
+        p_try = p.replace("/eodata/", "/eodata_CACHE/eodata/")
+        p_ok = None
+        if os.path.exists(p_try):
+            p_ok = p_try
+        p_try_tmp = "/tmp/eodata/" + os.path.basename(p)
+        if not p_ok and os.path.exists(p_try_tmp):
+            p_ok = p_try_tmp
+        if not p_ok and not os.path.exists(p):
+            endpoint_url = os.environ.get("AWS_ENDPOINT_URL_S3") or os.environ.get("AWS_S3_ENDPOINT")
+            if endpoint_url and "AWS_ACCESS_KEY_ID" in os.environ:
+                print("Downloading eodata file from S3 to local cache:", p)
+                import boto3
+
+                client = boto3.client(
+                    "s3",
+                    endpoint_url=endpoint_url,
+                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                )
+                key = p.replace("/eodata/", "")
+                Path(p_try_tmp).parent.mkdir(parents=True, exist_ok=True)
+                client.download_file("eodata", key, p_try_tmp)
+                p_ok = p_try_tmp
+        if not p_ok and os.path.exists(p):
+            p_ok = p
+        if not p_ok:
+            print("fix_eodata_path could not fix the path:", p)
+            p_ok = p
+        if isinstance(path, Path):
+            return Path(p_ok)
+        else:
+            return p_ok
+    return path
+
 
 def assert_tif_file_is_healthy(tif_path):
     import rioxarray
@@ -386,6 +436,16 @@ def assert_tif_file_is_healthy(tif_path):
     issues.extend(errors)
     if issues:
         raise AssertionError("\n".join(issues))
+
+
+@typechecked
+def verify_bounding_polygon_is_valid(data: dict, tmp_path: Optional[Path] = None):
+    bounding_polygon = data["bounding_polygon"]
+    if tmp_path:
+        assert isinstance(bounding_polygon, MultiPolygon)
+        output_path = tmp_path / "bounding_polygon.geojson"
+        output_path.write_text(json.dumps(shapely.geometry.mapping(bounding_polygon), indent=2))
+    assert bounding_polygon.is_valid
 
 
 # Directory (under /eodata) known to contain at least one real product file for each gas/product
@@ -467,26 +527,14 @@ def test_filter_value_matches_netcdf_qa_value_metadata(gas_short_name):
 @requires_eodata
 class TestSentinel5:
     def setup_method(self):
-        test_data_path = Path("/tmp/Sentinel5data/")
-        test_data_path.mkdir(exist_ok=True)
-
         # important to get these files locally for testing
-        self.filename = (
-            test_data_path / "S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
+        self.filename = fix_eodata_path(
+            "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2024/09/02/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
         )
-        if not os.path.exists(self.filename):
-            shutil.copyfile(
-                "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2024/09/02/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc",
-                self.filename,
-            )
-        self.filename_anti = (
-            test_data_path / "S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
+        self.filename_anti = fix_eodata_path(
+            "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2018/04/30/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
         )
-        if not os.path.exists(self.filename_anti):
-            shutil.copyfile(
-                "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2018/04/30/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc",
-                self.filename_anti,
-            )
+
         self.temporal_extent_anti = [datetime(2018, 4, 30, 0, 50, 0), datetime(2018, 4, 30, 1, 30, 0)]
         self.spatial_extent_anti = [179.5, 22, -179.5, 23]  # min_lon, min_lat, max_lon, max_lat
 
@@ -494,14 +542,9 @@ class TestSentinel5:
         self.spatial_extent_normal = [30.0, 25.0, 30.05, 25.05]  # min_lon, min_lat, max_lon, max_lat
         self.spatial_extent_invalid = [22.0, 24.0, 24.0, 26.0]  # min_lon, min_lat, max_lon, max_lat
 
-        self.filename_no2 = (
-            test_data_path / "S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc"
+        self.filename_no2 = fix_eodata_path(
+            "/eodata/Sentinel-5P/TROPOMI/L2__NO2___/2022/06/14/S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc"
         )
-        if not os.path.exists(self.filename_no2):
-            shutil.copyfile(
-                "/eodata/Sentinel-5P/TROPOMI/L2__NO2___/2022/06/14/S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc",
-                self.filename_no2,
-            )
         self.spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
@@ -643,15 +686,45 @@ class TestSentinel5:
         ds = rasterio.open(output_file).read(1, masked=True)
         assert ds.count() > 103916 - 1
 
+    def test_sentinel5p_l2_artifacts(self, api110, tmp_path, request) -> None:
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/1819
+        """
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["aerosol_index_354_388"],
+                    "id": "SENTINEL5P_L2_AER_AI",
+                    "spatial_extent": {"east": 8, "north": 54, "south": 50, "west": 3},
+                    "temporal_extent": ["2023-06-29T13:00:00.000000Z", "2023-06-29T23:00:00.000000Z"],
+                },
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / f"{request.node.name}.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        assert_tif_file_is_healthy(output_file)
+        ds = rasterio.open(output_file).read(1, masked=True)
+        unique, counts = np.unique(ds.compressed(), return_counts=True)
+        most_common = sorted(zip(unique, counts), key=lambda x: x[1], reverse=True)[:5]
+        print(f"Most common values: {most_common}")
+        # assert a popular value does not go over 500 occurrences:
+        assert all(count < 500 for _, count in most_common)
+
     def test_invalid_spatial_extent_exception(self):
         params = {
             "filename": self.filename,
             "spatial_extent": self.spatial_extent_invalid,
             "temporal_extent": None,
         }
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exc_info:
             _ = load_level2_data(params)
-        assert "Input spatial extent is not in the file" in str(excinfo.value)
+        assert "Input spatial extent is not in the file" in str(exc_info.value)
 
     def test_data_availability_exception(self):
         """Valid temporal and spatial extents in the file but when combined there is no data."""
@@ -660,9 +733,9 @@ class TestSentinel5:
             "spatial_extent": self.spatial_extent_normal,
             "temporal_extent": [datetime(2024, 9, 2, 10, 5, 0), datetime(2024, 9, 2, 10, 10, 0)],
         }
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exc_info:
             _ = load_level2_data(params)
-        assert "No data is available for given spatial and temporal extent" in str(excinfo.value)
+        assert "No data is available for given spatial and temporal extent" in str(exc_info.value)
 
     def test_data_availability_based_on_filter_exception(self):
         """No data based on filter_value."""
@@ -672,11 +745,11 @@ class TestSentinel5:
             "temporal_extent": self.temporal_extent_valid,
             "filter_value": 0.5,
         }
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exc_info:
             _ = load_level2_data(params)
-        assert "No data is available after applying quality filter" in str(excinfo.value)
+        assert "No data is available after applying quality filter" in str(exc_info.value)
 
-    def test_data_loading_co(self):
+    def test_data_loading_co(self, tmp_path):
         """Test if it loads all bands, data and shape of bands."""
         params = {
             "filename": self.filename,
@@ -696,8 +769,9 @@ class TestSentinel5:
         assert np.allclose(data["carbonmonoxide_total_column_corrected"], co_corr, equal_nan=True)
         assert data["carbonmonoxide_total_column"].shape == (3, 3)
         assert data["qa_value"].shape == (3, 3)
+        verify_bounding_polygon_is_valid(data, tmp_path)
 
-    def test_data_loading_with_resampling(self):
+    def test_data_loading_with_resampling(self, tmp_path):
         params = {
             "filename": self.filename,
             "spatial_extent": [35, 24, 35.05, 24.05],
@@ -718,8 +792,9 @@ class TestSentinel5:
         assert np.allclose(data["carbonmonoxide_total_column"].ravel(), co, equal_nan=True)
         assert np.allclose(data["latitude"].ravel(), lat, equal_nan=True)
         assert np.allclose(data["longitude"].ravel(), lon, equal_nan=True)
+        verify_bounding_polygon_is_valid(data, tmp_path)
 
-    def test_data_loading_with_antimeridian_crossing(self):
+    def test_data_loading_with_antimeridian_crossing(self, tmp_path):
         """Test loading data that crosses the antimeridian."""
         params = {
             "filename": str(self.filename_anti),
@@ -757,8 +832,45 @@ class TestSentinel5:
             data2["carbonmonoxide_total_column_corrected"][:, -5:],
             equal_nan=True,
         )
+        verify_bounding_polygon_is_valid(data)
+        verify_bounding_polygon_is_valid(data1)
+        verify_bounding_polygon_is_valid(data2)
 
-    def test_data_loading_no2(self):
+    def test_data_loading_with_complex_bounding_box_01(self, tmp_path):
+        nc_file_path = Path(
+            fix_eodata_path(
+                "/eodata/Sentinel-5P/TROPOMI/L2__CH4___/2026/09/10/S5P_OFFL_L2__CH4____20260910T073351_20260910T091521_46165_03_020901_20260911T235059.nc"
+            )
+        )
+        assert nc_file_path.exists()
+        params = {
+            "filename": str(nc_file_path),
+            "spatial_extent": {"west": -180, "south": -90, "east": 180, "north": 90},
+            "temporal_extent": ["2026-09-10T07:30:00Z", "2026-09-10T09:30:00Z"],
+            "filter_value": 0.0,
+        }
+        data = load_level2_data(params)
+        verify_bounding_polygon_is_valid(data, tmp_path)
+
+    def test_data_loading_with_complex_bounding_box_02(self, tmp_path):
+        """
+        This product has bad anti-meridian wrapping. The polygon probably needs to be split.
+        """
+        nc_file_path = Path(
+            fix_eodata_path(
+                "/eodata/Sentinel-5P/TROPOMI/L2__AER_AI/2023/06/29/S5P_OFFL_L2__AER_AI_20230629T125244_20230629T143414_29583_03_020500_20230701T023445.nc"
+            )
+        )
+        assert nc_file_path.exists()
+        params = {
+            "filename": str(nc_file_path),
+            "spatial_extent": {"west": -180, "south": -90, "east": 180, "north": 90},
+            "bands": ["aerosol_index_354_388", "bounding_polygon"],
+        }
+        data = load_level2_data(params)
+        verify_bounding_polygon_is_valid(data, tmp_path)
+
+    def test_data_loading_no2(self, tmp_path):
         """Test if it loads all bands, data and shape of bands."""
         params = {
             "filename": self.filename_no2,
@@ -774,3 +886,4 @@ class TestSentinel5:
         assert "qa_value" in data
         assert np.allclose(data["nitrogendioxide_tropospheric_column"], no2_act, equal_nan=True)
         assert data["nitrogendioxide_tropospheric_column"].shape == data["qa_value"].shape
+        verify_bounding_polygon_is_valid(data, tmp_path)

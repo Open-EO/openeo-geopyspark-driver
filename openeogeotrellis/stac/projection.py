@@ -304,21 +304,6 @@ class ProjectionMetadata:
             return intersection
 
 
-def get_proj_metadata(
-    asset: pystac.Asset,
-    *,
-    item: pystac.Item,
-    fix_proj_transform: bool = False,
-) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
-    """
-    Get projection metadata from asset:
-    EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
-    """
-    # TODO: phase out usage and switch to using ProjectionMetadata directly?
-    metadata = ProjectionMetadata.from_asset(asset, item=item, fix_proj_transform=fix_proj_transform)
-    return metadata.epsg, metadata.bbox, metadata.shape
-
-
 def compute_cellsize(
     proj_bbox: Tuple[float, float, float, float],
     proj_shape: Tuple[float, float],
@@ -329,4 +314,3 @@ def compute_cellsize(
     cell_width = (xmax - xmin) / cols
     cell_height = (ymax - ymin) / rows
     return cell_width, cell_height
-

@@ -168,6 +168,20 @@ class JobOptions:
         },
     )
 
+    spark_context_cleanup: str = field(
+        default="none",
+        metadata={
+            "description": "How to release the Spark driver's executors once save_result "
+            "writing is done, before writing final metadata/exports. "
+            "'stop' fully shuts down the SparkContext, "
+            "'kill-executors' only kills the executors and keeps the SparkContext usable, "
+            "'none' (current default) leaves everything running.",
+            "public": False,
+            "experimental": True,
+            "enum": ["stop", "kill-executors", "none"],
+        },
+    )
+
     @staticmethod
     def as_logging_threshold_arg(value) -> str:
         value = value.upper()
@@ -423,6 +437,8 @@ class K8SOptions(JobOptions):
             "public": False
         },
     )
+
+
 
     def validate(self):
         max_cores = 4
