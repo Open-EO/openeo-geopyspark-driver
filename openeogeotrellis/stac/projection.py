@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import math
 import re
 from typing import Any, Optional, Sequence, Tuple, Union
 
@@ -168,8 +169,9 @@ class ProjectionMetadata:
             yn, xn = self.shape
             return float(xmax - xmin) / xn, float(ymax - ymin) / yn
         elif self._transform:
-            a0, _, _, _, a4, _ = self._transform[:6]
-            return abs(a0), abs(a4)
+            a0, a1, _, a3, a4, _ = self._transform[:6]
+            # Pixel size as length of affine column vectors, to also cover rotated grids
+            return math.hypot(a0, a3), math.hypot(a1, a4)
 
         if fail_on_miss:
             raise ValueError(
@@ -302,15 +304,3 @@ class ProjectionMetadata:
             )
         else:
             return intersection
-
-
-def compute_cellsize(
-    proj_bbox: Tuple[float, float, float, float],
-    proj_shape: Tuple[float, float],
-) -> Tuple[float, float]:
-    # TODO: replace usage with ProjectionMetadata.resolution()?
-    xmin, ymin, xmax, ymax = proj_bbox
-    rows, cols = proj_shape
-    cell_width = (xmax - xmin) / cols
-    cell_height = (ymax - ymin) / rows
-    return cell_width, cell_height

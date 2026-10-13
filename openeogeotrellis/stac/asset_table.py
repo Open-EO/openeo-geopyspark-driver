@@ -18,6 +18,7 @@ import collections
 import dataclasses
 import enum
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -32,7 +33,7 @@ from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.stac.extents import SpatioTemporalExtent
 from openeogeotrellis.stac.item_collection import ItemCollection
-from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property
+from openeogeotrellis.stac.projection import ProjectionMetadata, get_asset_property
 from openeogeotrellis.util.datastructures import NoveltyTracker
 from openeogeotrellis.util.projection import is_utm_epsg_code
 
@@ -398,8 +399,8 @@ def build_asset_table(
                 # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                 continue
 
-            if proj_epsg and proj_bbox and proj_shape:
-                asset_cell_size = compute_cellsize(proj_bbox, proj_shape)
+            asset_cell_size = asset_proj_metadata.resolution(fail_on_miss=False)
+            if proj_epsg and asset_cell_size and all(0 < r < math.inf for r in asset_cell_size):
                 for asset_band_name in asset_band_names:
                     resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
 
@@ -522,7 +523,7 @@ def build_asset_table(
 
         resolution = None
         if proj_bbox and proj_shape:
-            cell_width, cell_height = cellsize_override or compute_cellsize(proj_bbox, proj_shape)
+            cell_width, cell_height = cellsize_override or asset_proj_metadata.resolution()
             resolution = cell_width
 
         if proj_bbox and proj_epsg:

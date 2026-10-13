@@ -360,6 +360,61 @@ class TestBuildAssetTable:
         assert item_result.raster_extent == (500000.0, 4990200.0, 509800.0, 5000000.0)
         assert item_result.resolution == 10.0
 
+    @pytest.mark.parametrize(
+        ["proj_properties", "expected_item_resolution"],
+        [
+            ({"proj:bbox": [3.0, 50.0, 4.0, 52.0], "proj:shape": [16, 8]}, 0.125),
+            ({"proj:bbox": [3.0, 50.0, 4.0, 52.0], "proj:transform": [0.125, 0.0, 3.0, 0.0, -0.125, 52.0]}, None),
+            ({"proj:shape": [16, 8], "proj:transform": [0.125, 0.0, 3.0, 0.0, -0.125, 52.0]}, 0.125),
+            ({"proj:transform": [0.125, 0.0, 3.0, 0.0, -0.125, 52.0]}, None),
+            (
+                {
+                    "proj:bbox": [3.0, 50.0, 4.0, 52.0],
+                    "proj:shape": [16, 8],
+                    "proj:transform": [0.125, 0.0, 3.0, 0.0, -0.125, 52.0],
+                },
+                0.125,
+            ),
+            ({"proj:transform": [0.0, 0.125, 3.0, -0.125, 0.0, 52.0]}, None),
+            ({"proj:shape": [16, 8], "proj:transform": [0.0, 0.125, 3.0, -0.125, 0.0, 52.0]}, 0.125),
+        ],
+        ids=[
+            "bbox+shape",
+            "bbox+transform",
+            "shape+transform",
+            "transform",
+            "bbox+shape+transform",
+            "rotated-transform",
+            "rotated-shape+transform",
+        ],
+    )
+    def test_resolution_from_proj_metadata(self, proj_properties, expected_item_resolution):
+        item = _item(
+            bbox=(3, 50, 4, 52),
+            properties={"proj:code": "EPSG:4326", **proj_properties},
+            assets={"B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]}},
+        )
+        asset_table = _build(item)
+        assert asset_table.resolution_tracker.finest_for(keys=["B02"]) == ({4326}, (0.125, 0.125))
+        assert asset_table.items[0].resolution == expected_item_resolution
+
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            [0.01, 0, 3, 0, float("nan"), 51],
+            [0.01, 0, 3, 0, 0, 51],
+        ],
+    )
+    def test_resolution_from_invalid_proj_transform_not_tracked(self, transform):
+        item = _item(
+            bbox=(3, 50, 4, 51),
+            properties={"proj:code": "EPSG:4326", "proj:transform": transform},
+            assets={"B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]}},
+        )
+        asset_table = _build(item)
+        _, resolution = asset_table.resolution_tracker.finest_for(keys=["B02"])
+        assert resolution is None
+
     def test_projection_metadata_conflicting_epsgs_across_assets(self):
         item = _item(
             bbox=(3, 45, 3.1, 45.1),
