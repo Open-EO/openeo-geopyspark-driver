@@ -35,7 +35,7 @@ from openeogeotrellis.load_stac import (
 )
 from openeogeotrellis.stac.own_job import extract_own_job_info
 from openeogeotrellis.stac.extents import _SpatialExtent
-from openeogeotrellis.stac.projection import ProjectionMetadata, _proj_code_to_epsg, get_proj_metadata
+from openeogeotrellis.stac.projection import ProjectionMetadata, _proj_code_to_epsg
 from openeogeotrellis.stac.stac_object_fetching import STAC_API_RETRY_TOTAL
 from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper
 
@@ -1061,67 +1061,6 @@ class TestProjectionMetadata:
             ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
             ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
         }
-
-
-
-def test_get_proj_metadata_minimal():
-    asset = pystac.Asset(href="https://example.com/asset.tif")
-    item = pystac.Item.from_dict(StacDummyBuilder.item())
-    assert get_proj_metadata(asset, item=item) == (None, None, None)
-
-
-@pytest.mark.parametrize(
-    ["item_properties", "asset_extra_fields", "expected"],
-    [
-        ({}, {}, (None, None, None)),
-        (
-            # at item level
-            {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
-            {},
-            (32631, (12, 34, 56, 78), (12, 34)),
-        ),
-        (
-            # at asset level
-            {},
-            {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
-            (32631, (12, 34, 56, 78), (12, 34)),
-        ),
-        (
-            # At bands level
-            # (https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391, https://github.com/stac-extensions/projection/issues/25)
-            {},
-            {
-                "bands": [
-                    {"name": "B04", "proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
-                    {"name": "B02", "proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
-                ]
-            },
-            (32631, (12, 34, 56, 78), (12, 34)),
-        ),
-        (
-            # Mixed
-            {"proj:epsg": 32631},
-            {
-                "proj:shape": [12, 34],
-                "bands": [
-                    {"name": "B04", "proj:bbox": [12, 34, 56, 78]},
-                ],
-            },
-            (32631, (12, 34, 56, 78), (12, 34)),
-        ),
-        (
-            # Mixed and precedence
-            {"proj:epsg": 32601, "proj:shape": [10, 10]},
-            {"proj:code": "EPSG:32602", "proj:shape": [32, 32]},
-            (32602, None, (32, 32)),
-        ),
-    ],
-)
-def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expected):
-    """ """
-    asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
-    item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
-    assert get_proj_metadata(asset, item=item) == expected
 
 
 class TestFixGdalOrderedTransform:
@@ -2582,5 +2521,3 @@ class TestPrepareContext:
                 ],
             }
         ]
-
-
