@@ -4,7 +4,6 @@ through its own public surface (no JVM/GeoPySpark dependency), independent of
 `test_load_stac.py`'s end-to-end JVM-backed checks.
 """
 
-import math
 from types import SimpleNamespace
 
 import pytest
@@ -173,7 +172,7 @@ class TestSelectTargetGrid:
         )
         assert result == TargetGrid(epsg=4326, cell_width=0.01, cell_height=0.01)
 
-    def test_10m_fallback_with_non_4326_extent_gives_finite_cell_size(self):
+    def test_10m_fallback_with_non_4326_extent(self):
         bbox = BoundingBox(west=4100000, south=3240000, east=4108000, north=3248000, crs="EPSG:3035")
         load_params = SimpleNamespace(target_resolution=None, target_crs=None)
         result = select_target_grid(
@@ -185,5 +184,4 @@ class TestSelectTargetGrid:
             load_params=load_params,
         )
         assert result.epsg == 4326
-        assert math.isfinite(result.cell_width) and result.cell_width == pytest.approx(1.46e-4, rel=0.05)
-        assert math.isfinite(result.cell_height) and result.cell_height > 0
+        assert (result.cell_width, result.cell_height) == pytest.approx((1.464e-4, 1.464e-4), rel=1e-3)

@@ -9,7 +9,7 @@ import pystac
 import pytest
 
 from openeo.testing.stac import StacDummyBuilder
-from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property
+from openeogeotrellis.stac.projection import ProjectionMetadata, get_asset_property
 
 SOME_DATETIME = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
 
@@ -51,6 +51,18 @@ class TestProjectionMetadata:
         with pytest.raises(ValueError):
             metadata.resolution()
         assert metadata.resolution(fail_on_miss=False) is None
+
+    @pytest.mark.parametrize(
+        ["transform", "expected"],
+        [
+            ([10, 0, 500000, 0, -10, 5600000], (10, 10)),
+            ([0, 10, 500000, -10, 0, 5600000], (10, 10)),
+            ([3, 12, 500000, 4, -5, 5600000], (5, 13)),
+        ],
+        ids=["axis-aligned", "rotated-90", "oblique-anisotropic"],
+    )
+    def test_resolution_from_transform(self, transform, expected):
+        assert ProjectionMetadata(transform=transform).resolution() == expected
 
     def test_equality(self):
         a = ProjectionMetadata(code="EPSG:4326", bbox=(0, 0, 1, 1), shape=(1, 1))
@@ -161,7 +173,3 @@ class TestGetAssetProperty:
     def test_missing(self):
         asset = pystac.Asset(href="asset.tif")
         assert get_asset_property(asset, "nodata") is None
-
-
-def test_compute_cellsize():
-    assert compute_cellsize((0, 0, 100, 200), (20, 10)) == (10.0, 10.0)
