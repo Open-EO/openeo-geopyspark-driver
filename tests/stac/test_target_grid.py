@@ -3,8 +3,11 @@ Focused unit tests for `openeogeotrellis.stac.target_grid`, exercised
 through its own public surface (no JVM/GeoPySpark dependency), independent of
 `test_load_stac.py`'s end-to-end JVM-backed checks.
 """
+
+import math
 from types import SimpleNamespace
 
+import pytest
 from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.stac.asset_table import ResolutionTracker
@@ -169,3 +172,18 @@ class TestSelectTargetGrid:
             load_params=load_params,
         )
         assert result == TargetGrid(epsg=4326, cell_width=0.01, cell_height=0.01)
+
+    def test_10m_fallback_with_non_4326_extent_gives_finite_cell_size(self):
+        bbox = BoundingBox(west=4100000, south=3240000, east=4108000, north=3248000, crs="EPSG:3035")
+        load_params = SimpleNamespace(target_resolution=None, target_crs=None)
+        result = select_target_grid(
+            resolution_tracker=ResolutionTracker(),
+            observed_epsgs={4326},
+            source_band_names=["band1"],
+            target_bbox=bbox,
+            feature_flags={},
+            load_params=load_params,
+        )
+        assert result.epsg == 4326
+        assert math.isfinite(result.cell_width) and result.cell_width == pytest.approx(1.46e-4, rel=0.05)
+        assert math.isfinite(result.cell_height) and result.cell_height > 0

@@ -360,6 +360,53 @@ class TestBuildAssetTable:
         assert item_result.raster_extent == (500000.0, 4990200.0, 509800.0, 5000000.0)
         assert item_result.resolution == 10.0
 
+    def test_resolution_from_proj_transform_without_proj_shape(self):
+        item = _item(
+            bbox=(-180, -90, 180, 90),
+            properties={
+                "proj:code": "EPSG:4326",
+                "proj:bbox": [-180, -90, 180, 90],
+                "proj:transform": [0.00833333333333333, 0.0, -180.0, 0.0, -0.00833333333333333, 90.0],
+            },
+            assets={"B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]}},
+        )
+        asset_table = _build(item)
+        epsgs, resolution = asset_table.resolution_tracker.finest_for(keys=["B02"])
+        assert epsgs == {4326}
+        assert resolution == pytest.approx((0.008333, 0.008333), abs=1e-5)
+
+    def test_resolution_from_rotated_proj_transform_with_proj_shape(self):
+        item = _item(
+            bbox=(3, 50, 4, 51),
+            properties={
+                "proj:code": "EPSG:4326",
+                "proj:shape": [100, 100],
+                "proj:transform": [0, 0.01, 3.0, -0.01, 0, 51.0],
+            },
+            assets={"B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]}},
+        )
+        asset_table = _build(item)
+        epsgs, resolution = asset_table.resolution_tracker.finest_for(keys=["B02"])
+        assert epsgs == {4326}
+        assert resolution == pytest.approx((0.01, 0.01))
+
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            [0.01, 0, 3, 0, float("nan"), 51],
+            [0.01, 0, 3, 0, 0, 51],
+        ],
+    )
+    def test_resolution_from_invalid_proj_transform_not_tracked(self, transform):
+        item = _item(
+            bbox=(3, 50, 4, 51),
+            properties={"proj:code": "EPSG:4326", "proj:transform": transform},
+            assets={"B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]}},
+        )
+        asset_table = _build(item)
+        _, resolution = asset_table.resolution_tracker.finest_for(keys=["B02"])
+        assert resolution is None
+
     def test_projection_metadata_conflicting_epsgs_across_assets(self):
         item = _item(
             bbox=(3, 45, 3.1, 45.1),

@@ -18,6 +18,7 @@ import collections
 import dataclasses
 import enum
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -398,8 +399,11 @@ def build_asset_table(
                 # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                 continue
 
-            if proj_epsg and proj_bbox and proj_shape:
+            if proj_bbox and proj_shape:
                 asset_cell_size = compute_cellsize(proj_bbox, proj_shape)
+            else:
+                asset_cell_size = asset_proj_metadata.resolution(fail_on_miss=False)
+            if proj_epsg and asset_cell_size and all(0 < r < math.inf for r in asset_cell_size):
                 for asset_band_name in asset_band_names:
                     resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
 

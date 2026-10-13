@@ -21,6 +21,8 @@ without compromising stable operations.
 - Sentinel-3 OLCI L1B: support angles and meteo bands ([#1848](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1848))
 - `load_result`: use the file-based pyramid factory for loading result GeoTIFFs, retaining temporal filtering
 - `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
+- `load_stac`: derive asset resolution from `proj:transform` when `proj:shape` is missing (avoids NaN cell size / "invalid cols: 0" errors)
+- `load_stac`: fix NaN cell size in 10m fallback when spatial extent is not in EPSG:4326
 
 
 ## 0.73.0
