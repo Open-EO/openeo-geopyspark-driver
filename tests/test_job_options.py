@@ -76,7 +76,7 @@ def test_from_dict_python_memory_kube(in_python, in_overhead, expected_python, e
 
 
 @pytest.mark.parametrize(
-    "options_class, executor_memory, python_memory, expected",
+    ["options_class", "executor_memory", "python_memory", "expected"],
     [
         (JobOptions, "6G", "8G", "6G + 2G + 8G (python-memory)"),
         (JobOptions, "14G", None, "14G + 2G"),
