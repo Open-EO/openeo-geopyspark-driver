@@ -153,6 +153,17 @@ class TestCapabilities:
             },
         }
 
+    def test_changelog(self, api100, monkeypatch, pytestconfig):
+        # Lacking something better at the moment, some poor-man's jar lookup and config
+        jar_path = next((pytestconfig.rootpath / "jars").glob("geotrellis-extensions-*.jar"), None)
+        monkeypatch.setenv("OPENEO_GEOTRELLIS_EXTENSIONS_JAR", jar_path)
+
+        resp = api100.get("/CHANGELOG").assert_status_code(200)
+        html = resp.text
+        assert '<h2 id="openeo-geopyspark-driver"' in html
+        assert '<h2 id="openeo-python-driver"' in html
+        assert '<h2 id="openeo-geotrellis-extensions"' in html
+
 
 class TestCollections:
     _CRS_AUTO_42001 = {'$schema': 'https://proj.org/schemas/v0.2/projjson.schema.json', 'type': 'GeodeticCRS',

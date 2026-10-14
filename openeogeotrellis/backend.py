@@ -13,6 +13,7 @@ import time
 import traceback
 import urllib
 import uuid
+import zipfile
 import importlib.metadata
 from copy import deepcopy
 from decimal import Decimal
@@ -1318,28 +1319,49 @@ Example usage:
         return "\n".join(lines[index:index2]).strip()
 
     def changelog(self) -> Union[str, Path, flask.Response]:
-        html = openeo_driver.util.changelog.multi_project_changelog(
-            [
-                {
-                    "name": "openeo-geopyspark-driver",
-                    "version": importlib.metadata.version(distribution_name="openeo-geopyspark"),
-                    "changelog_path": openeo_driver.util.changelog.get_changelog_path(
-                        data_files_dir="openeo-geopyspark-driver",
-                        src_root=Path(openeogeotrellis.__file__).parent.parent,
-                        filename="CHANGELOG.md",
-                    ),
-                },
-                {
-                    "name": "openeo-python-driver",
-                    "version": importlib.metadata.version(distribution_name="openeo_driver"),
-                    "changelog_path": openeo_driver.util.changelog.get_changelog_path(
-                        data_files_dir="openeo-python-driver-data",
-                        src_root=Path(openeo_driver.__file__).parent.parent,
-                        filename="CHANGELOG.md",
-                    ),
-                },
-            ]
+        projects = [
+            {
+                "name": "openeo-geopyspark-driver",
+                "version": importlib.metadata.version(distribution_name="openeo-geopyspark"),
+                "changelog_path": openeo_driver.util.changelog.get_changelog_path(
+                    data_files_dir="openeo-geopyspark-driver",
+                    src_root=Path(openeogeotrellis.__file__).parent.parent,
+                    filename="CHANGELOG.md",
+                ),
+            },
+            {
+                "name": "openeo-python-driver",
+                "version": importlib.metadata.version(distribution_name="openeo_driver"),
+                "changelog_path": openeo_driver.util.changelog.get_changelog_path(
+                    data_files_dir="openeo-python-driver-data",
+                    src_root=Path(openeo_driver.__file__).parent.parent,
+                    filename="CHANGELOG.md",
+                ),
+            },
+        ]
+
+        openeo_geotrellis_extensions_jar = os.environ.get(
+            "OPENEO_GEOTRELLIS_EXTENSIONS_JAR",
+            # Note: this hardcoded path is based on current conventions in current docker images.
+            "/opt/geotrellis-extensions-static.jar",
         )
+        try:
+            if Path(openeo_geotrellis_extensions_jar).exists():
+                with zipfile.ZipFile(openeo_geotrellis_extensions_jar, "r") as jar:
+                    changelog_content = jar.read("CHANGELOG.md").decode("utf-8")
+                changelog_html = openeo_driver.util.changelog.markdown_changelog_to_html(changelog_content)
+                projects.append(
+                    {
+                        "name": "openeo-geotrellis-extensions",
+                        # TODO: extract version, e.g. from jar manifest?
+                        "version": "n/a",
+                        "changelog_html": changelog_html,
+                    }
+                )
+        except Exception as exc:
+            logger.warning(f"Failed to get changelog from {openeo_geotrellis_extensions_jar=}: {exc=}")
+
+        html = openeo_driver.util.changelog.multi_project_changelog(projects=projects)
         return flask.make_response(html, {"Content-Type": "text/html"})
 
     def set_request_id(self, request_id: str):
