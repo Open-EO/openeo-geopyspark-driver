@@ -1433,7 +1433,13 @@ def is_layer_too_large(
     if isinstance(target_crs, int):
         target_crs = "EPSG:%s" % str(target_crs)
     if srs != target_crs:
+        target_is_utm = target_crs == "Auto42001" or target_crs.startswith("EPSG:326")
+        if srs == "EPSG:4326" and target_is_utm:
+            if spatial_extent["north"] > 85 or spatial_extent["south"] < -85:
+                return f"Requested spatial extent is outside the valid range for UTM reprojection to {target_crs}."
         spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
+        if msg := get_extent_warning_message(spatial_extent):
+            return f"Problem with spatial extent after reprojection to {target_crs}: {msg}"
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
