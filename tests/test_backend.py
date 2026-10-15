@@ -250,7 +250,7 @@ def test_extra_validation_layer_fail(backend_implementation):
     assert errors[0]['code'] == "Internal"
 
 
-def test_extra_validation_without_extent(backend_implementation):
+def test_extra_validation_without_temporal_extent(backend_implementation):
     processing = GpsProcessing()
     source_id1 = SourceId("load_collection", arguments=("ESA_WORLDCOVER_10M_2021_V2", None), pg_node_id="lc1")
     env_source_constraints = [
@@ -266,6 +266,24 @@ def test_extra_validation_without_extent(backend_implementation):
                 "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert errors == []
+
+def test_extra_validation_with_world_extent(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2022-01-01", "2022-01-01"],
+            "spatial_extent": {"south": -90, "west": -180, "north": 90, "east": 180},
+            "bands": ["VV", "VH", "HV", "HH"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]["code"] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]["message"].lower()
 
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
@@ -315,12 +333,12 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
-    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
+    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (80.0, 0.0), (0.0, 60.0), (80.0, 60.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["HH", "HV", "VV"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -329,7 +347,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["DEM"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -348,11 +366,11 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
-    polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
+    polygon2 = shapely.geometry.Polygon([(0, 0), (80, 0), (0, 60), (80, 60)])
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["HH", "HV", "VV"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -361,7 +379,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["DEM"],
             "resample": { "target_crs": "EPSG:4326" },
             "aggregate_spatial": {
@@ -473,7 +491,7 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 60.0, 'crs': 'EPSG:4326'},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 40.0, 'crs': 'EPSG:4326'},
             "bands": ["DEM"],
             "resample": {
                 "target_crs": {
