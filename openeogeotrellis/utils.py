@@ -52,12 +52,26 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
 from openeogeotrellis.job_results import util as job_results_util
 from openeogeotrellis.util.runtime import get_job_id
-from openeogeotrellis.utils import typechecked
 
 # TODO split up this kitchen sink module into more focused modules
 
 
 logger = logging.getLogger(__name__)
+
+# TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
+# TODO: explicit toggle instead of `is_ci_context` anti-pattern or other magic?
+if ConfigParams().is_ci_context or "pytest" in sys.modules:
+    from typeguard import typechecked
+
+    assert typechecked
+else:
+
+    def typechecked(func):
+        """
+        no-op
+        """
+        return func
+
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
@@ -828,17 +842,3 @@ def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_
 
     area_difference = ref_geom.symmetric_difference(actual_geom).area
     return area_difference / ref_geom.area < rel_area_tolerance
-
-
-# TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
-# TODO: explicit toggle instead of `is_ci_context` anti-pattern or other magic?
-if ConfigParams().is_ci_context or "pytest" in sys.modules:
-    from typeguard import typechecked
-
-    assert typechecked
-else:
-    def typechecked(func):
-        """
-        no-op
-        """
-        return func
