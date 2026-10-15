@@ -53,7 +53,7 @@ from openeogeotrellis.utils import (
     calculate_rough_area,
     parse_approximate_isoduration,
     reproject_cellsize,
-    health_check_extent,
+    get_extent_warning_message,
 )
 from openeogeotrellis.vault import Vault
 
@@ -115,7 +115,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
                 else:
                     raise ProcessGraphComplexityException(
-                        "The process graph is computationally too heavy and will likely time out. Disable this check with 'job_options.do_extent_check': "
+                        "Found some issues in the process graph. Disable this check with 'job_options.do_extent_check'. Issues: "
                         + " ".join(issues)
                     )
 
@@ -1407,8 +1407,8 @@ def is_layer_too_large(
             srs = 'Auto42001'
 
     spatial_extent["crs"] = srs
-    if not health_check_extent(spatial_extent):
-        return f"Unsupported spatial extent: {spatial_extent}"
+    if message := get_extent_warning_message(spatial_extent):
+        return f"Problem with spatial extent: {message}"
 
     target_crs = native_crs
     # Resampling process overwrites native_crs and resolution from metadata.

@@ -633,13 +633,18 @@ def reproject_cellsize(
     return cell_width_reprojected, cell_height_reprojected
 
 
-def health_check_extent(extent):
-    crs = extent.get("crs", "EPSG:4326")
+def health_check_extent(extent: dict) -> bool:
+    return get_extent_warning_message(extent) is None
+
+
+def get_extent_warning_message(extent: dict) -> Optional[str]:
+    crs: str = extent.get("crs", "EPSG:4326")
     is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
 
-    if extent["west"] > extent["east"] or extent["south"] > extent["north"]:
-        logger.warning(f"health_check_extent extent with surface<0: {extent}")
-        return False
+    if extent["west"] > extent["east"]:
+        return f"'west' must be smaller than 'east', but got west={extent['west']!r} and east={extent['east']!r}."
+    if extent["south"] > extent["north"]:
+        return f"'south' must be smaller than 'north', but got south={extent['south']!r} and north={extent['north']!r}."
 
     if is_utm:
         # This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
@@ -659,20 +664,18 @@ def health_check_extent(extent):
             or extent["south"] < utm_bounds["south"]
             or extent["north"] > utm_bounds["north"]
         ):
-            logger.warning(f"health_check_extent dangerous extent: {extent}")
-            return False
+            return f"extent goes out of UTM bounds: {extent}"
     elif crs == "EPSG:4326":
-        horizontal_tolerance = 1.1
-        if (
-            extent["west"] < -180 * horizontal_tolerance
-            or extent["east"] > 180 * horizontal_tolerance
-            or extent["south"] < -90
-            or extent["north"] > 90
-        ):
-            logger.warning(f"health_check_extent dangerous extent: {extent}")
-            return False
+        if extent["west"] < -360 or extent["east"] > 360 or extent["south"] < -100 or extent["north"] > 100:
+            if "crs" in extent:
+                return f"LatLon extent goes out of bounds: {extent}"
+            else:
+                return (
+                    "coordinates are outside the valid EPSG:4326 range while no 'crs' was specified. "
+                    "Specify the correct 'crs' explicitly."
+                )
 
-    return True
+    return None
 
 
 def parse_approximate_isoduration(s):
