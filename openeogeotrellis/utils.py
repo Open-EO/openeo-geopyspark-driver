@@ -21,8 +21,6 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Tuple, Union, TypeVar, Iterator
 
-from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
-
 import dateutil.parser
 import pyproj
 import pytz
@@ -51,8 +49,10 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
 from openeogeotrellis.job_results import util as job_results_util
 from openeogeotrellis.util.runtime import get_job_id
+from openeogeotrellis.utils import typechecked
 
 # TODO split up this kitchen sink module into more focused modules
 
@@ -633,10 +633,7 @@ def reproject_cellsize(
     return cell_width_reprojected, cell_height_reprojected
 
 
-def health_check_extent(extent: dict) -> bool:
-    return get_extent_warning_message(extent) is None
-
-
+@typechecked
 def get_extent_warning_message(extent: dict) -> Optional[str]:
     crs: str = extent.get("crs", "EPSG:4326")
     is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
