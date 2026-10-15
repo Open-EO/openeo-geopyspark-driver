@@ -53,7 +53,7 @@ from openeogeotrellis.utils import (
     calculate_rough_area,
     parse_approximate_isoduration,
     reproject_cellsize,
-    health_check_extent,
+    get_extent_warning_message,
 )
 from openeogeotrellis.vault import Vault
 
@@ -115,7 +115,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
                 else:
                     raise ProcessGraphComplexityException(
-                        "The process graph is computationally too heavy and will likely time out. Disable this check with 'job_options.do_extent_check': "
+                        "Found some issues in the process graph. Disable this check with 'job_options.do_extent_check'. Issues: "
                         + " ".join(issues)
                     )
 
@@ -1407,8 +1407,8 @@ def is_layer_too_large(
             srs = 'Auto42001'
 
     spatial_extent["crs"] = srs
-    if not health_check_extent(spatial_extent):
-        return f"Unsupported spatial extent: {spatial_extent}"
+    if message := get_extent_warning_message(spatial_extent):
+        return f"Problem with spatial extent: {message}"
 
     target_crs = native_crs
     # Resampling process overwrites native_crs and resolution from metadata.
@@ -1433,7 +1433,13 @@ def is_layer_too_large(
     if isinstance(target_crs, int):
         target_crs = "EPSG:%s" % str(target_crs)
     if srs != target_crs:
+        target_is_utm = target_crs == "Auto42001" or target_crs.startswith("EPSG:326")
+        if srs == "EPSG:4326" and target_is_utm:
+            if spatial_extent["north"] > 85 or spatial_extent["south"] < -85:
+                return f"Requested spatial extent is outside the valid range for UTM reprojection to {target_crs}."
         spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
+        if msg := get_extent_warning_message(spatial_extent):
+            return f"Problem with spatial extent after reprojection to {target_crs}: {msg}"
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])

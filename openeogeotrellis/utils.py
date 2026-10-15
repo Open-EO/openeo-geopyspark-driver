@@ -21,8 +21,6 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Tuple, Union, TypeVar, Iterator
 
-from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
-
 import dateutil.parser
 import pyproj
 import pytz
@@ -51,6 +49,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.integrations.s3_client import S3ClientBuilder, eodata_s3_client
 from openeogeotrellis.job_results import util as job_results_util
 from openeogeotrellis.util.runtime import get_job_id
 
@@ -58,6 +57,21 @@ from openeogeotrellis.util.runtime import get_job_id
 
 
 logger = logging.getLogger(__name__)
+
+# TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
+# TODO: explicit toggle instead of `is_ci_context` anti-pattern or other magic?
+if ConfigParams().is_ci_context or "pytest" in sys.modules:
+    from typeguard import typechecked
+
+    assert typechecked
+else:
+
+    def typechecked(func):
+        """
+        no-op
+        """
+        return func
+
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
@@ -633,13 +647,15 @@ def reproject_cellsize(
     return cell_width_reprojected, cell_height_reprojected
 
 
-def health_check_extent(extent):
-    crs = extent.get("crs", "EPSG:4326")
+@typechecked
+def get_extent_warning_message(extent: dict) -> Optional[str]:
+    crs: str = extent.get("crs", "EPSG:4326")
     is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
 
-    if extent["west"] > extent["east"] or extent["south"] > extent["north"]:
-        logger.warning(f"health_check_extent extent with surface<0: {extent}")
-        return False
+    if extent["west"] > extent["east"]:
+        return f"'west' must be smaller than 'east', but got west={extent['west']!r} and east={extent['east']!r}."
+    if extent["south"] > extent["north"]:
+        return f"'south' must be smaller than 'north', but got south={extent['south']!r} and north={extent['north']!r}."
 
     if is_utm:
         # This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
@@ -659,20 +675,18 @@ def health_check_extent(extent):
             or extent["south"] < utm_bounds["south"]
             or extent["north"] > utm_bounds["north"]
         ):
-            logger.warning(f"health_check_extent dangerous extent: {extent}")
-            return False
+            return f"extent goes out of UTM bounds: {extent}"
     elif crs == "EPSG:4326":
-        horizontal_tolerance = 1.1
-        if (
-            extent["west"] < -180 * horizontal_tolerance
-            or extent["east"] > 180 * horizontal_tolerance
-            or extent["south"] < -90
-            or extent["north"] > 90
-        ):
-            logger.warning(f"health_check_extent dangerous extent: {extent}")
-            return False
+        if extent["west"] < -360 or extent["east"] > 360 or extent["south"] < -100 or extent["north"] > 100:
+            if "crs" in extent:
+                return f"LatLon extent goes out of bounds: {extent}"
+            else:
+                return (
+                    "coordinates are outside the valid EPSG:4326 range while no 'crs' was specified. "
+                    "Specify the correct 'crs' explicitly."
+                )
 
-    return True
+    return None
 
 
 def parse_approximate_isoduration(s):
@@ -828,17 +842,3 @@ def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_
 
     area_difference = ref_geom.symmetric_difference(actual_geom).area
     return area_difference / ref_geom.area < rel_area_tolerance
-
-
-# TODO: Enable this on dev and staging too, but with an feature flag to quickly disable it when necessary.
-# TODO: explicit toggle instead of `is_ci_context` anti-pattern or other magic?
-if ConfigParams().is_ci_context or "pytest" in sys.modules:
-    from typeguard import typechecked
-
-    assert typechecked
-else:
-    def typechecked(func):
-        """
-        no-op
-        """
-        return func
