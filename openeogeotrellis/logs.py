@@ -28,6 +28,7 @@ def elasticsearch_logs(
     create_time: Optional[dt.datetime] = None,
     offset: Optional[str] = None,
     level: Optional[str] = None,
+    audience: Optional[str] = "user",
 ) -> Iterable[dict]:
     """Retrieve a job's logs from Elasticsearch.
 
@@ -49,6 +50,10 @@ def elasticsearch_logs(
     :param level:
         Return only logs with this log level or higher.
 
+    :param audience:
+        Return only logs with this `audience` ("user" by default, so developer-only logs are hidden);
+        use None to disable this filtering.
+
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON
         - or when Elasticsearch had a connection timeout
@@ -62,6 +67,7 @@ def elasticsearch_logs(
             create_time=create_time,
             search_after=search_after,
             level=level,
+            audience=audience,
         )
     except json.decoder.JSONDecodeError:
         raise OpenEOApiException(status_code=400, code="OffsetInvalid",
@@ -73,6 +79,7 @@ def _elasticsearch_logs(
     create_time: Optional[dt.datetime] = None,
     search_after: Optional[list] = None,
     level: Optional[str] = None,
+    audience: Optional[str] = None,
 ) -> Iterable[dict]:
     """Internal helper function to retrieve a job's logs from Elasticsearch.
 
@@ -133,6 +140,8 @@ def _elasticsearch_logs(
         )
     if level_filter:
         query["bool"]["filter"].append(level_filter)
+    if audience:
+        query["bool"]["filter"].append({"term": {"audience": audience}})
 
     config = get_backend_config()
     with Elasticsearch(config.logging_es_hosts) as es:

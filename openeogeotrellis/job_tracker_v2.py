@@ -29,12 +29,12 @@ from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry, EjrApiResp
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
-    get_logging_config,
     setup_logging,
     LOG_HANDLER_STDERR_BASIC,
     LOG_HANDLER_STDERR_JSON,
     GlobalExtraLoggingFilter,
 )
+from openeogeotrellis.util.audience_logging import get_logging_config
 import openeo_driver.utils
 
 from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
