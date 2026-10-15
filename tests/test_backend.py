@@ -333,12 +333,12 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
-    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (80.0, 0.0), (0.0, 180.0), (80.0, 180.0)]]}
+    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (80.0, 0.0), (0.0, 60.0), (80.0, 60.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["HH", "HV", "VV"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -347,7 +347,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["DEM"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -366,11 +366,11 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
-    polygon2 = shapely.geometry.Polygon([(0, 0), (80, 0), (0, 180), (80, 180)])
+    polygon2 = shapely.geometry.Polygon([(0, 0), (80, 0), (0, 60), (80, 60)])
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["HH", "HV", "VV"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -379,7 +379,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["DEM"],
             "resample": { "target_crs": "EPSG:4326" },
             "aggregate_spatial": {
@@ -491,7 +491,7 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 60.0, 'crs': 'EPSG:4326'},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 40.0, 'crs': 'EPSG:4326'},
             "bands": ["DEM"],
             "resample": {
                 "target_crs": {
