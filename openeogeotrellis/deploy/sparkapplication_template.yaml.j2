@@ -385,9 +385,9 @@ spec:
       - name: KUBE
         value: "true"
       - name: OPENEO_OTEL_ENABLED
-        value: {{ open_telemetry_enabled }}
+        value: "{{ open_telemetry_enabled }}"
       - name: OPENEO_OTEL_PROMETHEUS_METRICS_PORT_PYTHON
-        value: {{ open_telemetry_prometheus_port_python | default(9465, true) }}
+        value: "{{ open_telemetry_prometheus_port_python | default(9465, true) }}"
 {{ self.gdal_aws_env() }}
       - name: AWS_DIRECT
         value: "TRUE"
