@@ -3,6 +3,7 @@ import datetime as dt
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -117,7 +118,9 @@ from openeogeotrellis.job_registry import (
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     get_layer_catalog,
-    extra_validation_load_collection, WHITELIST,
+    estimate_load_collection_pixels,
+    extra_validation_load_collection,
+    WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
@@ -1572,6 +1575,32 @@ class GpsProcessing(ConcreteProcessing):
         except Exception as e:
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
+
+    def calculate_pixel_volume(
+        self, process_graph: dict, env: EvalEnv, source_constraints: List[SourceConstraint]
+    ) -> float:
+        """
+        Estimate the total pixel volume (pixels x temporal observations x bands)
+        loaded by all `load_collection` nodes of the process graph.
+        Returns infinity as soon as a single load_collection exceeds the large layer threshold.
+        Sources that can not be estimated are logged and skipped.
+        """
+        total_pixels = 0.0
+        env = env.push({ENV_MAX_BUFFER: {}})
+        # copy because _extract_load_parameters is stateful
+        for source_id, _constraints in deepcopy(source_constraints):
+            if source_id.process_id != "load_collection":
+                continue
+            cid = source_id.arguments[0]
+            load_params = _extract_load_parameters(env, source_id=source_id)
+            pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
+            if error:
+                logger.warning(f"calculate_pixel_volume: skipping {cid!r}: {error}")
+            elif math.isinf(pixels):
+                return math.inf
+            else:
+                total_pixels += pixels
+        return total_pixels
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:

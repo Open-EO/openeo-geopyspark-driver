@@ -8,7 +8,7 @@ import sys
 import zipfile
 from copy import deepcopy, copy
 from functools import lru_cache
-from typing import List, Dict, Iterable, Optional, Tuple, Union
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -1243,15 +1243,27 @@ def potential_sentinelhub(catalog, collection_id) -> bool:
     return False
 
 
-def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
-    if collection_id == "TestCollection-LonLat4x4":
-        # No need to check on artificial debug layer
-        return
+class _LoadCollectionPixelParams(NamedTuple):
+    """Inputs needed to estimate the pixel volume of a load_collection."""
+
+    load_params: LoadParameters
+    metadata: GeopysparkCubeMetadata
+    number_of_temporal_observations: int
+    nr_bands: int
+    cell_width: float
+    cell_height: float
+    native_crs: str
+    threshold_pixels: int
+    sync_job: bool
+
+
+def _get_load_collection_pixel_params(
+    collection_id: str, load_params: LoadParameters, env: EvalEnv
+) -> Union[_LoadCollectionPixelParams, dict]:
+    """Derive pixel estimation inputs for a load_collection, or return an error dict when that is not possible."""
     if "backend_implementation" not in env:
-        yield {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
-        return
+        return {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
     catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
-    allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
     sync_job = smart_bool(env.get("sync_job", False))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
@@ -1271,7 +1283,6 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
     load_params_tmp.data_mask = {}  # Clear to avoid SPARK-5063 error
     load_params = deepcopy(load_params_tmp)  # deepcopy so we can modify it
     load_params.temporal_extent = normalize_temporal_extent(catalog.derive_temporal_extent(collection_id, load_params))
-    temporal_extent = load_params.temporal_extent
 
     spatial_extent = load_params.spatial_extent
     if spatial_extent is None or len(spatial_extent) == 0:
@@ -1288,11 +1299,10 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
     if isinstance(native_crs, int):
         native_crs = f"EPSG:{native_crs}"
     if not isinstance(native_crs, str):
-        yield {
+        return {
             "code": "InvalidNativeCRS",
             "message": f"Invalid native CRS {native_crs!r} for " f"collection {collection_id!r}",
         }
-        return
 
     number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
         collection_id,
@@ -1342,8 +1352,9 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         # Auto42001 is in meter
         cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
 
-    is_layer_too_large_message = is_layer_too_large(
+    return _LoadCollectionPixelParams(
         load_params=load_params,
+        metadata=metadata,
         number_of_temporal_observations=number_of_temporal_observations,
         nr_bands=nr_bands,
         cell_width=cell_width,
@@ -1351,6 +1362,63 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         native_crs=native_crs,
         threshold_pixels=large_layer_threshold_in_pixels,
         sync_job=sync_job,
+    )
+
+
+def estimate_load_collection_pixels(
+    collection_id: str, load_params: LoadParameters, env: EvalEnv
+) -> Tuple[Optional[float], Optional[dict]]:
+    """
+    Estimate the number of pixels a load_collection will load.
+    Returns infinity when the layer exceeds the large layer threshold (geometries are not considered then).
+
+    :return: tuple (estimated_pixels, error). Exactly one of them is None.
+    """
+    if collection_id == "TestCollection-LonLat4x4":
+        return 0, None
+    params = _get_load_collection_pixel_params(collection_id, load_params, env)
+    if isinstance(params, dict):
+        return None, params
+    estimated_pixels, message = estimate_layer_pixels(
+        load_params=params.load_params,
+        number_of_temporal_observations=params.number_of_temporal_observations,
+        nr_bands=params.nr_bands,
+        cell_width=params.cell_width,
+        cell_height=params.cell_height,
+        native_crs=params.native_crs,
+        sync_job=params.sync_job,
+        use_geometries=False,
+    )
+    if message:
+        return None, {"code": "ExtentTooLarge", "message": f"collection_id {collection_id!r}: {message}"}
+    if estimated_pixels > params.threshold_pixels:
+        return math.inf, None
+    return estimated_pixels, None
+
+
+def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+    if collection_id == "TestCollection-LonLat4x4":
+        # No need to check on artificial debug layer
+        return
+    params = _get_load_collection_pixel_params(collection_id, load_params, env)
+    if isinstance(params, dict):
+        yield params
+        return
+    load_params = params.load_params
+    metadata = params.metadata
+    temporal_extent = load_params.temporal_extent
+    spatial_extent = load_params.spatial_extent
+    allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
+
+    is_layer_too_large_message = is_layer_too_large(
+        load_params=load_params,
+        number_of_temporal_observations=params.number_of_temporal_observations,
+        nr_bands=params.nr_bands,
+        cell_width=params.cell_width,
+        cell_height=params.cell_height,
+        native_crs=params.native_crs,
+        threshold_pixels=params.threshold_pixels,
+        sync_job=params.sync_job,
     )
     if is_layer_too_large_message:
         yield {"code": "ExtentTooLarge", "message": f"collection_id {collection_id!r}: {is_layer_too_large_message}"}
@@ -1383,7 +1451,44 @@ def is_layer_too_large(
 ):
     """
     Estimates the number of pixels that will be required to load this layer
-    and returns True if it exceeds the threshold.
+    and returns a message if it exceeds the threshold.
+
+    :param threshold_pixels: Threshold in pixels.
+    See `estimate_layer_pixels` for the other parameters.
+
+    :return: A message if the layer exceeds the threshold in pixels (or the request is invalid). None otherwise.
+    """
+    estimated_pixels, message = estimate_layer_pixels(
+        load_params=load_params,
+        number_of_temporal_observations=number_of_temporal_observations,
+        nr_bands=nr_bands,
+        cell_width=cell_width,
+        cell_height=cell_height,
+        native_crs=native_crs,
+        sync_job=sync_job,
+    )
+    if message:
+        return message
+    if estimated_pixels > threshold_pixels:
+        return (
+            f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, "
+            f"threshold: {threshold_pixels:.2e}."
+        )
+    return None
+
+
+def estimate_layer_pixels(
+    load_params: LoadParameters,
+    number_of_temporal_observations: int,
+    nr_bands: int,
+    cell_width: float,
+    cell_height: float,
+    native_crs: str,
+    sync_job: bool = False,
+    use_geometries: bool = True,
+) -> Tuple[Optional[float], Optional[str]]:
+    """
+    Estimates the number of pixels that will be required to load this layer.
 
     :param load_params: Requested load parameters.
     :param number_of_temporal_observations: Requested number of temporal observations.
@@ -1391,11 +1496,11 @@ def is_layer_too_large(
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
     :param native_crs: Native CRS of the layer.
-    :param threshold_pixels: Threshold in pixels.
     :param sync_job: Is sync job.
+    :param use_geometries: Refine the estimate with the aggregation geometries (more expensive).
 
-    :return: A message if the layer exceeds the threshold in pixels. None otherwise.
-             Also returns the estimated number of pixels and the threshold.
+    :return: tuple (estimated_pixels, message). If the request is invalid, estimated_pixels is None
+             and message describes the problem. Otherwise message is None.
     """
     geometries = load_params.aggregate_spatial_geometries
     spatial_extent = load_params.spatial_extent
@@ -1408,7 +1513,7 @@ def is_layer_too_large(
 
     spatial_extent["crs"] = srs
     if message := get_extent_warning_message(spatial_extent):
-        return f"Problem with spatial extent: {message}"
+        return None, f"Problem with spatial extent: {message}"
 
     target_crs = native_crs
     # Resampling process overwrites native_crs and resolution from metadata.
@@ -1423,7 +1528,7 @@ def is_layer_too_large(
     if isinstance(target_crs, dict):
         target_crs = target_crs.get("id", {}).get("code", None)
     if target_crs is None:
-        raise InternalException("No native CRS found during is_layer_too_large check.")
+        raise InternalException("No native CRS found during pixel estimation.")
     if target_crs == "Auto42001":
         west, south = spatial_extent["west"], spatial_extent["south"]
         east, north = spatial_extent["east"], spatial_extent["north"]
@@ -1436,10 +1541,13 @@ def is_layer_too_large(
         target_is_utm = target_crs == "Auto42001" or target_crs.startswith("EPSG:326")
         if srs == "EPSG:4326" and target_is_utm:
             if spatial_extent["north"] > 85 or spatial_extent["south"] < -85:
-                return f"Requested spatial extent is outside the valid range for UTM reprojection to {target_crs}."
+                return (
+                    None,
+                    f"Requested spatial extent is outside the valid range for UTM reprojection to {target_crs}.",
+                )
         spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
         if msg := get_extent_warning_message(spatial_extent):
-            return f"Problem with spatial extent after reprojection to {target_crs}: {msg}"
+            return None, f"Problem with spatial extent after reprojection to {target_crs}: {msg}"
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
@@ -1447,40 +1555,40 @@ def is_layer_too_large(
     pixels_width = bbox_width / cell_width
     pixels_height = bbox_height / cell_height
     if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:
-        return f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000)."
+        return (
+            None,
+            f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000).",
+        )
 
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * number_of_temporal_observations * nr_bands
     logger.debug(
-        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
+        f"estimate_layer_pixels {estimated_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
-    if estimated_pixels > threshold_pixels:
-        if geometries and not isinstance(geometries, dict):
-            # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
-            # For performance, we estimate the area using a simple bounding box around each polygon.
-            if isinstance(geometries, DriverVectorCube):
-                geometries_area = calculate_rough_area([geometries.to_multipolygon()])
-            elif isinstance(geometries, DelayedVector):
-                geometries_area = calculate_rough_area(geometries.geometries)
-            elif isinstance(geometries, BaseGeometry):
-                geometries_area = calculate_rough_area([geometries])
-            else:
-                raise TypeError(f"Unsupported geometry type: {type(geometries)}")
-            if target_crs != "EPSG:4326":
-                # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
-                cell_bbox = {"west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": target_crs}
-                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=target_crs, to_crs="EPSG:4326")
-                cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
-                cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
-            surface_area_pixels = geometries_area / (cell_width * cell_height)
-            estimated_pixels = surface_area_pixels * number_of_temporal_observations * nr_bands
-            logger.debug(
-                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
-            )
-            if estimated_pixels <= threshold_pixels:
-                return None
-        return f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, " + \
-            f"threshold: {threshold_pixels:.2e}."
-    return None
+    if use_geometries and geometries and not isinstance(geometries, dict):
+        # Only the pixels in the geometries will be loaded if they are provided.
+        # For performance, we estimate the area using a simple bounding box around each polygon.
+        if isinstance(geometries, DriverVectorCube):
+            geometries_area = calculate_rough_area([geometries.to_multipolygon()])
+        elif isinstance(geometries, DelayedVector):
+            geometries_area = calculate_rough_area(geometries.geometries)
+        elif isinstance(geometries, BaseGeometry):
+            geometries_area = calculate_rough_area([geometries])
+        else:
+            raise TypeError(f"Unsupported geometry type: {type(geometries)}")
+        geometry_cell_width, geometry_cell_height = cell_width, cell_height
+        if target_crs != "EPSG:4326":
+            # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
+            cell_bbox = {"west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": target_crs}
+            cell_bbox = reproject_bounding_box(cell_bbox, from_crs=target_crs, to_crs="EPSG:4326")
+            geometry_cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
+            geometry_cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
+        surface_area_pixels = geometries_area / (geometry_cell_width * geometry_cell_height)
+        geometries_pixels = surface_area_pixels * number_of_temporal_observations * nr_bands
+        logger.debug(
+            f"estimate_layer_pixels {geometries_pixels=} ({geometries_area=} {geometry_cell_width=} {geometry_cell_height=} {number_of_temporal_observations=} {nr_bands=})"
+        )
+        estimated_pixels = min(estimated_pixels, geometries_pixels)
+    return estimated_pixels, None
 
 
 def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) -> SarBackscatterArgs:
