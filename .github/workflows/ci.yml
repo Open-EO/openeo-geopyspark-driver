@@ -75,8 +75,10 @@ jobs:
 
       - name: Install project and test dependencies
         run: |
-          uv pip install -e ".[dev,spark40x]"
-          python -c "import netCDF4, pyspark; print('netCDF4', netCDF4.__version__, 'pyspark', pyspark.__version__)"
+                    uv pip install \
+            -e ".[dev,spark40x]" \
+            "geopyspark_openeo @ git+https://github.com/Open-EO/geopyspark.git@geotrellis_3.5"
+          python -c "import geopyspark, netCDF4, pyspark; print('geopyspark', geopyspark.__file__)"
 
       - name: Download JARs
         run: |
