@@ -28,7 +28,6 @@ tests_require = [
     'moto[s3]>=5.0.0',
     'schema',
     'requests-mock>=1.8.0',
-    'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0,<3.0.0",
     "kubernetes",
     "re-assert",
