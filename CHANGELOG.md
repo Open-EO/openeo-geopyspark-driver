@@ -25,6 +25,8 @@ without compromising stable operations.
 - Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
 
 
+- Include Python memory in executor-memory limit errors ([#1286](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1286)).
+
 ## 0.73.0
 
 - `merge_cubes`: preserve temporal metadata when merging a spatial cube with a spacetime cube ([#1830](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1830))
