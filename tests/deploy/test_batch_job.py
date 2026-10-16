@@ -148,12 +148,11 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
 
     metadata = extract_result_metadata(tracer)
+    # Ring start vertex/orientation depends on the shapely/GEOS version: compare geometry semantically.
+    geometry = metadata.pop("geometry")
+    assert shape(geometry).normalize().equals_exact(box(5.0, 5.0, 45.0, 40.0).normalize(), tolerance=1e-9)
     expected = {
         "bbox": [5.0, 5.0, 45.0, 40.0],
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
-        },
         "area": {"value": approx(6763173869883.0, 1.0), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
