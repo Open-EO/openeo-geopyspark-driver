@@ -1370,7 +1370,7 @@ def estimate_load_collection_pixels(
 ) -> Tuple[Optional[float], Optional[dict]]:
     """
     Estimate the number of pixels a load_collection will load.
-    Returns infinity when the layer exceeds the large layer threshold (geometries are not considered then).
+    Returns infinity when the layer still exceeds the large layer threshold after considering geometries.
 
     :return: tuple (estimated_pixels, error). Exactly one of them is None.
     """
@@ -1386,8 +1386,8 @@ def estimate_load_collection_pixels(
         cell_width=params.cell_width,
         cell_height=params.cell_height,
         native_crs=params.native_crs,
+        threshold_pixels=params.threshold_pixels,
         sync_job=params.sync_job,
-        use_geometries=False,
     )
     if message:
         return None, {"code": "ExtentTooLarge", "message": f"collection_id {collection_id!r}: {message}"}
@@ -1465,6 +1465,7 @@ def is_layer_too_large(
         cell_width=cell_width,
         cell_height=cell_height,
         native_crs=native_crs,
+        threshold_pixels=threshold_pixels,
         sync_job=sync_job,
     )
     if message:
@@ -1484,8 +1485,8 @@ def estimate_layer_pixels(
     cell_width: float,
     cell_height: float,
     native_crs: str,
+    threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS,
     sync_job: bool = False,
-    use_geometries: bool = True,
 ) -> Tuple[Optional[float], Optional[str]]:
     """
     Estimates the number of pixels that will be required to load this layer.
@@ -1497,7 +1498,8 @@ def estimate_layer_pixels(
     :param cell_height: Height of the cells/pixels.
     :param native_crs: Native CRS of the layer.
     :param sync_job: Is sync job.
-    :param use_geometries: Refine the estimate with the aggregation geometries (more expensive).
+    :param threshold_pixels: Threshold in pixels. Only when the bounding box based estimate exceeds it,
+        the (more expensive) estimate based on the aggregation geometries is calculated and used instead.
 
     :return: tuple (estimated_pixels, message). If the request is invalid, estimated_pixels is None
              and message describes the problem. Otherwise message is None.
@@ -1564,8 +1566,8 @@ def estimate_layer_pixels(
     logger.debug(
         f"estimate_layer_pixels {estimated_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
-    if use_geometries and geometries and not isinstance(geometries, dict):
-        # Only the pixels in the geometries will be loaded if they are provided.
+    if estimated_pixels > threshold_pixels and geometries and not isinstance(geometries, dict):
+        # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
         # For performance, we estimate the area using a simple bounding box around each polygon.
         if isinstance(geometries, DriverVectorCube):
             geometries_area = calculate_rough_area([geometries.to_multipolygon()])
@@ -1587,7 +1589,7 @@ def estimate_layer_pixels(
         logger.debug(
             f"estimate_layer_pixels {geometries_pixels=} ({geometries_area=} {geometry_cell_width=} {geometry_cell_height=} {number_of_temporal_observations=} {nr_bands=})"
         )
-        estimated_pixels = min(estimated_pixels, geometries_pixels)
+        estimated_pixels = geometries_pixels
     return estimated_pixels, None
 
 

@@ -1576,12 +1576,10 @@ class GpsProcessing(ConcreteProcessing):
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
-    def calculate_pixel_volume(
-        self, process_graph: dict, env: EvalEnv, source_constraints: List[SourceConstraint]
-    ) -> float:
+    def calculate_pixel_volume(self, env: EvalEnv, source_constraints: List[SourceConstraint]) -> float:
         """
         Estimate the total pixel volume (pixels x temporal observations x bands)
-        loaded by all `load_collection` nodes of the process graph.
+        loaded by all `load_collection` source constraints.
         Returns infinity as soon as a single load_collection exceeds the large layer threshold.
         Sources that can not be estimated are logged and skipped.
         """

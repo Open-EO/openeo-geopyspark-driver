@@ -2,6 +2,7 @@ import sys
 
 import json
 import logging
+import math
 
 import os
 import re
@@ -211,6 +212,39 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
     assert errors[0]['code'] == "ExtentTooLarge"
+
+
+def test_calculate_pixel_volume_two_load_collections(backend_implementation):
+    processing = GpsProcessing()
+    constraints = {
+        "temporal_extent": ["2019-01-01", "2019-01-02"],
+        "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+        "bands": ["DEM"],
+    }
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
+
+    def volume(source_constraints, threshold):
+        env = EvalEnv(
+            values={
+                ENV_SOURCE_CONSTRAINTS: source_constraints,
+                "backend_implementation": backend_implementation,
+                "version": "1.0.0",
+                "large_layer_threshold_in_pixels": threshold,
+            }
+        )
+        return processing.calculate_pixel_volume(env, source_constraints)
+
+    single = volume([(source_id1, constraints)], threshold=1e12)
+    assert 0 < single < math.inf
+
+    # Each load_collection individually stays below the threshold, but together they exceed it.
+    threshold = single * 1.5
+    assert volume([(source_id1, constraints)], threshold) == single
+    assert volume([(source_id2, constraints)], threshold) == single
+    total = volume([(source_id1, constraints), (source_id2, constraints)], threshold)
+    assert total == 2 * single
+    assert total > threshold
 
 
 def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
