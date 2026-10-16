@@ -36,6 +36,7 @@ jobs:
 
       - name: Install system dependencies (GDAL, NetCDF, HDF5)
         run: |
+          sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gdal-bin libgdal-dev \
@@ -43,7 +44,15 @@ jobs:
             libhdf5-dev \
             libkrb5-dev
           gdal-config --version
-
+      - name: Symlink libgdal.so.38 -> system libgdal
+        run: |
+          set -e
+          LIBDIR=/usr/lib/x86_64-linux-gnu
+          ACTUAL=$(ls ${LIBDIR}/libgdal.so.[0-9]* | grep -E 'libgdal\.so\.[0-9]+$' | head -n1)
+          echo "System libgdal: ${ACTUAL}"
+          sudo ln -sf "${ACTUAL}" ${LIBDIR}/libgdal.so.38
+          sudo ldconfig
+          ls -l ${LIBDIR}/libgdal.so*
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
