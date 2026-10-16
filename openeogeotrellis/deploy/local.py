@@ -3,6 +3,7 @@
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
 """
 
+import copy
 import datetime
 import logging
 import os
@@ -179,6 +180,80 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     return context
 
 
+def _patch_batch_jobs_for_local_execution(batch_jobs) -> None:
+    """
+    Patch a `GpsBatchJobs` instance so that batch jobs are executed synchronously
+    (in a background thread) using the local Spark context, instead of being
+    dispatched to YARN or Kubernetes (which are not available/desired in this
+    single-machine local dev setup).
+    """
+    import threading
+    import types
+
+    from openeo_driver.jobregistry import JOB_STATUS
+    from openeo_driver.util.logging import ExtraLoggingFilter
+    from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
+
+    from openeogeotrellis.backend import JOB_METADATA_FILENAME
+    from openeogeotrellis.deploy.batch_job import run_job as _run_batch_job_locally
+
+    def _start_job_locally(self, job_id, user, get_vault_token, dependencies=None, proxy_user=None):
+        user_id = user.user_id
+        log = logging.LoggerAdapter(_log, extra={"job_id": job_id, "user_id": user_id})
+
+        with self._double_job_registry as dbl_registry:
+            job_info = dbl_registry.get_job(job_id=job_id, user_id=user_id)
+            dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id="local")
+            dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+
+        # Deep-copy the process graph/options: running the job locally (in-process) means the
+        # process graph evaluator can annotate/mutate these dicts in-place (e.g. for caching),
+        # and we don't want that leaking back into the (shared, in-memory) job registry entry.
+        job_specification = copy.deepcopy(
+            {
+                "process_graph": job_info["process"]["process_graph"],
+                "job_options": job_info.get("job_options") or {},
+            }
+        )
+        api_version = job_info.get("api_version", OPENEO_API_VERSION_DEFAULT)
+        job_dir = self.get_job_work_dir(job_id)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        output_file = job_dir / "out"
+        metadata_file = job_dir / JOB_METADATA_FILENAME
+
+        def _run():
+            # Tag all logging (in this thread) with the job/user id, so it can be
+            # shipped to Elasticsearch (see `local_logging.ElasticsearchLoggingHandler`)
+            # and picked up again by `GET /jobs/{id}/logs`.
+            with ExtraLoggingFilter.with_extra_logging(job_id=job_id, user_id=user_id):
+                try:
+                    with self._double_job_registry as dbl_registry:
+                        dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.RUNNING)
+                    _run_batch_job_locally(
+                        job_specification=job_specification,
+                        output_file=output_file,
+                        metadata_file=metadata_file,
+                        api_version=api_version,
+                        job_dir=job_dir,
+                        dependencies=dependencies or [],
+                        user_id=user_id,
+                    )
+                    with self._double_job_registry as dbl_registry:
+                        dbl_registry.set_results_metadata_uri(
+                            job_id=job_id, user_id=user_id, results_metadata_uri=f"file://{metadata_file}"
+                        )
+                        dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED)
+                    log.info(f"Local batch job {job_id!r} finished")
+                except Exception:
+                    log.exception(f"Local batch job {job_id!r} failed")
+                    with self._double_job_registry as dbl_registry:
+                        dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
+
+        threading.Thread(target=_run, name=f"batch-job-{job_id}", daemon=True).start()
+
+    batch_jobs._start_job = types.MethodType(_start_job_locally, batch_jobs)
+
+
 def on_started() -> None:
     show_log_level(logging.getLogger("gunicorn.error"))
     show_log_level(logging.getLogger("flask"))
@@ -277,13 +352,21 @@ def main():
     # Note: local import is necessary because `openeogeotrellis.backend` requires `SPARK_HOME` env var
     # which we want to set up just in time
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
+    from openeogeotrellis.deploy.local_logging import setup_es_log_shipping
     from openeogeotrellis.job_registry import InMemoryJobRegistry
+
+    # Batch jobs run in-process here (no YARN/Kubernetes log forwarder available), so
+    # ship their logs to Elasticsearch ourselves in order to keep `GET /jobs/{id}/logs` working.
+    setup_es_log_shipping()
 
     backend_implementation = GeoPySparkBackendImplementation(
         use_zookeeper=False,
         use_job_registry=bool(get_backend_config().ejr_api),
         elastic_job_registry=InMemoryJobRegistry(),
     )
+    # This local dev server has no YARN or Kubernetes cluster available to run batch jobs on,
+    # so run them synchronously (in a background thread) using the local Spark context instead.
+    _patch_batch_jobs_for_local_execution(backend_implementation.batch_jobs)
     app = build_app(backend_implementation=backend_implementation)
 
     show_log_level(logging.getLogger("openeo"))
