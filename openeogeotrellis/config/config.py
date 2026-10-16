@@ -239,14 +239,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_max_executors: int = 100
 
-    """
-    Batch jobs with fewer than `small_job_max_nodes` process graph nodes (including callback sub-graphs)
-    and an estimated pixel volume (pixels x observations x bands) below `small_job_max_pixel_volume`
-    get `small_job_max_executors` as `max-executors`, unless `max-executors` is set explicitly
-    (e.g. by the user or through `default_job_options`).
-    Set `small_job_max_executors` to None to disable this behavior.
-    """
-    small_job_max_executors: Optional[int] = 5
+    # More small_job_* info here: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1104
+    # Empty dict disables (default). E.g. `{"max-executors": 5}`.
+    # On Kubernetes, keep max-executors >= minExecutors (2) of the SparkApplication.
+    small_job_options: dict = attrs.Factory(dict)
     small_job_max_nodes: int = 10
     small_job_max_pixel_volume: float = 1_000_000
 

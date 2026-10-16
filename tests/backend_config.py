@@ -121,4 +121,5 @@ config = GpsBackendConfig(
             "udf_runtime_libraries": {"numpy": "2.3.3", "pandas": "2.3.3"},
         },
     ],
+    small_job_options={"max-executors": 5},
 )

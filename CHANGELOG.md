@@ -23,7 +23,7 @@ without compromising stable operations.
 - `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
 - `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
 - Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
-- Batch jobs: small jobs (fewer than 10 process graph nodes and an estimated pixel volume below 1 million) default to `max-executors=5`, configurable through `small_job_max_executors`, `small_job_max_nodes` and `small_job_max_pixel_volume` backend config. An explicit `max-executors` job option (including from `default_job_options`) takes precedence.
+- Batch jobs: small jobs (fewer than 10 process graph nodes and an estimated pixel volume below 1 million) get `small_job_options` (e.g. `{"max-executors": 5}`) as default job options. Disabled by default, configurable through `small_job_options`, `small_job_max_nodes` and `small_job_max_pixel_volume` backend config. Explicit job options (including from `default_job_options`) take precedence.
 
 
 ## 0.73.0

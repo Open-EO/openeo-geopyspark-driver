@@ -1878,6 +1878,28 @@ class GpsBatchJobs(backend.BatchJobs):
         job_options = job_info.get("job_options") or {}  # can be None
         isKube = ConfigParams().is_kube_deploy
 
+        performance_options = {
+            "driver-memory",
+            "driver-memoryOverhead",
+            "driver-cores",
+            "driver-request-cores",  # k8 only
+            "executor-memory",
+            "executor-memoryOverhead",
+            "executor-cores",
+            "executor-request-cores",  # k8 only
+            "max-executors",
+            "executor-threads-jvm",
+            "task-cpus",
+        }
+        if any(k not in job_options for k in performance_options):
+            small_job_options = self._determine_small_job_options(
+                process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
+            )
+            # Explicitly set job options (e.g. by the user or through `default_job_options`) take precedence.
+            job_options = {**small_job_options, **job_options}
+            # Some job runners (e.g. YARN) read the job options from job_info again.
+            job_info["job_options"] = job_options
+
         if isKube:
             options = K8SOptions.from_dict(job_options)
         else:
@@ -1903,14 +1925,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_options["image-name"] = image_name
                 # Writes must happen on options_object since job_options is already parsed
                 options.image_name = image_name
-
-        if "max-executors" not in job_options:
-            small_job_max_executors = self._determine_small_job_max_executors(
-                process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
-            )
-            if small_job_max_executors is not None:
-                job_options["max-executors"] = small_job_max_executors
-                options.max_executors = small_job_max_executors
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -2330,24 +2344,24 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
         return env, source_constraints
 
-    def _determine_small_job_max_executors(
+    def _determine_small_job_options(
         self,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
         logger_adapter: logging.LoggerAdapter,
-    ) -> Optional[int]:
+    ) -> dict:
         """
-        Return the reduced `max-executors` to use when the job is considered small
-        (few process graph nodes and low pixel volume), or None when the job is not small.
+        Return the job options to use when the job is considered small
+        (few process graph nodes and low pixel volume), or an empty dict when the job is not small.
         """
         config = get_backend_config()
-        if config.small_job_max_executors is None:
-            return None
+        if not config.small_job_options:
+            return {}
         try:
             node_count = count_process_graph_nodes(process_graph)
             if node_count >= config.small_job_max_nodes:
-                return None
+                return {}
 
             # deepcopy because the dry run modifies the process graph in place
             env, source_constraints = self._dry_run_source_constraints(
@@ -2358,22 +2372,21 @@ class GpsBatchJobs(backend.BatchJobs):
             )
             # Pixel volume can only be estimated for load_collection, so don't consider other sources as small.
             if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
-                return None
+                return {}
             pixel_volume = GpsProcessing().calculate_pixel_volume(env, source_constraints)
             if source_constraints and pixel_volume <= 0:
                 # All estimates failed: size is unknown.
-                return None
+                return {}
             if pixel_volume >= config.small_job_max_pixel_volume:
-                return None
+                return {}
 
             logger_adapter.info(
-                f"Small job detected ({node_count=}, {pixel_volume=}):"
-                f" using max-executors={config.small_job_max_executors}"
+                f"Small job detected ({node_count=}, {pixel_volume=}): using {config.small_job_options=}"
             )
-            return config.small_job_max_executors
+            return dict(config.small_job_options)
         except Exception as e:
             logger_adapter.warning(f"Failed to determine whether job is small: {e!r}", exc_info=True)
-            return None
+            return {}
 
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,

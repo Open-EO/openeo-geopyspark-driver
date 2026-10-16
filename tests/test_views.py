@@ -1271,7 +1271,7 @@ class TestBatchJobs:
             ({"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}, {}, "100"),
         ],
     )
-    def test_yarn_mode_start_job_small_job_max_executors(
+    def test_yarn_mode_start_job_small_job_options(
         self,
         api,
         batch_job_output_root,
