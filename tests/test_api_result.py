@@ -788,7 +788,7 @@ def test_reduce_bands_parameterized_math_udp(api100, requests_mock):
                                 },
                                 "multiply1": {
                                     "process_id": "multiply",
-                                    "arguments": {"x": {"from_node": "ae1"}, "y": {"from_parameter": "factor"}},
+                                    "arguments": {"x": {"from_node": "ae1"}, "y": 3},
                                     "result": True,
                                 },
                             }
@@ -799,7 +799,6 @@ def test_reduce_bands_parameterized_math_udp(api100, requests_mock):
             },
             "parameters": [
                 {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
-                {"name": "factor", "schema": {"type": "number"}},
             ],
         },
     )
@@ -817,7 +816,7 @@ def test_reduce_bands_parameterized_math_udp(api100, requests_mock):
         "bandmath": {
             "process_id": "band_math",
             "namespace": rpd_url,
-            "arguments": {"data": {"from_node": "lc"}, "factor": 3},
+            "arguments": {"data": {"from_node": "lc"}},
         },
         "save": {
             "process_id": "save_result",
