@@ -12,7 +12,6 @@ from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from openeo_driver.datacube import DriverVectorCube
-from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonResultCSV
 from pyspark import SparkContext
 from shapely.geometry import (
@@ -220,7 +219,6 @@ def get_near_and_far_polygon_geometry_collection():
 
 @pytest.mark.parametrize(["get_regions"], [
     [get_near_and_far_polygon_geometry_collection],
-    [lambda: DelayedVector(str(get_test_data_file("geometries/near_and_far_polygon.geojson")))],
     [lambda: DriverVectorCube.from_fiona([str(get_test_data_file("geometries/near_and_far_polygon.geojson"))], None, {})],
 ])
 def test_aggregate_spatial_last_polygon_empty(get_regions, imagecollection_with_two_bands_and_one_date):
@@ -353,8 +351,17 @@ def test_zonal_statistics_datacube(use_file, imagecollection_with_two_bands_and_
 
     if use_file:
         with NamedTemporaryFile(delete=False,suffix='.json',mode='r+') as fp:
-            json.dump(mapping(regions),fp)
-            regions_serialized = fp.name
+            # Write as FeatureCollection: a GeometryCollection would be loaded as a single vector cube feature.
+            json.dump(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {"type": "Feature", "properties": {}, "geometry": mapping(g)} for g in regions.geoms
+                    ],
+                },
+                fp,
+            )
+        regions_serialized = DriverVectorCube.from_fiona([fp.name])
     else:
         regions_serialized = regions
 
@@ -523,7 +530,7 @@ def test_zonal_statistics_geometry_collection(func, expected):
 def test_zonal_statistics_shapefile(func, expected):
     cube = _build_cube()
     shapefile = str(get_test_data_file("geometries/polygons01.shp"))
-    result = cube.zonal_statistics(regions=shapefile, func=func)
+    result = cube.zonal_statistics(regions=DriverVectorCube.from_fiona([shapefile]), func=func)
     assert isinstance(result, AggregatePolygonResult)
     assert result.get_data() == expected
 
@@ -537,6 +544,6 @@ def test_zonal_statistics_shapefile(func, expected):
 def test_zonal_statistics_geojson(func, expected):
     cube = _build_cube()
     shapefile = str(get_test_data_file("geometries/polygons01.geojson"))
-    result = cube.zonal_statistics(regions=shapefile, func=func)
+    result = cube.zonal_statistics(regions=DriverVectorCube.from_fiona([shapefile]), func=func)
     assert isinstance(result, AggregatePolygonResult)
     assert result.get_data() == expected
