@@ -105,15 +105,6 @@ def callsite(func):
     return run
 
 
-def _extract_polygons(geometry: BaseGeometry) -> List[Polygon]:
-    """Recursively collect all non-empty Polygons from a (possibly nested) geometry."""
-    if isinstance(geometry, Polygon):
-        return [] if geometry.is_empty else [geometry]
-    if isinstance(geometry, BaseMultipartGeometry):
-        return [p for g in geometry.geoms for p in _extract_polygons(g)]
-    return []
-
-
 class GeopysparkDataCube(DriverDataCube):
 
     metadata: GeopysparkCubeMetadata = None
@@ -152,6 +143,22 @@ class GeopysparkDataCube(DriverDataCube):
             _log.debug("CubeProcessRegistry not available, skipping dynamic method generation: %s", e)
             return
 
+        def _cube_args_to_rdds(value, level):
+            """
+            Replace GeopysparkDataCube arguments with their underlying Scala RDD
+            (at the given pyramid level, or max level when ``level`` is None),
+            since py4j can not convert Python cube objects.
+            """
+            if isinstance(value, GeopysparkDataCube):
+                if level is None:
+                    return value.get_max_level().srdd.rdd()
+                return value.pyramid.levels[level].srdd.rdd()
+            if isinstance(value, dict):
+                return {k: _cube_args_to_rdds(v, level) for k, v in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [_cube_args_to_rdds(v, level) for v in value]
+            return value
+
         added = []
         for proc in processes:
             process_id: str = proc["id"]
@@ -167,11 +174,11 @@ class GeopysparkDataCube(DriverDataCube):
                     reg = jvm_.org.openeo.geotrelliscommon.CubeProcessRegistry
                     if ret == "datacube":
                         return self._apply_to_levels_geotrellis_rdd(
-                            lambda rdd, _level: reg.invoke(rdd, pid, kwargs)
+                            lambda rdd, level: reg.invoke(rdd, pid, _cube_args_to_rdds(kwargs, level))
                         )
                     else:
                         rdd = self.get_max_level().srdd.rdd()
-                        return reg.invoke(rdd, pid, kwargs)
+                        return reg.invoke(rdd, pid, _cube_args_to_rdds(kwargs, None))
 
                 _method.__name__ = pid
                 _method.__qualname__ = f"{cls.__name__}.{pid}"
@@ -1203,12 +1210,8 @@ class GeopysparkDataCube(DriverDataCube):
         clipped_mask = mask.intersection(raster_footprint_in_mask_crs.buffer(footprint_buffer))
         reprojected_polygon = reproject_geometry(clipped_mask, src_crs=mask_crs, dst_crs=layer_crs)
         if not reprojected_polygon.is_valid:
-            reprojected_polygon_made_valid = shapely.validation.make_valid(reprojected_polygon)
-            if not isinstance(reprojected_polygon_made_valid, (Polygon, MultiPolygon)):
-                # make_valid could return a GeometryCollection (e.g. with degenerate LineStrings)
-                reprojected_polygon_made_valid = MultiPolygon(_extract_polygons(reprojected_polygon_made_valid))
-            _log.warning(f"mask_polygon: Had to apply make_valid on reprojected polygon {layer_crs}.")
-            reprojected_polygon = reprojected_polygon_made_valid
+            _log.warning(f"mask_polygon: Will apply make_valid on reprojected polygon {layer_crs}.")
+            reprojected_polygon = shapely.constructive.make_valid(reprojected_polygon, method="structure")
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         rasterizer_options = gps.RasterizerOptions()
@@ -2065,12 +2068,13 @@ class GeopysparkDataCube(DriverDataCube):
 
         :return: STAC items dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md
         """
-        bucket = str(get_backend_config().s3_bucket_name)
+        format_options = format_options or {}
+        bucket = format_options.get("s3_bucket") or str(get_backend_config().s3_bucket_name)
         filename = str(filename)
         directory = str(pathlib.Path(filename).parent)
-        s3_filename = "s3://{b}{f}".format(b=bucket, f=filename)
-        s3_directory = "s3://{b}{d}".format(b=bucket, d=directory)
-        format_options = format_options or {}
+        s3_filename = "s3://{b}/{f}".format(b=bucket, f=filename.lstrip("/"))
+        s3_directory = "s3://{b}/{d}".format(b=bucket, d=directory.lstrip("/"))
+
         format_opts = job_items.SaveResultFormatOptions.parse(
             format, format_options, has_temporal_dimension=self.metadata.has_temporal_dimension()
         )
@@ -2105,7 +2109,8 @@ class GeopysparkDataCube(DriverDataCube):
             crop_extent = None
 
 
-        _log.info(f"save_result format {format} with bounds {crop_bounds} and options {format_options}")
+        loggable_options = {k: v for k, v in format_options.items() if k != "s3_client"}
+        _log.info(f"save_result format {format} with bounds {crop_bounds} and options {loggable_options}")
         if self.metadata.temporal_extent:
             date_from, date_to = self.metadata.temporal_extent
             crop_dates = (pd.Timestamp(date_from), pd.Timestamp(date_to))
@@ -2130,8 +2135,18 @@ class GeopysparkDataCube(DriverDataCube):
         retain_nodata_tiles = format_opts.retain_nodata_tiles
         filepath_per_band = format_opts.filepath_per_band
 
-        save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
-        save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
+        if batch_mode and any(
+            [
+                format_options.get("use_s3proxy"),
+                ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket,
+            ]
+        ):
+            # Write straight to the job bucket via the S3 API (s3proxy) instead of the local/FUSE path.
+            save_filename = s3_filename
+            save_directory = s3_directory
+        else:
+            save_filename = filename
+            save_directory = directory
 
         def to_written_asset(asset_key, asset) -> "job_items.WrittenAsset":
             asset_metadata = asset.metadata()

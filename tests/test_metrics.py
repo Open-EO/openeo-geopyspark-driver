@@ -1,3 +1,5 @@
+from unittest import mock
+
 import dirty_equals
 import pytest
 from openeo.util import ensure_dir
@@ -6,13 +8,16 @@ from openeo_driver.utils import read_json
 from pyspark import SparkContext
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
-from openeogeotrellis.deploy.batch_job import run_job
+from openeogeotrellis.deploy.batch_job import GeoPySparkJobResultsHooks, run_job
+from openeogeotrellis.deploy.batch_job_metadata import get_execution_metadata
 from openeogeotrellis.utils import get_jvm
 
 
 def _reset_execution_metrics():
     execution_metrics = getattr(get_jvm().org.openeo.geotrelliscommon, "ExecutionMetrics$")
-    getattr(execution_metrics, "MODULE$").store(get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(0, 0, 0.0, 0))
+    getattr(execution_metrics, "MODULE$").store(
+        get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(0, 0, 0.0, 0, 0, 0)
+    )
 
 
 @pytest.fixture
@@ -21,6 +26,55 @@ def clean_execution_metrics():
     _reset_execution_metrics()
     yield
     _reset_execution_metrics()
+
+
+def test_get_execution_metadata(clean_execution_metrics):
+    assert get_execution_metadata(log_level="info") == {}
+
+    execution_metrics = getattr(get_jvm().org.openeo.geotrelliscommon, "ExecutionMetrics$")
+    getattr(execution_metrics, "MODULE$").store(
+        get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(1234, 2345, 0.5, 2, 3, 4096)
+    )
+
+    expected = {
+        "cpu_utilization_ratio": {"value": 0.5, "unit": "fraction"},
+        "total_stage_failures": {"value": 2, "unit": "count"},
+    }
+    assert get_execution_metadata(log_level="info") == expected
+    assert get_execution_metadata(log_level="DEBUG") == {
+        **expected,
+        "total_task_failures": {"value": 3, "unit": "count"},
+        "peak_execution_memory": {"value": 4096, "unit": "bytes"},
+    }
+
+
+@pytest.mark.parametrize(
+    ["log_level", "debug_metrics"],
+    [
+        ("info", {}),
+        ("debug", {
+            "total_task_failures": {"value": 3, "unit": "count"},
+            "peak_execution_memory": {"value": 4096, "unit": "bytes"},
+        }),
+    ],
+)
+def test_usage_metadata_merges_execution_metrics(clean_execution_metrics, log_level, debug_metrics):
+    execution_metrics = getattr(get_jvm().org.openeo.geotrelliscommon, "ExecutionMetrics$")
+    getattr(execution_metrics, "MODULE$").store(
+        get_jvm().org.openeo.geotrelliscommon.ExecutionMetrics(1234, 2345, 0.5, 2, 3, 4096)
+    )
+    with mock.patch(
+        "openeogeotrellis.deploy.batch_job.batch_job_metadata.get_tracker_metadata",
+        return_value={"usage": {"input_pixel": {"value": 1, "unit": "mega-pixel"}}},
+    ):
+        hooks = GeoPySparkJobResultsHooks.__new__(GeoPySparkJobResultsHooks)
+        hooks._job_options = mock.Mock(log_level=log_level)
+        assert hooks.usage_metadata()["usage"] == {
+            "input_pixel": {"value": 1, "unit": "mega-pixel"},
+            "cpu_utilization_ratio": {"value": 0.5, "unit": "fraction"},
+            "total_stage_failures": {"value": 2, "unit": "count"},
+            **debug_metrics,
+        }
 
 
 def test_execution_metrics(tmp_path, clean_execution_metrics):
@@ -65,11 +119,13 @@ def test_execution_metrics(tmp_path, clean_execution_metrics):
     metadata = read_json(metadata_file)
     assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
     assert len(metadata["assets"]) == 1
+    assert "total_stage_runtime" not in metadata["usage"]
+    assert "total_executor_allocation_time" not in metadata["usage"]
     assert metadata["usage"] == DictSubSet(
         {
-            "total_stage_runtime": {"value": dirty_equals.IsPositiveInt, "unit": "milliseconds"},
-            "total_executor_allocation_time": {"value": dirty_equals.IsInt(ge=0), "unit": "milliseconds"},
             "cpu_utilization_ratio": {"value": dirty_equals.IsFloat(ge=0), "unit": "fraction"},
             "total_stage_failures": {"value": 0, "unit": "count"},
         }
     )
+    assert "total_task_failures" not in metadata["usage"]
+    assert "peak_execution_memory" not in metadata["usage"]

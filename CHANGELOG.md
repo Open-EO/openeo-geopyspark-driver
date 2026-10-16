@@ -15,9 +15,15 @@ without compromising stable operations.
 ## In progress: 0.74.0
 
 - Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
-- Batch job metadata: report Spark execution metrics (`total_stage_runtime`, `total_executor_allocation_time`, `cpu_utilization_ratio`, `total_stage_failures`)
+- Batch job metadata: report Spark execution metrics (`total_stage_runtime`, `total_executor_allocation_time`, `cpu_utilization_ratio`, `total_stage_failures`, `total_task_failures` and `peak_execution_memory`)
 - Kubernetes batch jobs: also enable OpenTelemetry metrics export on the Spark driver (previously only the executors emitted these metrics), including the `prom-scala` container port used for scraping
 - sar_backscatter: reduce default for max_processing_area_pixels to 1024, avoids to go out of memory and require increasing memory
+- Sentinel-3 OLCI L1B: support angles and meteo bands ([#1848](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1848))
+- `load_result`: use the file-based pyramid factory for loading result GeoTIFFs, retaining temporal filtering
+- `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
+- `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
+- Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
+
 
 ## 0.73.0
 

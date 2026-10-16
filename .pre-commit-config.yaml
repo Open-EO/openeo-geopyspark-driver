@@ -10,6 +10,7 @@ repos:
       - id: check-added-large-files
       - id: check-json
       - id: check-yaml
+        args: [ --allow-multiple-documents ]
       - id: check-toml
   - repo: https://github.com/akaihola/darker
     rev: v2.1.1

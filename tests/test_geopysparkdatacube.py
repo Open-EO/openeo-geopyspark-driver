@@ -176,7 +176,7 @@ class TestGeopysparkDataCube:
         # `java.lang.IllegalArgumentException: Reduction failed, possible invalid input`
         # https://github.com/Open-EO/openeo-geopyspark-driver/issues/1850
         tiles = result.get_max_level().to_numpy_rdd().collect()
-        assert "Had to apply make_valid on reprojected polygon" in caplog.text
+        assert "apply make_valid on reprojected polygon" in caplog.text
         assert len(tiles) > 0
 
         mask_spy.assert_called_once()

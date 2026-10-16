@@ -28,7 +28,6 @@ tests_require = [
     'moto[s3]>=5.0.0',
     'schema',
     'requests-mock>=1.8.0',
-    'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0,<3.0.0",
     "kubernetes",
     "re-assert",
@@ -97,6 +96,7 @@ setup(
         "xarray~=2024.7.0",
         "netcdf4",
         "shapely>=2.0.0",
+        "antimeridian>=0.3.8",
         'epsel~=1.0.0',
         "Bottleneck~=1.4.0",
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29

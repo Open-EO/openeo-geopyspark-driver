@@ -112,7 +112,10 @@ class CalrissianLaunchConfigBuilder:
     def get_calrissian_args(self) -> list[str]:
         return [
             "--pod-env-vars", f"{self._BASE_PATH}/{self._ENVIRONMENT_FILE}",
-            "--pod-labels", f"{self._BASE_PATH}/{self._POD_LABELS_FILE}"
+            "--pod-labels", f"{self._BASE_PATH}/{self._POD_LABELS_FILE}",
+
+            # Fallback Docker image for CWL tools that don't specify their own `DockerRequirement`.
+            f"--default-container={self._config.input_staging_image}",
         ]
 
 
