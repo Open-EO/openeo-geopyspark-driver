@@ -1659,23 +1659,28 @@ def get_elastic_job_registry(
     return job_registry
 
 
-def count_process_graph_nodes(process_graph: dict) -> int:
-    """Count the nodes of a flat process graph, including the nodes of callback sub-graphs (e.g. `apply`)."""
+def iter_process_graph_nodes(process_graph: dict) -> Iterable[dict]:
+    """Iterate over the nodes of a flat process graph, including the nodes of callback sub-graphs (e.g. `apply`)."""
 
-    def count_in_value(value) -> int:
+    def iter_in_value(value) -> Iterable[dict]:
         if isinstance(value, dict):
-            count = 0
             for k, v in value.items():
                 if k == "process_graph" and isinstance(v, dict):
-                    count += count_process_graph_nodes(v)
+                    yield from iter_process_graph_nodes(v)
                 else:
-                    count += count_in_value(v)
-            return count
+                    yield from iter_in_value(v)
         elif isinstance(value, list):
-            return sum(count_in_value(v) for v in value)
-        return 0
+            for v in value:
+                yield from iter_in_value(v)
 
-    return sum(1 + count_in_value(node.get("arguments", {})) for node in process_graph.values())
+    for node in process_graph.values():
+        yield node
+        yield from iter_in_value(node.get("arguments", {}))
+
+
+def count_process_graph_nodes(process_graph: dict) -> int:
+    """Count the nodes of a flat process graph, including the nodes of callback sub-graphs (e.g. `apply`)."""
+    return sum(1 for _ in iter_process_graph_nodes(process_graph))
 
 
 class GpsBatchJobs(backend.BatchJobs):
@@ -2349,7 +2354,8 @@ class GpsBatchJobs(backend.BatchJobs):
     ) -> dict:
         """
         Return the job options to use when the job is considered small
-        (few process graph nodes and low pixel volume), or an empty dict when the job is not small.
+        (few process graph nodes, no UDFs or user-defined processes and low pixel volume),
+        or an empty dict when the job is not small.
         """
         config = get_backend_config()
         if not config.small_job_options:
@@ -2358,6 +2364,16 @@ class GpsBatchJobs(backend.BatchJobs):
             node_count = count_process_graph_nodes(process_graph)
             if node_count >= config.small_job_max_nodes:
                 return {}
+
+            process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+            for node in iter_process_graph_nodes(process_graph):
+                process_id = node.get("process_id")
+                if process_id == "run_udf":
+                    return {}
+                # Same resolution as `apply_process`: anything not found in the backend registry
+                # (e.g. "user" namespace or remote URL namespace) is a user-defined process.
+                if not process_registry.contains(process_id, namespace=node.get("namespace") or "backend"):
+                    return {}
 
             # deepcopy because the dry run modifies the process graph in place
             env, source_constraints = self._dry_run_source_constraints(

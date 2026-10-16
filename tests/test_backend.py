@@ -322,6 +322,47 @@ class TestSmallJobOptions:
         assert count_process_graph_nodes(process_graph) == 10
         assert self._determine(backend_implementation, process_graph) == {}
 
+    def test_run_udf(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        del process_graph["lc"]["result"]
+        process_graph["apply"] = {
+            "process_id": "apply",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {
+                    "process_graph": {
+                        "udf": {
+                            "process_id": "run_udf",
+                            "arguments": {"data": {"from_parameter": "x"}, "udf": "x", "runtime": "Python"},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+            "result": True,
+        }
+        assert self._determine(backend_implementation, process_graph) == {}
+
+    @pytest.mark.parametrize(
+        "namespace",
+        [None, "user", "https://share.test/udp/my_udp.json"],
+    )
+    def test_user_defined_process(self, backend_implementation, namespace):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        del process_graph["lc"]["result"]
+        process_graph["udp"] = {
+            "process_id": "my_udp",
+            "namespace": namespace,
+            "arguments": {"data": {"from_node": "lc"}},
+            "result": True,
+        }
+        assert self._determine(backend_implementation, process_graph) == {}
+
+    def test_backend_namespace(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=1)
+        process_graph["fb0"]["namespace"] = "backend"
+        assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
+
     def test_non_load_collection_source(self, backend_implementation):
         process_graph = {
             "ls": {

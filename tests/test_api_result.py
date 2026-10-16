@@ -626,6 +626,210 @@ def test_apply_square_pixels(api100):
     assert_equal(data, expected)
 
 
+def test_apply_parameterized_math_udp(api100, requests_mock):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/1739
+    """
+    rpd_url = "http://rpd.test/apply_math.json"
+    rdp_pg = {
+        "id": "apply_math",
+        "process_graph": {
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_parameter": "data"},
+                    "process": {
+                        "process_graph": {
+                            "add1": {
+                                "process_id": "add",
+                                "arguments": {
+                                    "x": {"from_parameter": "x"},
+                                    "y": {"from_parameter": "offset"},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+                "result": True,
+            }
+        },
+        "parameters": [
+            {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+            {"name": "offset", "schema": {"type": "number"}},
+        ],
+    }
+    requests_mock.get(rpd_url, json=rdp_pg)
+
+    user_pg = {
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Day"],
+            },
+        },
+        "apply": {
+            "process_id": "apply_math",
+            "namespace": rpd_url,
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "offset": 1000,
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "apply"}, "format": "json"},
+            "result": True,
+        },
+    }
+    response = api100.check_result(user_pg)
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+    expected = [[[[v + 1000] * 4] * 4] for v in [5, 15, 25]]
+    assert data == expected
+
+
+@pytest.mark.parametrize(
+    ["threshold", "expected"],
+    [
+        (10, [False, True, True]),
+        (20, [False, False, True]),
+    ],
+)
+def test_apply_parameterized_comparison_udp(api100, requests_mock, threshold, expected):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/1739
+    """
+    rpd_url = "http://rpd.test/apply_threshold.json"
+    requests_mock.get(
+        rpd_url,
+        json={
+            "id": "apply_threshold",
+            "process_graph": {
+                "apply1": {
+                    "process_id": "apply",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "process": {
+                            "process_graph": {
+                                "gte1": {
+                                    "process_id": "gte",
+                                    "arguments": {
+                                        "x": {"from_parameter": "x"},
+                                        "y": {"from_parameter": "threshold"},
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    "result": True,
+                }
+            },
+            "parameters": [
+                {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+                {"name": "threshold", "schema": {"type": "number"}, "default": 30, "optional": True},
+            ],
+        },
+    )
+
+    user_pg = {
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Day"],
+            },
+        },
+        "apply": {
+            "process_id": "apply_threshold",
+            "namespace": rpd_url,
+            "arguments": {"data": {"from_node": "lc"}, "threshold": threshold},
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "apply"}, "format": "json"},
+            "result": True,
+        },
+    }
+    result = api100.check_result(user_pg).assert_status_code(200).json
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    assert result["data"] == [[[[int(e)] * 4] * 4] for e in expected]
+
+
+def test_reduce_bands_parameterized_math_udp(api100, requests_mock):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/1739
+    """
+    rpd_url = "http://rpd.test/band_math.json"
+    requests_mock.get(
+        rpd_url,
+        json={
+            "id": "band_math",
+            "process_graph": {
+                "reduce1": {
+                    "process_id": "reduce_dimension",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "dimension": "bands",
+                        "reducer": {
+                            "process_graph": {
+                                "ae1": {
+                                    "process_id": "array_element",
+                                    "arguments": {"data": {"from_parameter": "data"}, "index": 0},
+                                },
+                                "multiply1": {
+                                    "process_id": "multiply",
+                                    "arguments": {"x": {"from_node": "ae1"}, "y": {"from_parameter": "factor"}},
+                                    "result": True,
+                                },
+                            }
+                        },
+                    },
+                    "result": True,
+                }
+            },
+            "parameters": [
+                {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+                {"name": "factor", "schema": {"type": "number"}},
+            ],
+        },
+    )
+
+    user_pg = {
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Day"],
+            },
+        },
+        "bandmath": {
+            "process_id": "band_math",
+            "namespace": rpd_url,
+            "arguments": {"data": {"from_node": "lc"}, "factor": 3},
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "bandmath"}, "format": "json"},
+            "result": True,
+        },
+    }
+    result = api100.check_result(user_pg).assert_status_code(200).json
+    assert result["dims"] == ["t", "x", "y"]
+    assert result["data"] == [[[v * 3] * 4] * 4 for v in [5, 15, 25]]
+
+
 @pytest.mark.parametrize(
     "udf_code",
     [
