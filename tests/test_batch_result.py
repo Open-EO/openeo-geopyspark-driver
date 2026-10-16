@@ -4377,6 +4377,54 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
         assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)
 
 
+@pytest.mark.skipif(os.getenv("USER") != "bossie", reason="local test only")
+def test_apply_neighborhood_skips_tiles(define_extra_collection):
+    issue_dir = Path("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/apply_neighborhood skips tiles #805")
+    job_dir = Path("/tmp/test_apply_neighborhood_skips_tiles")
+
+    shutil.rmtree(job_dir, ignore_errors=True)
+    os.mkdir(job_dir)
+
+    item_file = issue_dir / "item.json"  # OG
+    # item_file = issue_dir / "item_modified.json"  # "bands" iso/ "raster/eo:bands" to interpret STAC's "data_type" and "nodata"; asset href adapted so it can be run locally
+
+    with open(item_file) as f:
+        item = json.load(f)
+    item["assets"]["asset"]["href"] = (
+        # work around relative asset path
+        "https://s3.waw3-2.cloudferro.com/swift/v1/leon-p6/natural-forest/"
+        + item["assets"]["asset"]["href"]
+    )
+    assert "raster:bands" in item["assets"]["asset"]
+    assert "bands" not in item["assets"]["asset"]
+
+    item_file_copy = f"/tmp/{item_file.name}"
+    with open(item_file_copy, "w") as f:
+        json.dump(item, f, indent=2)
+
+    with open(issue_dir / "j-26062913345144f69f0920cadaff62c3_process_graph.json") as f:
+        process = json.load(f)
+        process["process_graph"]["loadstac1"]["arguments"]["url"] = item_file_copy
+
+    print(json.dumps(process, indent=2))
+
+    with open("/home/bossie/PycharmProjects/openeo/openeo-layercatalog-cdse/build/layercatalog.json") as f:
+        extra_collections = json.load(f)
+
+    define_extra_collection(next(c for c in extra_collections if c["id"] == "ESA_WORLDCOVER_10M_2020_V1"))
+    define_extra_collection(next(c for c in extra_collections if c["id"] == "CLMS_TCD_PANTROPICAL_10M_YEARLY_V1"))
+
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
 class TestLoadStac:
 
     # Geometry that covers `item-1` and `item-3` of DummyStacApiServer's default `collection-123`
