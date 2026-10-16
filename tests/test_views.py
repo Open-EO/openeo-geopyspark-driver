@@ -1280,6 +1280,7 @@ class TestBatchJobs:
         job_options,
         expected_max_executors,
     ):
+        # Should work on Kubernetes too, but easier to test with YARN
         process_graph = {
             "loadcollection1": {
                 "process_id": "load_collection",

@@ -1370,7 +1370,6 @@ def estimate_load_collection_pixels(
 ) -> Tuple[Optional[float], Optional[dict]]:
     """
     Estimate the number of pixels a load_collection will load.
-    Returns infinity when the layer still exceeds the large layer threshold after considering geometries.
 
     :return: tuple (estimated_pixels, error). Exactly one of them is None.
     """
@@ -1391,8 +1390,6 @@ def estimate_load_collection_pixels(
     )
     if message:
         return None, {"code": "ExtentTooLarge", "message": f"collection_id {collection_id!r}: {message}"}
-    if estimated_pixels > params.threshold_pixels:
-        return math.inf, None
     return estimated_pixels, None
 
 

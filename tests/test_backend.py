@@ -230,27 +230,20 @@ def test_calculate_pixel_volume_two_load_collections(backend_implementation):
     source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
 
-    def volume(source_constraints, threshold):
+    def volume(source_constraints):
         env = EvalEnv(
             values={
                 ENV_SOURCE_CONSTRAINTS: source_constraints,
                 "backend_implementation": backend_implementation,
                 "version": "1.0.0",
-                "large_layer_threshold_in_pixels": threshold,
             }
         )
         return processing.calculate_pixel_volume(env, source_constraints)
 
-    single = volume([(source_id1, constraints)], threshold=1e12)
+    single = volume([(source_id1, constraints)])
     assert 0 < single < math.inf
-
-    # Each load_collection individually stays below the threshold, but together they exceed it.
-    threshold = single * 1.5
-    assert volume([(source_id1, constraints)], threshold) == single
-    assert volume([(source_id2, constraints)], threshold) == single
-    total = volume([(source_id1, constraints), (source_id2, constraints)], threshold)
-    assert total == 2 * single
-    assert total > threshold
+    assert volume([(source_id2, constraints)]) == single
+    assert volume([(source_id1, constraints), (source_id2, constraints)]) == 2 * single
 
 
 def test_count_process_graph_nodes():
