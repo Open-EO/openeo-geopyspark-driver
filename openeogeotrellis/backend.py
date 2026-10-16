@@ -55,13 +55,30 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
-from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
-                                  ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, ProcessUnsupportedException, )
-from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
-                                       get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
-    _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
+from openeo_driver.errors import (
+    InternalException,
+    JobNotFinishedException,
+    OpenEOApiException,
+    ServiceUnsupportedException,
+    ProcessParameterInvalidException,
+    ProcessUnsupportedException,
+)
+from openeo_driver.jobregistry import (
+    DEPENDENCY_STATUS,
+    JOB_STATUS,
+    ElasticJobRegistry,
+    PARTIAL_JOB_STATUS,
+    get_ejr_credentials_from_env,
+)
+from openeo_driver.ProcessGraphDeserializer import (
+    ENV_FINAL_RESULT,
+    ENV_SAVE_RESULT,
+    ConcreteProcessing,
+    _extract_load_parameters,
+    ENV_MAX_BUFFER,
+    ENV_DRY_RUN_TRACER,
+    ENV_SOURCE_CONSTRAINTS,
+)
 from openeo_driver.processgraph import ProcessGraphFlatDict
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -1584,8 +1601,8 @@ class GpsProcessing(ConcreteProcessing):
         Sources that can not be estimated are logged and skipped.
         """
         total_pixels = 0.0
-        env = env.push({ENV_MAX_BUFFER: {}})
         # copy because _extract_load_parameters is stateful
+        env = env.push({ENV_MAX_BUFFER: {}, ENV_SOURCE_CONSTRAINTS: deepcopy(source_constraints)})
         for source_id, _constraints in deepcopy(source_constraints):
             if source_id.process_id != "load_collection":
                 continue
@@ -1644,6 +1661,25 @@ def get_elastic_job_registry(
     if do_health_check:
         job_registry.health_check(log=True)
     return job_registry
+
+
+def count_process_graph_nodes(process_graph: dict) -> int:
+    """Count the nodes of a flat process graph, including the nodes of callback sub-graphs (e.g. `apply`)."""
+
+    def count_in_value(value) -> int:
+        if isinstance(value, dict):
+            count = 0
+            for k, v in value.items():
+                if k == "process_graph" and isinstance(v, dict):
+                    count += count_process_graph_nodes(v)
+                else:
+                    count += count_in_value(v)
+            return count
+        elif isinstance(value, list):
+            return sum(count_in_value(v) for v in value)
+        return 0
+
+    return sum(1 + count_in_value(node.get("arguments", {})) for node in process_graph.values())
 
 
 class GpsBatchJobs(backend.BatchJobs):
@@ -1867,6 +1903,14 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_options["image-name"] = image_name
                 # Writes must happen on options_object since job_options is already parsed
                 options.image_name = image_name
+
+        if "max-executors" not in job_options:
+            small_job_max_executors = self._determine_small_job_max_executors(
+                process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
+            )
+            if small_job_max_executors is not None:
+                job_options["max-executors"] = small_job_max_executors
+                options.max_executors = small_job_max_executors
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -2238,17 +2282,13 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
             return None
 
-    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
+    def _dry_run_source_constraints(
         self,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
-        job_id: str,
-        job_options: dict,
-        sentinel_hub_client_alias: str,
-        get_vault_token: Callable[[str], str],
         logger_adapter: logging.LoggerAdapter,
-    ) -> List[dict]:
+    ) -> Tuple[EvalEnv, List[SourceConstraint]]:
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, convert_node
 
@@ -2288,6 +2328,67 @@ class GpsBatchJobs(backend.BatchJobs):
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
+        return env, source_constraints
+
+    def _determine_small_job_max_executors(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        user_id: str,
+        logger_adapter: logging.LoggerAdapter,
+    ) -> Optional[int]:
+        """
+        Return the reduced `max-executors` to use when the job is considered small
+        (few process graph nodes and low pixel volume), or None when the job is not small.
+        """
+        config = get_backend_config()
+        if config.small_job_max_executors is None:
+            return None
+        try:
+            node_count = count_process_graph_nodes(process_graph)
+            if node_count >= config.small_job_max_nodes:
+                return None
+
+            # deepcopy because the dry run modifies the process graph in place
+            env, source_constraints = self._dry_run_source_constraints(
+                process_graph=deepcopy(process_graph),
+                api_version=api_version,
+                user_id=user_id,
+                logger_adapter=logger_adapter,
+            )
+            # Pixel volume can only be estimated for load_collection, so don't consider other sources as small.
+            if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
+                return None
+            pixel_volume = GpsProcessing().calculate_pixel_volume(env, source_constraints)
+            if source_constraints and pixel_volume <= 0:
+                # All estimates failed: size is unknown.
+                return None
+            if pixel_volume >= config.small_job_max_pixel_volume:
+                return None
+
+            logger_adapter.info(
+                f"Small job detected ({node_count=}, {pixel_volume=}):"
+                f" using max-executors={config.small_job_max_executors}"
+            )
+            return config.small_job_max_executors
+        except Exception as e:
+            logger_adapter.warning(f"Failed to determine whether job is small: {e!r}", exc_info=True)
+            return None
+
+    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        user_id: str,
+        job_id: str,
+        job_options: dict,
+        sentinel_hub_client_alias: str,
+        get_vault_token: Callable[[str], str],
+        logger_adapter: logging.LoggerAdapter,
+    ) -> List[dict]:
+        _, source_constraints = self._dry_run_source_constraints(
+            process_graph=process_graph, api_version=api_version, user_id=user_id, logger_adapter=logger_adapter
+        )
 
         job_dependencies = []
         batch_request_cache = {}

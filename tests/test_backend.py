@@ -30,7 +30,13 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
+from openeogeotrellis.backend import (
+    GeoPySparkBackendImplementation,
+    GpsBatchJobs,
+    GpsProcessing,
+    GpsUdfRuntimes,
+    count_process_graph_nodes,
+)
 from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
@@ -245,6 +251,99 @@ def test_calculate_pixel_volume_two_load_collections(backend_implementation):
     total = volume([(source_id1, constraints), (source_id2, constraints)], threshold)
     assert total == 2 * single
     assert total > threshold
+
+
+def test_count_process_graph_nodes():
+    process_graph = {
+        "lc": {"process_id": "load_collection", "arguments": {"id": "S2"}},
+        "apply": {
+            "process_id": "apply",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {
+                    "process_graph": {
+                        "abs": {"process_id": "absolute", "arguments": {"x": {"from_parameter": "x"}}},
+                        "add": {
+                            "process_id": "add",
+                            "arguments": {"x": {"from_node": "abs"}, "y": 1},
+                            "result": True,
+                        },
+                    }
+                },
+            },
+        },
+        "save": {"process_id": "save_result", "arguments": {"data": {"from_node": "apply"}}, "result": True},
+    }
+    assert count_process_graph_nodes(process_graph) == 5
+
+
+class TestSmallJobMaxExecutors:
+    @staticmethod
+    def _load_collection_graph(spatial_extent: dict, extra_nodes: int = 0) -> dict:
+        process_graph = {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "COPERNICUS_30",
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": ["2020-01-01", "2020-01-02"],
+                },
+            }
+        }
+        previous = "lc"
+        for i in range(extra_nodes):
+            process_graph[f"fb{i}"] = {
+                "process_id": "filter_bands",
+                "arguments": {"data": {"from_node": previous}, "bands": ["DEM"]},
+            }
+            previous = f"fb{i}"
+        process_graph[previous]["result"] = True
+        return process_graph
+
+    SMALL_EXTENT = {"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}
+    LARGE_EXTENT = {"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}
+
+    def _determine(self, backend_implementation, process_graph: dict):
+        return backend_implementation.batch_jobs._determine_small_job_max_executors(
+            process_graph=process_graph,
+            api_version="1.2.0",
+            user_id="john",
+            logger_adapter=logging.LoggerAdapter(logging.getLogger(__name__), extra={}),
+        )
+
+    def test_small_job(self, backend_implementation):
+        assert self._determine(backend_implementation, self._load_collection_graph(self.SMALL_EXTENT)) == 5
+
+    def test_large_pixel_volume(self, backend_implementation):
+        assert self._determine(backend_implementation, self._load_collection_graph(self.LARGE_EXTENT)) is None
+
+    def test_too_many_nodes(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=8)
+        assert count_process_graph_nodes(process_graph) == 9
+        assert self._determine(backend_implementation, process_graph) == 5
+        # Dry run should not modify the original process graph
+        assert count_process_graph_nodes(process_graph) == 9
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=9)
+        assert count_process_graph_nodes(process_graph) == 10
+        assert self._determine(backend_implementation, process_graph) is None
+
+    def test_non_load_collection_source(self, backend_implementation):
+        process_graph = {
+            "ls": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/collections/foo"},
+                "result": True,
+            }
+        }
+        assert self._determine(backend_implementation, process_graph) is None
+
+    def test_disabled(self, backend_implementation):
+        with gps_config_overrides(small_job_max_executors=None):
+            assert self._determine(backend_implementation, self._load_collection_graph(self.SMALL_EXTENT)) is None
+
+    def test_custom_config(self, backend_implementation):
+        with gps_config_overrides(small_job_max_executors=3, small_job_max_pixel_volume=1e12):
+            assert self._determine(backend_implementation, self._load_collection_graph(self.LARGE_EXTENT)) == 3
 
 
 def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
