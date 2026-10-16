@@ -405,7 +405,7 @@ class YARNBatchJobRunner:
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         job_title = job_info.get("title", "")
-        options = JobOptions.from_dict(job_options)
+        options = JobOptions.from_dict(job_options, process_graph=job_process_graph)
 
         ensure_dir(job_work_dir)
         # Ensure others can read/write so that the batch job driver and executors can write to it.
