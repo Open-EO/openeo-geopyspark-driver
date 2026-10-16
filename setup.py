@@ -88,7 +88,7 @@ setup(
         "pyproj; python_version >= '3.12'",
         'protobuf~=3.9.2',
         "kazoo~=2.11.0",
-        "h5py~=3.11.0",
+        "h5py>=3.11.0,<3.16.0",
         'h5netcdf',
         'requests>=2.26.0,<3.0',
         'python_dateutil',
