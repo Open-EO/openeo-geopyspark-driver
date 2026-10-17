@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OPENEO_JARS_VARIANT: "spark4-scala213"
+  PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
+  UV_INDEX_STRATEGY: "unsafe-best-match"
+  UV_EXTRA_INDEX_URL: "https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple"
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies (GDAL, NetCDF, HDF5)
+        run: |
+          sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdal-bin libgdal-dev \
+            libnetcdf-dev netcdf-bin \
+            libhdf5-dev \
+            libkrb5-dev
+          gdal-config --version
+      - name: Symlink libgdal.so.38 -> system libgdal
+        run: |
+          set -e
+          LIBDIR=/usr/lib/x86_64-linux-gnu
+          ACTUAL=$(ls ${LIBDIR}/libgdal.so.[0-9]* | grep -E 'libgdal\.so\.[0-9]+$' | head -n1)
+          echo "System libgdal: ${ACTUAL}"
+          sudo ln -sf "${ACTUAL}" ${LIBDIR}/libgdal.so.38
+          sudo ldconfig
+          ls -l ${LIBDIR}/libgdal.so*
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            **/setup.py
+            **/pyproject.toml
+
+      - name: Create virtualenv
+        run: |
+          # `--seed`: install pip/setuptools in the venv: UDF dependency handling (and its tests) run `python -m pip`
+          uv venv .venv --seed --python "${{ env.pythonLocation }}/bin/python"
+          echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/.venv" >> "$GITHUB_ENV"
+          echo "${GITHUB_WORKSPACE}/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install GDAL Python bindings (matching system libgdal)
+        run: |
+          uv pip install numpy setuptools wheel
+          uv pip install --no-build-isolation "GDAL[numpy]==$(gdal-config --version).*"
+          python -c "from osgeo import gdal, gdal_array; print('GDAL', gdal.__version__)"
+
+      - name: Install project and test dependencies
+        run: |
+          uv pip install  -e ".[dev,spark40x]"
+          python -c "import netCDF4, pyspark"
+
+      - name: Download JARs
+        run: |
+          python scripts/get-jars.py --variant "${OPENEO_JARS_VARIANT}"
+
+      - name: Show environment
+        run: |
+          java -version
+          echo "JAVA_HOME=${JAVA_HOME}"
+          python --version
+          uv pip list
+
+      - name: Run tests
+        run: |
+          python -m pytest -ra --junitxml=pytest-junit.xml
+
+      - name: Publish test report (job summary + annotations)
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: pytest-junit.xml
+          check_name: "Test report (Python ${{ matrix.python-version }})"
+          # Only annotations + job summary: no `checks: write` needed, so it also works for fork PRs
+          annotate_only: true
+          job_summary: true
+          detailed_summary: true
+          include_passed: false
+          require_tests: true
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report-py${{ matrix.python-version }}
+          path: pytest-junit.xml
+          if-no-files-found: ignore
+

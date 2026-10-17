@@ -75,17 +75,21 @@ setup(
         "opentelemetry-api>=1.0.0",
         "prometheus-client>=0.20.0",
         "pyspark>=4.0.0",
-        'geopyspark_openeo==0.4.3.post1',
+        "geopyspark_openeo @ https://github.com/Open-EO/geopyspark/releases/download/build-geotrellis_3.5-1/geopyspark_openeo-0.4.10+openeo-py311-none-any.whl ; python_version == '3.11'",
+        "geopyspark_openeo @ https://github.com/Open-EO/geopyspark/releases/download/build-geotrellis_3.5-1/geopyspark_openeo-0.4.10+openeo-py314-none-any.whl ; python_version == '3.14'",
+        "geopyspark_openeo>=0.4.3.post1; python_version != '3.11' and python_version != '3.14'",
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        "rasterio~=1.3.10",
+        "rasterio~=1.3.10; python_version == '3.11'",
+        "rasterio; python_version >= '3.12'",
         'py4j',
         "numpy>=2.3.3,<2.5",
         "pandas",
-        'pyproj==3.4.1',
+        "pyproj==3.4.1; python_version <= '3.11'",
+        "pyproj; python_version >= '3.12'",
         'protobuf~=3.9.2',
         "kazoo~=2.11.0",
-        "h5py~=3.11.0",
+        "h5py>=3.11.0,<3.16.0",
         'h5netcdf',
         'requests>=2.26.0,<3.0',
         'python_dateutil',
@@ -98,7 +102,8 @@ setup(
         'epsel~=1.0.0',
         "Bottleneck~=1.4.0",
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
-        "jep_openeo_numpy==4.1.2",  # Required because Jep needs to compile against numpy 2.x
+        "jep_openeo_numpy==4.1.2; python_version == '3.11'", # Required because Jep needs to compile against numpy 2.x
+        #"jep; python_version >= '3.12'", # disabled because requires java_home, TODO:build custom wheel
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",

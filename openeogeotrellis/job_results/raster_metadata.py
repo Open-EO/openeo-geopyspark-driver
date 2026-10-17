@@ -126,7 +126,9 @@ def exec_parallel_with_fallback(callback, argument_tuples, *, job_id: Optional[s
         # no need for error-prone multiprocessing here (Typical for NetCDF output)
         results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
     else:
-        pool = multiprocessing.Pool(pool_size)
+        # Explicitly use "fork" (default on Linux before Python 3.14, which switched to "forkserver")
+        # to keep behavior consistent and avoid pickling constraints on the callback.
+        pool = multiprocessing.get_context("fork").Pool(pool_size)
         jobs = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
         pool.close()
         try:
