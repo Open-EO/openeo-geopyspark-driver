@@ -72,7 +72,8 @@ jobs:
 
       - name: Create virtualenv
         run: |
-          uv venv .venv --python "${{ env.pythonLocation }}/bin/python"
+          # `--seed`: install pip/setuptools in the venv: UDF dependency handling (and its tests) run `python -m pip`
+          uv venv .venv --seed --python "${{ env.pythonLocation }}/bin/python"
           echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/.venv" >> "$GITHUB_ENV"
           echo "${GITHUB_WORKSPACE}/.venv/bin" >> "$GITHUB_PATH"
 
