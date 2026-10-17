@@ -2345,6 +2345,46 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
         return env, source_constraints
 
+    def _check_small_job(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        user_id: str,
+        logger_adapter: logging.LoggerAdapter,
+    ) -> bool:
+        """
+        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes and low pixel volume.
+        """
+        config = get_backend_config()
+        if count_process_graph_nodes(process_graph) >= config.small_job_max_nodes:
+            return False
+
+        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+        for node in iter_process_graph_nodes(process_graph):
+            process_id = node.get("process_id")
+            if process_id == "run_udf":
+                return False
+            # Same resolution as `apply_process`: anything not found in the backend registry
+            # (e.g. "user" namespace or remote URL namespace) is a user-defined process.
+            if not process_registry.contains(process_id, namespace=node.get("namespace") or "backend"):
+                return False
+
+        # deepcopy because the dry run modifies the process graph in place
+        env, source_constraints = self._dry_run_source_constraints(
+            process_graph=deepcopy(process_graph),
+            api_version=api_version,
+            user_id=user_id,
+            logger_adapter=logger_adapter,
+        )
+        # Pixel volume can only be estimated for load_collection, so don't consider other sources as small.
+        if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
+            return False
+        pixel_volume = GpsProcessing().calculate_pixel_volume(env, source_constraints)
+        if source_constraints and pixel_volume <= 0:
+            # All estimates failed: size is unknown.
+            return False
+        return pixel_volume < config.small_job_max_pixel_volume
+
     def _determine_small_job_options(
         self,
         process_graph: dict,
@@ -2353,52 +2393,23 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter: logging.LoggerAdapter,
     ) -> dict:
         """
-        Return the job options to use when the job is considered small
-        (few process graph nodes, no UDFs or user-defined processes and low pixel volume),
+        Return the job options to use when the job is considered small (see `_check_small_job`),
         or an empty dict when the job is not small.
         """
         config = get_backend_config()
         if not config.small_job_options:
             return {}
         try:
-            node_count = count_process_graph_nodes(process_graph)
-            if node_count >= config.small_job_max_nodes:
-                return {}
-
-            process_registry = GpsProcessing().get_process_registry(api_version=api_version)
-            for node in iter_process_graph_nodes(process_graph):
-                process_id = node.get("process_id")
-                if process_id == "run_udf":
-                    return {}
-                # Same resolution as `apply_process`: anything not found in the backend registry
-                # (e.g. "user" namespace or remote URL namespace) is a user-defined process.
-                if not process_registry.contains(process_id, namespace=node.get("namespace") or "backend"):
-                    return {}
-
-            # deepcopy because the dry run modifies the process graph in place
-            env, source_constraints = self._dry_run_source_constraints(
-                process_graph=deepcopy(process_graph),
-                api_version=api_version,
-                user_id=user_id,
-                logger_adapter=logger_adapter,
+            is_small = self._check_small_job(
+                process_graph=process_graph, api_version=api_version, user_id=user_id, logger_adapter=logger_adapter
             )
-            # Pixel volume can only be estimated for load_collection, so don't consider other sources as small.
-            if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
-                return {}
-            pixel_volume = GpsProcessing().calculate_pixel_volume(env, source_constraints)
-            if source_constraints and pixel_volume <= 0:
-                # All estimates failed: size is unknown.
-                return {}
-            if pixel_volume >= config.small_job_max_pixel_volume:
-                return {}
-
-            logger_adapter.info(
-                f"Small job detected ({node_count=}, {pixel_volume=}): using {config.small_job_options=}"
-            )
-            return dict(config.small_job_options)
         except Exception as e:
             logger_adapter.warning(f"Failed to determine whether job is small: {e!r}", exc_info=True)
             return {}
+        if not is_small:
+            return {}
+        logger_adapter.info(f"Small job detected: using {config.small_job_options=}")
+        return dict(config.small_job_options)
 
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,

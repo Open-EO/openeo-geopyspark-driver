@@ -296,21 +296,27 @@ class TestSmallJobOptions:
     SMALL_EXTENT = {"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}
     LARGE_EXTENT = {"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}
 
+    _KWARGS = dict(
+        api_version="1.2.0", user_id="john", logger_adapter=logging.LoggerAdapter(logging.getLogger(__name__), extra={})
+    )
+
     def _determine(self, backend_implementation, process_graph: dict):
         return backend_implementation.batch_jobs._determine_small_job_options(
-            process_graph=process_graph,
-            api_version="1.2.0",
-            user_id="john",
-            logger_adapter=logging.LoggerAdapter(logging.getLogger(__name__), extra={}),
+            process_graph=process_graph, **self._KWARGS
         )
 
+    def _check(self, backend_implementation, process_graph: dict) -> bool:
+        return backend_implementation.batch_jobs._check_small_job(process_graph=process_graph, **self._KWARGS)
+
     def test_small_job(self, backend_implementation):
-        assert self._determine(backend_implementation, self._load_collection_graph(self.SMALL_EXTENT)) == {
-            "max-executors": 5
-        }
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
+        assert self._check(backend_implementation, process_graph) is True
 
     def test_large_pixel_volume(self, backend_implementation):
-        assert self._determine(backend_implementation, self._load_collection_graph(self.LARGE_EXTENT)) == {}
+        process_graph = self._load_collection_graph(self.LARGE_EXTENT)
+        assert self._determine(backend_implementation, process_graph) == {}
+        assert self._check(backend_implementation, process_graph) is False
 
     def test_too_many_nodes(self, backend_implementation):
         process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=8)
