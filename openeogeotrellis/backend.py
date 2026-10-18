@@ -1592,11 +1592,12 @@ class GpsProcessing(ConcreteProcessing):
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
-    def calculate_pixel_volume(self, env: EvalEnv, source_constraints: List[SourceConstraint]) -> float:
+    def calculate_pixel_volume(self, env: EvalEnv, source_constraints: List[SourceConstraint]) -> Optional[float]:
         """
         Estimate the total pixel volume (pixels x temporal observations x bands)
         loaded by all `load_collection` source constraints.
-        Sources that can not be estimated are logged and skipped.
+
+        :return: estimated pixel volume, or None if any `load_collection` could not be estimated.
         """
         total_pixels = 0.0
         # copy because _extract_load_parameters is stateful
@@ -1608,9 +1609,9 @@ class GpsProcessing(ConcreteProcessing):
             load_params = _extract_load_parameters(env, source_id=source_id)
             pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
             if error:
-                logger.warning(f"calculate_pixel_volume: skipping {cid!r}: {error}")
-            else:
-                total_pixels += pixels
+                logger.warning(f"calculate_pixel_volume: failed to estimate {cid!r}: {error}")
+                return None
+            total_pixels += pixels
         return total_pixels
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
@@ -2380,10 +2381,8 @@ class GpsBatchJobs(backend.BatchJobs):
         if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
             return False
         pixel_volume = GpsProcessing().calculate_pixel_volume(env, source_constraints)
-        if source_constraints and pixel_volume <= 0:
-            # All estimates failed: size is unknown.
-            return False
-        return pixel_volume < config.small_job_max_pixel_volume
+        # Unknown size (some estimate failed) could be large, so don't consider it small.
+        return pixel_volume is not None and pixel_volume < config.small_job_max_pixel_volume
 
     def _determine_small_job_options(
         self,

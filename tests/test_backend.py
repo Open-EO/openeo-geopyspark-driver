@@ -245,6 +245,13 @@ def test_calculate_pixel_volume_two_load_collections(backend_implementation):
     assert volume([(source_id2, constraints)]) == single
     assert volume([(source_id1, constraints), (source_id2, constraints)]) == 2 * single
 
+    # Any failed estimate makes the total volume unknown
+    with mock.patch(
+        "openeogeotrellis.backend.estimate_load_collection_pixels",
+        side_effect=[(single, None), (None, {"code": "Failed"})],
+    ):
+        assert volume([(source_id1, constraints), (source_id2, constraints)]) is None
+
 
 def test_count_process_graph_nodes():
     process_graph = {
@@ -368,6 +375,22 @@ class TestSmallJobOptions:
         process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=1)
         process_graph["fb0"]["namespace"] = "backend"
         assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
+
+    def test_partially_unknown_pixel_volume(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        del process_graph["lc"]["result"]
+        process_graph["lc2"] = dict(process_graph["lc"])
+        process_graph["merge"] = {
+            "process_id": "merge_cubes",
+            "arguments": {"cube1": {"from_node": "lc"}, "cube2": {"from_node": "lc2"}},
+            "result": True,
+        }
+        assert self._check(backend_implementation, process_graph) is True
+        with mock.patch(
+            "openeogeotrellis.backend.estimate_load_collection_pixels",
+            side_effect=[(10, None), (None, {"code": "Failed"})],
+        ):
+            assert self._check(backend_implementation, process_graph) is False
 
     def test_non_load_collection_source(self, backend_implementation):
         process_graph = {
