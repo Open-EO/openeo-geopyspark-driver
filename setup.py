@@ -82,7 +82,7 @@ setup(
         'py4j',
         "numpy>=2.3.3,<2.5",
         "pandas",
-        'pyproj==3.4.1',
+        "pyproj~=3.7.2",
         'protobuf~=3.9.2',
         "kazoo~=2.11.0",
         "h5py~=3.11.0",

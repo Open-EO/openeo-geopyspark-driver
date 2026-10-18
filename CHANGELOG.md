@@ -23,6 +23,7 @@ without compromising stable operations.
 - `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
 - `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
 - Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
+- Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
 
 
 ## 0.73.0
