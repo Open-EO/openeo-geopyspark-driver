@@ -1244,7 +1244,7 @@ def potential_sentinelhub(catalog, collection_id) -> bool:
 
 
 class _LoadCollectionPixelParams(NamedTuple):
-    """Inputs needed to estimate the pixel volume of a load_collection."""
+    """Inputs needed to estimate the input pixels of a load_collection."""
 
     load_params: LoadParameters
     metadata: GeopysparkCubeMetadata
@@ -1378,7 +1378,7 @@ def estimate_load_collection_pixels(
     params = _get_load_collection_pixel_params(collection_id, load_params, env)
     if isinstance(params, dict):
         return None, params
-    estimated_pixels, message = estimate_layer_pixels(
+    estimated_pixels, message = estimate_datacube_pixels(
         load_params=params.load_params,
         number_of_temporal_observations=params.number_of_temporal_observations,
         nr_bands=params.nr_bands,
@@ -1451,11 +1451,11 @@ def is_layer_too_large(
     and returns a message if it exceeds the threshold.
 
     :param threshold_pixels: Threshold in pixels.
-    See `estimate_layer_pixels` for the other parameters.
+    See `estimate_datacube_pixels` for the other parameters.
 
     :return: A message if the layer exceeds the threshold in pixels (or the request is invalid). None otherwise.
     """
-    estimated_pixels, message = estimate_layer_pixels(
+    estimated_pixels, message = estimate_datacube_pixels(
         load_params=load_params,
         number_of_temporal_observations=number_of_temporal_observations,
         nr_bands=nr_bands,
@@ -1475,7 +1475,7 @@ def is_layer_too_large(
     return None
 
 
-def estimate_layer_pixels(
+def estimate_datacube_pixels(
     load_params: LoadParameters,
     number_of_temporal_observations: int,
     nr_bands: int,
@@ -1561,7 +1561,7 @@ def estimate_layer_pixels(
 
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * number_of_temporal_observations * nr_bands
     logger.debug(
-        f"estimate_layer_pixels {estimated_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
+        f"estimate_datacube_pixels {estimated_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
     if estimated_pixels > threshold_pixels and geometries and not isinstance(geometries, dict):
         # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
@@ -1584,7 +1584,7 @@ def estimate_layer_pixels(
         surface_area_pixels = geometries_area / (geometry_cell_width * geometry_cell_height)
         geometries_pixels = surface_area_pixels * number_of_temporal_observations * nr_bands
         logger.debug(
-            f"estimate_layer_pixels {geometries_pixels=} ({geometries_area=} {geometry_cell_width=} {geometry_cell_height=} {number_of_temporal_observations=} {nr_bands=})"
+            f"estimate_datacube_pixels {geometries_pixels=} ({geometries_area=} {geometry_cell_width=} {geometry_cell_height=} {number_of_temporal_observations=} {nr_bands=})"
         )
         estimated_pixels = geometries_pixels
     return estimated_pixels, None

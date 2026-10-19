@@ -1592,12 +1592,14 @@ class GpsProcessing(ConcreteProcessing):
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
-    def calculate_pixel_volume(self, env: EvalEnv, source_constraints: List[SourceConstraint]) -> Optional[float]:
+    def calculate_estimated_input_pixel(
+        self, env: EvalEnv, source_constraints: List[SourceConstraint]
+    ) -> Optional[float]:
         """
-        Estimate the total pixel volume (pixels x temporal observations x bands)
+        Estimate the total input pixels (pixels x temporal observations x bands)
         loaded by all `load_collection` source constraints.
 
-        :return: estimated pixel volume, or None if any `load_collection` could not be estimated.
+        :return: estimated input pixels, or None if any `load_collection` could not be estimated.
         """
         total_pixels = 0.0
         # copy because _extract_load_parameters is stateful
@@ -1609,7 +1611,7 @@ class GpsProcessing(ConcreteProcessing):
             load_params = _extract_load_parameters(env, source_id=source_id)
             pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
             if error:
-                logger.warning(f"calculate_pixel_volume: failed to estimate {cid!r}: {error}")
+                logger.warning(f"calculate_estimated_input_pixel: failed to estimate {cid!r}: {error}")
                 return None
             total_pixels += pixels
         return total_pixels
@@ -2354,7 +2356,7 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter: logging.LoggerAdapter,
     ) -> bool:
         """
-        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes and low pixel volume.
+        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes and few estimated input pixels.
         """
         config = get_backend_config()
         if count_process_graph_nodes(process_graph) >= config.small_job_max_nodes:
@@ -2377,12 +2379,12 @@ class GpsBatchJobs(backend.BatchJobs):
             user_id=user_id,
             logger_adapter=logger_adapter,
         )
-        # Pixel volume can only be estimated for load_collection, so don't consider other sources as small.
+        # Input pixels can only be estimated for load_collection, so don't consider other sources as small.
         if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
             return False
-        pixel_volume = GpsProcessing().calculate_pixel_volume(env, source_constraints)
+        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
         # Unknown size (some estimate failed) could be large, so don't consider it small.
-        return pixel_volume is not None and pixel_volume < config.small_job_max_pixel_volume
+        return estimated_input_pixel is not None and estimated_input_pixel < config.small_job_max_estimated_input_pixel
 
     def _determine_small_job_options(
         self,

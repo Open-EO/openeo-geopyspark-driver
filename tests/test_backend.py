@@ -220,7 +220,7 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     assert errors[0]['code'] == "ExtentTooLarge"
 
 
-def test_calculate_pixel_volume_two_load_collections(backend_implementation):
+def test_calculate_estimated_input_pixel_two_load_collections(backend_implementation):
     processing = GpsProcessing()
     constraints = {
         "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -238,7 +238,7 @@ def test_calculate_pixel_volume_two_load_collections(backend_implementation):
                 "version": "1.0.0",
             }
         )
-        return processing.calculate_pixel_volume(env, source_constraints)
+        return processing.calculate_estimated_input_pixel(env, source_constraints)
 
     single = volume([(source_id1, constraints)])
     assert 0 < single < math.inf
@@ -320,7 +320,7 @@ class TestSmallJobOptions:
         assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
         assert self._check(backend_implementation, process_graph) is True
 
-    def test_large_pixel_volume(self, backend_implementation):
+    def test_large_estimated_input_pixel(self, backend_implementation):
         process_graph = self._load_collection_graph(self.LARGE_EXTENT)
         assert self._determine(backend_implementation, process_graph) == {}
         assert self._check(backend_implementation, process_graph) is False
@@ -376,7 +376,7 @@ class TestSmallJobOptions:
         process_graph["fb0"]["namespace"] = "backend"
         assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
 
-    def test_partially_unknown_pixel_volume(self, backend_implementation):
+    def test_partially_unknown_estimated_input_pixel(self, backend_implementation):
         process_graph = self._load_collection_graph(self.SMALL_EXTENT)
         del process_graph["lc"]["result"]
         process_graph["lc2"] = dict(process_graph["lc"])
@@ -408,7 +408,7 @@ class TestSmallJobOptions:
 
     def test_custom_config(self, backend_implementation):
         with gps_config_overrides(
-            small_job_options={"max-executors": 3, "executor-memory": "1G"}, small_job_max_pixel_volume=1e12
+            small_job_options={"max-executors": 3, "executor-memory": "1G"}, small_job_max_estimated_input_pixel=1e12
         ):
             assert self._determine(backend_implementation, self._load_collection_graph(self.LARGE_EXTENT)) == {
                 "max-executors": 3,
