@@ -106,7 +106,7 @@ jobs:
           # xdist crash isolation: if a worker JVM segfaults, xdist reports that test as failed
           # and starts a replacement worker (with a fresh JVM) for the remaining tests.
           # `--dist loadfile`: keep tests of a file on one worker (shared Spark/JVM fixtures).
-          python -m pytest -ra -n 2 --dist loadfile --max-worker-restart=20 --junitxml=pytest-junit.xml
+          python -m pytest -ra -n 1 --dist loadfile --max-worker-restart=50 --junitxml=pytest-junit.xml
 
       - name: Publish test report (job summary + annotations)
         if: always()
