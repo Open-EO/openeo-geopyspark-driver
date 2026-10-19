@@ -243,7 +243,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # Empty dict disables (default). E.g. `{"max-executors": 5}`.
     # On Kubernetes, keep max-executors >= minExecutors (2) of the SparkApplication.
     small_job_options: dict = attrs.Factory(dict)
-    small_job_max_nodes: int = 10
+    small_job_max_nodes: int = 5
     small_job_max_estimated_input_pixel: float = 1_000_000
 
     default_driver_memory: str = "8G"
