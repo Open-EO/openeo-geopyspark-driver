@@ -101,6 +101,33 @@ jobs:
           python --version
           uv pip list
 
+      - name: Smoke test jep
+        run: |
+          # Jep only works embedded in a JVM, so test it through a small Java program.
+          SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+          LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+          LDLIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LDLIBRARY'))")
+          JAR=$(ls "$SITE"/jep/jep-*.jar | head -n1)
+          echo "jep jar: $JAR; libpython: $LIBDIR/$LDLIB"
+          cat > "$RUNNER_TEMP/JepSmokeTest.java" <<'EOF'
+          import jep.Interpreter;
+          import jep.SharedInterpreter;
+
+          public class JepSmokeTest {
+              public static void main(String[] args) throws Exception {
+                  try (Interpreter interp = new SharedInterpreter()) {
+                      interp.exec("import sys, numpy");
+                      interp.exec("print(sys.version)");
+                      interp.exec("print('numpy', numpy.__version__)");
+                      interp.exec("assert int(numpy.__version__.split('.')[0]) >= 2");
+                      interp.exec("print('sum', int(numpy.arange(10).sum()))");
+                  }
+              }
+          }
+          EOF
+          PYTHONPATH="$SITE" LD_LIBRARY_PATH="$LIBDIR" LD_PRELOAD="$LIBDIR/$LDLIB" \
+            java -Djava.library.path="$SITE/jep" -cp "$JAR" "$RUNNER_TEMP/JepSmokeTest.java"
+
       - name: Run tests
         run: |
           # xdist crash isolation: if a worker JVM segfaults, xdist reports that test as failed
