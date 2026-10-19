@@ -42,6 +42,37 @@ class CollectUniqueProcessIdsVisitor(ProcessGraphVisitor):
             self.accept_process_graph(value["process_graph"])
 
 
+class CollectNodesVisitor(ProcessGraphVisitor):
+    """
+    Collect the unique nodes of a flat process graph that are reachable from the result node,
+    including the nodes of callback sub-graphs (e.g. `apply`).
+
+    Note: `accept_process_graph` modifies the process graph in place (dereferencing of "from_node" references).
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Keyed on object identity: a node referenced multiple times is visited multiple times.
+        self._nodes: Dict[int, dict] = {}
+
+    @property
+    def nodes(self) -> List[dict]:
+        return list(self._nodes.values())
+
+    def accept_node(self, node: dict):
+        self._nodes.setdefault(id(node), node)
+        super().accept_node(node)
+
+    def _accept_dict(self, value: dict):
+        if "process_graph" in value:
+            self.accept_process_graph(value["process_graph"])
+        else:
+            # Callbacks can be nested deeper, e.g. `load_collection` properties.
+            for v in value.values():
+                if isinstance(v, dict):
+                    self._accept_dict(v)
+
+
 def _bbox_to_geojson(bbox: Union[Tuple, List]) -> dict:
     """Convert a lon-lat bounding box (xmin, ymin, xmax, ymax) to a GeoJSON (Polygon) dict."""
     xmin, ymin, xmax, ymax = bbox

@@ -6,6 +6,7 @@ import math
 
 import os
 import re
+from copy import deepcopy
 from typing import Union
 from unittest.mock import MagicMock
 
@@ -35,8 +36,8 @@ from openeogeotrellis.backend import (
     GpsBatchJobs,
     GpsProcessing,
     GpsUdfRuntimes,
-    count_process_graph_nodes,
 )
+from openeogeotrellis.job_results.result_metadata import CollectNodesVisitor
 from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
@@ -253,30 +254,6 @@ def test_calculate_estimated_input_pixel_two_load_collections(backend_implementa
         assert volume([(source_id1, constraints), (source_id2, constraints)]) is None
 
 
-def test_count_process_graph_nodes():
-    process_graph = {
-        "lc": {"process_id": "load_collection", "arguments": {"id": "S2"}},
-        "apply": {
-            "process_id": "apply",
-            "arguments": {
-                "data": {"from_node": "lc"},
-                "process": {
-                    "process_graph": {
-                        "abs": {"process_id": "absolute", "arguments": {"x": {"from_parameter": "x"}}},
-                        "add": {
-                            "process_id": "add",
-                            "arguments": {"x": {"from_node": "abs"}, "y": 1},
-                            "result": True,
-                        },
-                    }
-                },
-            },
-        },
-        "save": {"process_id": "save_result", "arguments": {"data": {"from_node": "apply"}}, "result": True},
-    }
-    assert count_process_graph_nodes(process_graph) == 5
-
-
 class TestSmallJobOptions:
     @staticmethod
     def _load_collection_graph(spatial_extent: dict, extra_nodes: int = 0) -> dict:
@@ -327,12 +304,12 @@ class TestSmallJobOptions:
 
     def test_too_many_nodes(self, backend_implementation):
         process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=8)
-        assert count_process_graph_nodes(process_graph) == 9
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == 9
         assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
         # Dry run should not modify the original process graph
-        assert count_process_graph_nodes(process_graph) == 9
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == 9
         process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=9)
-        assert count_process_graph_nodes(process_graph) == 10
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == 10
         assert self._determine(backend_implementation, process_graph) == {}
 
     def test_run_udf(self, backend_implementation):

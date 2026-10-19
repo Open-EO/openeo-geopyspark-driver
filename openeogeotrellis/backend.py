@@ -86,7 +86,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
-from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results.result_metadata import CollectNodesVisitor, CollectUniqueProcessIdsVisitor
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -1662,30 +1662,6 @@ def get_elastic_job_registry(
     return job_registry
 
 
-def iter_process_graph_nodes(process_graph: dict) -> Iterable[dict]:
-    """Iterate over the nodes of a flat process graph, including the nodes of callback sub-graphs (e.g. `apply`)."""
-
-    def iter_in_value(value) -> Iterable[dict]:
-        if isinstance(value, dict):
-            for k, v in value.items():
-                if k == "process_graph" and isinstance(v, dict):
-                    yield from iter_process_graph_nodes(v)
-                else:
-                    yield from iter_in_value(v)
-        elif isinstance(value, list):
-            for v in value:
-                yield from iter_in_value(v)
-
-    for node in process_graph.values():
-        yield node
-        yield from iter_in_value(node.get("arguments", {}))
-
-
-def count_process_graph_nodes(process_graph: dict) -> int:
-    """Count the nodes of a flat process graph, including the nodes of callback sub-graphs (e.g. `apply`)."""
-    return sum(1 for _ in iter_process_graph_nodes(process_graph))
-
-
 class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
@@ -2359,11 +2335,13 @@ class GpsBatchJobs(backend.BatchJobs):
         Check whether a job is small: few process graph nodes, no UDFs or user-defined processes and few estimated input pixels.
         """
         config = get_backend_config()
-        if count_process_graph_nodes(process_graph) >= config.small_job_max_nodes:
+        # deepcopy because the visitor modifies the process graph in place
+        nodes = CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes
+        if len(nodes) >= config.small_job_max_nodes:
             return False
 
         process_registry = GpsProcessing().get_process_registry(api_version=api_version)
-        for node in iter_process_graph_nodes(process_graph):
+        for node in nodes:
             process_id = node.get("process_id")
             if process_id == "run_udf":
                 return False
