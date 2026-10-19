@@ -280,17 +280,55 @@ class TestSmallJobOptions:
     SMALL_EXTENT = {"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}
     LARGE_EXTENT = {"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}
 
-    _KWARGS = dict(
-        api_version="1.2.0", user_id="john", logger_adapter=logging.LoggerAdapter(logging.getLogger(__name__), extra={})
-    )
+    _API_VERSION = "1.2.0"
+    _LOGGER_ADAPTER = logging.LoggerAdapter(logging.getLogger(__name__), extra={})
+
+    def _dry_run(self, backend_implementation, process_graph: dict):
+        return backend_implementation.batch_jobs._lazy_dry_run(
+            process_graph=process_graph,
+            api_version=self._API_VERSION,
+            user_id="john",
+            logger_adapter=self._LOGGER_ADAPTER,
+        )
 
     def _determine(self, backend_implementation, process_graph: dict):
         return backend_implementation.batch_jobs._determine_small_job_options(
-            process_graph=process_graph, **self._KWARGS
+            process_graph=process_graph,
+            api_version=self._API_VERSION,
+            dry_run=self._dry_run(backend_implementation, process_graph),
+            logger_adapter=self._LOGGER_ADAPTER,
         )
 
     def _check(self, backend_implementation, process_graph: dict) -> bool:
-        return backend_implementation.batch_jobs._check_small_job(process_graph=process_graph, **self._KWARGS)
+        return backend_implementation.batch_jobs._check_small_job(
+            process_graph=process_graph,
+            api_version=self._API_VERSION,
+            dry_run=self._dry_run(backend_implementation, process_graph),
+        )
+
+    def test_lazy_dry_run(self, backend_implementation):
+        batch_jobs = backend_implementation.batch_jobs
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        with mock.patch.object(
+            batch_jobs, "_dry_run_source_constraints", wraps=batch_jobs._dry_run_source_constraints
+        ) as dry_run_source_constraints:
+            dry_run = self._dry_run(backend_implementation, process_graph)
+            assert dry_run_source_constraints.call_count == 0
+            env, source_constraints = dry_run()
+            assert [source_id.process_id for source_id, _ in source_constraints] == ["load_collection"]
+            assert dry_run() == (env, source_constraints)
+            assert dry_run_source_constraints.call_count == 1
+
+    def test_no_dry_run_when_too_many_nodes(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=9)
+        dry_run = mock.Mock()
+        assert (
+            backend_implementation.batch_jobs._check_small_job(
+                process_graph=process_graph, api_version=self._API_VERSION, dry_run=dry_run
+            )
+            is False
+        )
+        dry_run.assert_not_called()
 
     def test_small_job(self, backend_implementation):
         process_graph = self._load_collection_graph(self.SMALL_EXTENT)

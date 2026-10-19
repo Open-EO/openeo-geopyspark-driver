@@ -17,7 +17,7 @@ import zipfile
 import importlib.metadata
 from copy import deepcopy
 from decimal import Decimal
-from functools import lru_cache, partial, reduce
+from functools import cache, lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set, Any
@@ -1858,10 +1858,14 @@ class GpsBatchJobs(backend.BatchJobs):
         job_options = job_info.get("job_options") or {}  # can be None
         isKube = ConfigParams().is_kube_deploy
         options_class = K8SOptions if isKube else JobOptions
+        # Shared by small job detection and dependency scheduling
+        dry_run = self._lazy_dry_run(
+            process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
+        )
 
         if any(k not in job_options for k in options_class.performance_options()):
             small_job_options = self._determine_small_job_options(
-                process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
+                process_graph=job_process_graph, api_version=api_version, dry_run=dry_run, logger_adapter=log
             )
             # Explicitly set job options (e.g. by the user or through `default_job_options`) take precedence.
             job_options = {**small_job_options, **job_options}
@@ -1900,8 +1904,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                process_graph=job_process_graph,
-                api_version=api_version,
+                dry_run=dry_run,
                 user_id=user_id,
                 job_id=job_id,
                 job_options=job_options,
@@ -2309,12 +2312,34 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
         return env, source_constraints
 
-    def _check_small_job(
+    def _lazy_dry_run(
         self,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
         logger_adapter: logging.LoggerAdapter,
+    ) -> Callable[[], Tuple[EvalEnv, List[SourceConstraint]]]:
+        """
+        Build a function that dry runs the process graph on first call and returns the cached result afterwards.
+        """
+
+        @cache
+        def dry_run() -> Tuple[EvalEnv, List[SourceConstraint]]:
+            # deepcopy because the dry run modifies the process graph in place
+            return self._dry_run_source_constraints(
+                process_graph=deepcopy(process_graph),
+                api_version=api_version,
+                user_id=user_id,
+                logger_adapter=logger_adapter,
+            )
+
+        return dry_run
+
+    def _check_small_job(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
     ) -> bool:
         """
         Check whether a job is small: few process graph nodes, no UDFs or user-defined processes and few estimated input pixels.
@@ -2335,13 +2360,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if not process_registry.contains(process_id, namespace=node.get("namespace") or "backend"):
                 return False
 
-        # deepcopy because the dry run modifies the process graph in place
-        env, source_constraints = self._dry_run_source_constraints(
-            process_graph=deepcopy(process_graph),
-            api_version=api_version,
-            user_id=user_id,
-            logger_adapter=logger_adapter,
-        )
+        env, source_constraints = dry_run()
         # Input pixels can only be estimated for load_collection, so don't consider other sources as small.
         if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
             return False
@@ -2353,7 +2372,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self,
         process_graph: dict,
         api_version: Union[str, None],
-        user_id: str,
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
         logger_adapter: logging.LoggerAdapter,
     ) -> dict:
         """
@@ -2364,9 +2383,7 @@ class GpsBatchJobs(backend.BatchJobs):
         if not config.small_job_options:
             return {}
         try:
-            is_small = self._check_small_job(
-                process_graph=process_graph, api_version=api_version, user_id=user_id, logger_adapter=logger_adapter
-            )
+            is_small = self._check_small_job(process_graph=process_graph, api_version=api_version, dry_run=dry_run)
         except Exception as e:
             logger_adapter.warning(f"Failed to determine whether job is small: {e!r}", exc_info=True)
             return {}
@@ -2377,8 +2394,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
-        process_graph: dict,
-        api_version: Union[str, None],
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
         user_id: str,
         job_id: str,
         job_options: dict,
@@ -2386,9 +2402,7 @@ class GpsBatchJobs(backend.BatchJobs):
         get_vault_token: Callable[[str], str],
         logger_adapter: logging.LoggerAdapter,
     ) -> List[dict]:
-        _, source_constraints = self._dry_run_source_constraints(
-            process_graph=process_graph, api_version=api_version, user_id=user_id, logger_adapter=logger_adapter
-        )
+        _, source_constraints = dry_run()
 
         job_dependencies = []
         batch_request_cache = {}
