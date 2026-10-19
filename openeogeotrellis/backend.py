@@ -179,6 +179,7 @@ from openeogeotrellis.utils import (
     S3ClientBuilder,
     single_value,
     to_projected_polygons,
+    typechecked,
     zk_client,
 )
 from openeogeotrellis.vault import Vault
@@ -1592,6 +1593,7 @@ class GpsProcessing(ConcreteProcessing):
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
+    @typechecked
     def calculate_estimated_input_pixel(
         self, env: EvalEnv, source_constraints: List[SourceConstraint]
     ) -> Optional[float]:
@@ -2312,6 +2314,7 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
         return env, source_constraints
 
+    @typechecked
     def _lazy_dry_run(
         self,
         process_graph: dict,
@@ -2335,6 +2338,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return dry_run
 
+    @typechecked
     def _check_small_job(
         self,
         process_graph: dict,
@@ -2368,6 +2372,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # Unknown size (some estimate failed) could be large, so don't consider it small.
         return estimated_input_pixel is not None and estimated_input_pixel < config.small_job_max_estimated_input_pixel
 
+    @typechecked
     def _determine_small_job_options(
         self,
         process_graph: dict,
@@ -2392,6 +2397,7 @@ class GpsBatchJobs(backend.BatchJobs):
         logger_adapter.info(f"Small job detected: using {config.small_job_options=}")
         return dict(config.small_job_options)
 
+    @typechecked
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
         dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],

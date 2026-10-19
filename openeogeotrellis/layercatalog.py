@@ -54,6 +54,7 @@ from openeogeotrellis.utils import (
     parse_approximate_isoduration,
     reproject_cellsize,
     get_extent_warning_message,
+    typechecked,
 )
 from openeogeotrellis.vault import Vault
 
@@ -1257,6 +1258,7 @@ class _LoadCollectionPixelParams(NamedTuple):
     sync_job: bool
 
 
+@typechecked
 def _get_load_collection_pixel_params(
     collection_id: str, load_params: LoadParameters, env: EvalEnv
 ) -> Union[_LoadCollectionPixelParams, dict]:

@@ -100,7 +100,7 @@ class JobOptions:
             "description": "The maximum number of workers assigned to the job. The maximum number of parallel tasks is max-executors*executor-cores/task-cpus. "
             "Increasing this can inflate costs, while not necessarily improving performance! "
             "Decreasing this can increase cost efficiency but will make your job slower. "
-            "When not specified, small jobs might get a smaller value assigned.",
+            "When not specified, the backend may determine the most appropriate value automatically.",
         },
     )
     executor_threads_jvm: int = field(
