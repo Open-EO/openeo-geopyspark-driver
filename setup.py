@@ -77,7 +77,7 @@ setup(
         "pyspark>=4.0.0",
         "geopyspark_openeo @ https://github.com/Open-EO/geopyspark/releases/download/build-geotrellis_3.5-1/geopyspark_openeo-0.4.10+openeo-py311-none-any.whl ; python_version == '3.11'",
         "geopyspark_openeo @ https://github.com/Open-EO/geopyspark/releases/download/build-geotrellis_3.5-1/geopyspark_openeo-0.4.10+openeo-py314-none-any.whl ; python_version == '3.14'",
-        "geopyspark_openeo>=0.4.3.post1; python_version != '3.11' and python_version != '3.14'",
+        "geopyspark_openeo>=0.4.10; python_version != '3.11' and python_version != '3.14'",
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
         "rasterio~=1.3.10; python_version == '3.11'",

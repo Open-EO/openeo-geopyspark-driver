@@ -1,5 +1,5 @@
 # The base image is buiild from vito CI/CD pipeline:
-FROM vito-docker.artifactory.vgt.vito.be/openeo-base:latest
+FROM openeo-docker-local.repo.vito.be/openeo-base:latest
 # docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile
 
 USER root
