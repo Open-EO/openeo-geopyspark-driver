@@ -245,6 +245,13 @@ def test_reprojection():
     assert reprojected.ymax == 5677503.191395153
 
 
+def test_reprojection_identity_with_integer_coordinates_returns_float_extent():
+    reprojected = GeopysparkDataCube._reproject_extent("EPSG:4326", "EPSG:4326", 0, 50, 2, 51)
+
+    coordinates = (reprojected.xmin, reprojected.ymin, reprojected.xmax, reprojected.ymax)
+    assert all(type(coordinate) is float for coordinate in coordinates)
+
+
 def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
     load_params = LoadParameters(
         temporal_extent=('2019-01-01', '2019-01-01'),
