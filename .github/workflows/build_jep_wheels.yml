@@ -44,9 +44,29 @@ jobs:
           ls -l wheelhouse
       - name: Smoke test
         run: |
-          python -m venv /tmp/testenv
-          /tmp/testenv/bin/pip install "numpy>=2.3.3,<2.5" wheelhouse/*.whl
-          /tmp/testenv/bin/python -c "import jep, numpy; print(jep.__file__, numpy.__version__)"
+          # Jep can only be used embedded in Java, so test through a JVM.
+          python -m pip install wheelhouse/*.whl
+          SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+          LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+          LDLIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LDLIBRARY'))")
+          JAR=$(ls "$SITE"/jep/jep-*.jar | head -n1)
+          cat > JepSmokeTest.java <<'EOF'
+          import jep.Interpreter;
+          import jep.SharedInterpreter;
+
+          public class JepSmokeTest {
+              public static void main(String[] args) throws Exception {
+                  try (Interpreter interp = new SharedInterpreter()) {
+                      interp.exec("import sys, numpy");
+                      interp.exec("print(sys.version)");
+                      interp.exec("print('numpy', numpy.__version__)");
+                      interp.exec("assert int(numpy.__version__.split('.')[0]) >= 2");
+                  }
+              }
+          }
+          EOF
+          LD_LIBRARY_PATH="$LIBDIR" LD_PRELOAD="$LIBDIR/$LDLIB" \
+            "$JAVA_HOME/bin/java" -Djava.library.path="$SITE/jep" -cp "$JAR" JepSmokeTest.java
       - uses: actions/upload-artifact@v4
         with:
           name: jep-wheel-py${{ matrix.python-version }}
