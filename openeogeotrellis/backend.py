@@ -1857,21 +1857,9 @@ class GpsBatchJobs(backend.BatchJobs):
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
         isKube = ConfigParams().is_kube_deploy
+        options_class = K8SOptions if isKube else JobOptions
 
-        performance_options = {
-            "driver-memory",
-            "driver-memoryOverhead",
-            "driver-cores",
-            "driver-request-cores",  # k8 only
-            "executor-memory",
-            "executor-memoryOverhead",
-            "executor-cores",
-            "executor-request-cores",  # k8 only
-            "max-executors",
-            "executor-threads-jvm",
-            "task-cpus",
-        }
-        if any(k not in job_options for k in performance_options):
+        if any(k not in job_options for k in options_class.performance_options()):
             small_job_options = self._determine_small_job_options(
                 process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
             )
@@ -1880,10 +1868,7 @@ class GpsBatchJobs(backend.BatchJobs):
             # Some job runners (e.g. YARN) read the job options from job_info again.
             job_info["job_options"] = job_options
 
-        if isKube:
-            options = K8SOptions.from_dict(job_options)
-        else:
-            options = JobOptions.from_dict(job_options)
+        options = options_class.from_dict(job_options)
         options.validate()
 
         # Job-options are validated at this point
