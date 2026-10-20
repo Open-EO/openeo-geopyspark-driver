@@ -122,4 +122,12 @@ config = GpsBackendConfig(
         },
     ],
     small_job_options={"max-executors": 5},
+    small_job_collections=[
+        "SENTINEL2_L2A",
+        "SENTINEL2_L1C",
+        "COPERNICUS_30",
+        "COPERNICUS_90",
+        "ESA_WORLDCOVER_10M_2020_V1",
+        "ESA_WORLDCOVER_10M_2021_V2",
+    ],
 )

@@ -2346,7 +2346,8 @@ class GpsBatchJobs(backend.BatchJobs):
         dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
     ) -> bool:
         """
-        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes and few estimated input pixels.
+        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes,
+        only whitelisted collections and few estimated input pixels.
         """
         config = get_backend_config()
         # deepcopy because the visitor modifies the process graph in place
@@ -2365,8 +2366,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 return False
 
         env, source_constraints = dry_run()
-        # Input pixels can only be estimated for load_collection, so don't consider other sources as small.
-        if any(source_id.process_id != "load_collection" for source_id, _ in source_constraints):
+        # Input pixels can only be estimated for load_collection, and only reliably for some collections.
+        if any(
+            source_id.process_id != "load_collection" or source_id.arguments[0] not in config.small_job_collections
+            for source_id, _ in source_constraints
+        ):
             return False
         estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
         # Unknown size (some estimate failed) could be large, so don't consider it small.

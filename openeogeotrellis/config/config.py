@@ -245,6 +245,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     small_job_options: dict = attrs.Factory(dict)
     small_job_max_nodes: int = 5
     small_job_max_estimated_input_pixel: float = 1_000_000
+    # Only collections that are very relicable can get the small_job_options.
+    # E.g. `["SENTINEL2_L2A", "COPERNICUS_30"]`.
+    small_job_collections: List[str] = attrs.Factory(list)
 
     default_driver_memory: str = "8G"
 
