@@ -129,15 +129,6 @@ class TestCustomFunctions(TestCase):
 
 @pytest.mark.parametrize("udf_code", [
     """
-    from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-    def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-        red = cube.array.sel(bands='red')
-        nir = cube.array.sel(bands='nir')
-        ndvi = (nir - red) / (nir + red)
-        ndvi.name = "NDVI"
-        return DataCube(array=ndvi)
-    """,
-    """
     from openeo.udf import XarrayDataCube
     def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
         red = cube.array.sel(bands='red')
