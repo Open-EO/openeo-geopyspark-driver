@@ -1332,8 +1332,11 @@ def _get_load_collection_pixel_params(
             "Auto42001",
         )
     else:
-        # The largest GSD I encountered was 25km. Double it as very permissive guess:
-        default_gsd = (50000, 50000)
+        max_gsd = metadata.get_max_GSD_in_meters()
+        if max_gsd is None:
+            # The largest GSD I encountered was 25km. Double it as very permissive guess:
+            max_gsd = 50000
+        default_gsd = (max_gsd, max_gsd)
         gsd_object = metadata.get_GSD_in_meters()
         if isinstance(gsd_object, dict):
             gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))

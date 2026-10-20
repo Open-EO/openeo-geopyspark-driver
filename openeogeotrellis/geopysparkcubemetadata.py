@@ -276,6 +276,16 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                     return resolution_meters
         return None
 
+    def get_max_GSD_in_meters(self) -> Optional[float]:
+        gsd = self.get_GSD_in_meters()
+        if isinstance(gsd, dict):
+            return max([max(v) for v in gsd.values()])
+        elif isinstance(gsd, tuple):
+            return max(gsd)
+        else:
+            return gsd
+
+
 class Band(NamedTuple):
     """
     Simple container class for band metadata.
