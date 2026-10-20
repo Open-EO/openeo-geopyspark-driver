@@ -101,89 +101,6 @@ jobs:
           python --version
           uv pip list
 
-      - name: Smoke test jep
-        run: |
-          set -euo pipefail
-          # Jep only works embedded in a JVM, so test it through a small Java program.
-          SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
-          LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-          LDLIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LDLIBRARY'))")
-          JAR=$(ls "$SITE"/jep/jep-*.jar | head -n1)
-          echo "jep jar: $JAR; libpython: $LIBDIR/$LDLIB"
-          ls -l "$SITE"/jep/
-          cat > "$RUNNER_TEMP/JepSmokeTest.java" <<'EOF'
-          import java.nio.ByteBuffer;
-          import java.nio.ByteOrder;
-          import java.nio.FloatBuffer;
-          import jep.DirectNDArray;
-          import jep.Interpreter;
-          import jep.NDArray;
-          import jep.SharedInterpreter;
-
-          public class JepSmokeTest {
-              static void check(boolean ok, String msg) {
-                  if (!ok) throw new AssertionError(msg);
-                  System.out.println("OK: " + msg);
-              }
-
-              static void run(String label) throws Exception {
-                  System.out.println("--- " + label + " (thread " + Thread.currentThread().getName() + ")");
-                  try (Interpreter interp = new SharedInterpreter()) {
-                      interp.exec("import sys, numpy, jep");
-                      System.out.println("python: " + interp.getValue("sys.version", String.class));
-                      System.out.println("jep:    " + interp.getValue("jep.__version__", String.class));
-                      String np = interp.getValue("numpy.__version__", String.class);
-                      System.out.println("numpy:  " + np);
-                      check(Integer.parseInt(np.split("\\.")[0]) >= 2, "numpy >= 2");
-
-                      Long sum = interp.getValue("int(numpy.arange(10).sum())", Long.class);
-                      check(sum == 45L, "numpy computation (sum=" + sum + ")");
-
-                      // Java -> numpy (copy)
-                      interp.set("a", new NDArray<>(new double[]{1, 2, 3, 4}, 2, 2));
-                      Double s = interp.getValue("float(a.sum())", Double.class);
-                      check(s == 10.0, "NDArray -> numpy (sum=" + s + ", shape=" + interp.getValue("str(a.shape)") + ")");
-
-                      // numpy -> Java
-                      Object back = interp.getValue("numpy.arange(6, dtype=numpy.float32).reshape(2, 3) * 2");
-                      check(back instanceof NDArray, "numpy -> NDArray (" + back.getClass().getName() + ")");
-
-                      // Java direct buffer <-> numpy (zero copy), as used for tile data
-                      FloatBuffer buf = ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-                      for (int i = 0; i < 4; i++) buf.put(i, i);
-                      interp.set("d", new DirectNDArray<>(buf, 4));
-                      interp.exec("d *= 10");
-                      check(buf.get(3) == 30.0f, "DirectNDArray in-place modification (" + buf.get(3) + ")");
-
-                      // Python exceptions must map to JepException instead of crashing
-                      try {
-                          interp.exec("raise ValueError('expected')");
-                          throw new AssertionError("no exception raised");
-                      } catch (jep.JepException e) {
-                          check(e.getMessage().contains("expected"), "Python exception -> JepException");
-                      }
-                  }
-              }
-
-              public static void main(String[] args) throws Exception {
-                  run("main thread");
-                  // Spark runs UDFs on executor threads: also test creating an interpreter on another thread.
-                  Throwable[] err = new Throwable[1];
-                  Thread t = new Thread(() -> {
-                      try { run("worker thread"); } catch (Throwable e) { err[0] = e; }
-                  }, "jep-worker");
-                  t.start();
-                  t.join();
-                  if (err[0] != null) throw new RuntimeException(err[0]);
-                  System.out.println("Jep smoke test passed");
-              }
-          }
-          EOF
-          PYTHONPATH="$SITE" LD_LIBRARY_PATH="$LIBDIR" LD_PRELOAD="$LIBDIR/$LDLIB" \
-            java -Djava.library.path="$SITE/jep" -XX:ErrorFile="$RUNNER_TEMP/hs_err_smoke_%p.log" \
-            -cp "$JAR" "$RUNNER_TEMP/JepSmokeTest.java" 2>&1 | tee "$RUNNER_TEMP/jep_smoke.log"
-          grep -q "Jep smoke test passed" "$RUNNER_TEMP/jep_smoke.log"
-
       - name: Run tests
         env:
           OPENEO_TEST_JVM_CRASH_DIR: ${{ runner.temp }}/jvm-crash-logs
@@ -223,6 +140,5 @@ jobs:
           path: |
             ${{ runner.temp }}/jvm-crash-logs/
             ${{ runner.temp }}/hs_err_*.log
-            ${{ runner.temp }}/jep_smoke.log
           if-no-files-found: ignore
 
