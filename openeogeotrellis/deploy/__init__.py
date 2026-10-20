@@ -25,8 +25,9 @@ def load_custom_processes(*, path: Optional[Path] = None, logger=_log, _name="cu
         # Directly load custom processes from OPENEO_CUSTOM_PROCESSES
         logger.debug(f"load_custom_processes: trying exec loading {path!r}")
         try:
-            exec_py_file(path)
+            custom_processes = exec_py_file(path)
             logger.info(f"load_custom_processes: exec loaded {path!r}")
+            return custom_processes
         except Exception as e:
             logger.error(f"load_custom_processes: failed to exec load {path!r}: {e!r}")
     else:
@@ -146,4 +147,6 @@ def build_gps_backend_deploy_metadata(packages: List[str], jar_paths: Iterable[P
     """Build version metadata dict describing python packages and jar files"""
     metadata = build_backend_deploy_metadata(packages=packages)
     metadata["versions"].update(get_jar_versions(paths=jar_paths))
+    if openeo_layer_catalog_version := os.environ.get("OPENEO_LAYER_CATALOG_VERSION"):
+        metadata["versions"]["openeo_layer_catalog_version"] = openeo_layer_catalog_version
     return metadata

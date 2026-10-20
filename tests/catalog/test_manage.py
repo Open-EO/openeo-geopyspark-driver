@@ -1,19 +1,12 @@
-import argparse
 import contextlib
 import json
 import re
-import sys
-from email import message
 from typing import Optional, Iterable
 
 import dirty_equals
 import pytest
 
 from openeogeotrellis.catalog.enrich import LinksList
-
-if sys.version_info < (3, 10):
-    # TODO #1060 clean up once python 3.8/3.9 support can be dropped
-    pytest.skip("openeogeotrellis.catalog.manage requires at least Python 3.10+", allow_module_level=True)
 
 
 from openeo.testing.stac import StacDummyBuilder
@@ -30,6 +23,8 @@ from openeogeotrellis.catalog.manage import (
     MetadataException,
     LayerCatalogManagerCliApp,
     _BuildItem,
+    BandMetadataList,
+    _find_common_prefix,
 )
 
 
@@ -325,16 +320,28 @@ class TestBuildMetadata:
             }
         )
 
+    def test_with_band_metadata_list_object(self):
+        metadata = build_stac_collection_metadata(
+            id="FOOBAR",
+            stac_url="https://stac.test/c/foobar1",
+            bands=BandMetadataList([BandMetadata(name="blue", description="Not red")]),
+        )
+        assert metadata == dirty_equals.IsPartialDict(
+            {
+                "bands": [{"name": "blue", "description": "Not red"}],
+            }
+        )
+
 
 class TestExtractBandMetadata:
     def test_empty(self):
-        assert extract_band_metadata_list({}) == []
+        assert extract_band_metadata_list({}).as_list() == []
 
     def test_toplevel_bands(self):
         metadata = {
             "bands": [{"name": "blue", "description": "Not red"}, {"name": "green", "description": "A frog"}],
         }
-        assert extract_band_metadata_list(metadata) == [
+        assert extract_band_metadata_list(metadata).as_list() == [
             BandMetadata(name="blue", description="Not red"),
             BandMetadata(name="green", description="A frog"),
         ]
@@ -368,7 +375,7 @@ class TestExtractBandMetadata:
                 },
             },
         }
-        assert extract_band_metadata_list(metadata) == [
+        assert extract_band_metadata_list(metadata).as_list() == [
             BandMetadata(
                 name="map",
                 description="MAP",
@@ -435,7 +442,7 @@ class TestExtractBandMetadata:
             },
         }
 
-        assert extract_band_metadata_list(metadata) == [
+        assert extract_band_metadata_list(metadata).as_list() == [
             BandMetadata(
                 name="cp_nrt",
                 description="Probability corresponds",
@@ -557,7 +564,7 @@ class TestExtractBandMetadata:
                 },
             },
         }
-        assert extract_band_metadata_list(metadata) == [
+        assert extract_band_metadata_list(metadata).as_list() == [
             BandMetadata(
                 name="nobs",
                 description="Number of observation",
@@ -607,54 +614,146 @@ class TestExtractBandMetadata:
                 "bands": {"type": "bands", "values": ["FAPAR"]},
             },
         }
-        assert extract_band_metadata_list(metadata) == [BandMetadata(name="FAPAR")]
+        assert extract_band_metadata_list(metadata).as_list() == [BandMetadata(name="FAPAR")]
 
 class TestBandMetadataList:
     def test_apply_raster_scale_and_offset_simple(self):
-        bands = [
-            BandMetadata(name="foo"),
-            BandMetadata(name="bar"),
-        ]
-        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+        bands = BandMetadataList(
+            [
+                BandMetadata(name="foo"),
+                BandMetadata(name="bar"),
+            ]
+        )
+        assert list(bands.apply_raster_scale_and_offset_to_band_metadata()) == [
             BandMetadata(name="foo"),
             BandMetadata(name="bar"),
         ]
 
     def test_apply_raster_scale_and_offset_with_scale(self):
-        bands = [
-            BandMetadata(name="foo", data_type="int8", nodata=-128),
-            BandMetadata(name="bar", data_type="uint16", raster_scale=0.001),
-        ]
-        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+        bands = BandMetadataList(
+            [
+                BandMetadata(name="foo", data_type="int8", nodata=-128),
+                BandMetadata(name="bar", data_type="uint16", raster_scale=0.001),
+            ]
+        )
+        assert list(bands.apply_raster_scale_and_offset_to_band_metadata()) == [
             BandMetadata(name="foo", data_type="float32"),
             BandMetadata(name="bar", data_type="float32"),
         ]
 
     def test_apply_raster_scale_and_offset_with_offset(self):
-        bands = [
-            BandMetadata(name="foo", data_type="int8", nodata=-128),
-            BandMetadata(name="bar", data_type="uint16", raster_offset=-1.5),
-        ]
-        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+        bands = BandMetadataList(
+            [
+                BandMetadata(name="foo", data_type="int8", nodata=-128),
+                BandMetadata(name="bar", data_type="uint16", raster_offset=-1.5),
+            ]
+        )
+        assert list(bands.apply_raster_scale_and_offset_to_band_metadata()) == [
             BandMetadata(name="foo", data_type="float32"),
             BandMetadata(name="bar", data_type="float32"),
         ]
 
     def test_apply_raster_scale_and_offset_with_classification_classes(self):
-        bands = [
-            BandMetadata(
-                name="foo",
-                data_type="int8",
-                raster_scale=0.001,
-                classification_classes=[
-                    {"value": 253, "name": "snow"},
-                    {"value": 254, "name": "water"},
-                ],
-            ),
-        ]
-        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+        bands = BandMetadataList(
+            [
+                BandMetadata(
+                    name="foo",
+                    data_type="int8",
+                    raster_scale=0.001,
+                    classification_classes=[
+                        {"value": 253, "name": "snow"},
+                        {"value": 254, "name": "water"},
+                    ],
+                ),
+            ]
+        )
+        assert list(bands.apply_raster_scale_and_offset_to_band_metadata()) == [
             BandMetadata(name="foo", data_type="float32"),
         ]
+
+    def test_iter(self):
+        bands = BandMetadataList([BandMetadata(name="blue"), BandMetadata(name="green")])
+        assert [isinstance(b, BandMetadata) for b in bands] == [True, True]
+        assert [b.name for b in bands] == ["blue", "green"]
+        assert list(bands) == [
+            BandMetadata(name="blue"),
+            BandMetadata(name="green"),
+        ]
+
+    def test_as_list(self):
+        bands = BandMetadataList([BandMetadata(name="blue"), BandMetadata(name="green")])
+        assert bands.as_list() == [
+            BandMetadata(name="blue"),
+            BandMetadata(name="green"),
+        ]
+
+    def test_add_band_name_aliases_add_prefix(self):
+        bands = BandMetadataList(
+            [
+                BandMetadata(name="blue"),
+                BandMetadata(name="green", aliases=["frog"]),
+            ]
+        )
+        aliased = bands.add_band_name_aliases_add_prefix(prefix="ndvi_")
+
+        assert list(bands) == [
+            BandMetadata(name="blue"),
+            BandMetadata(name="green", aliases=["frog"]),
+        ]
+        assert isinstance(aliased, BandMetadataList)
+        assert list(aliased) == [
+            BandMetadata(name="blue", aliases=["ndvi_blue"]),
+            BandMetadata(name="green", aliases=["frog", "ndvi_green"]),
+        ]
+
+    def test_add_band_name_aliases_drop_prefix(self):
+        bands = BandMetadataList(
+            [
+                BandMetadata(name="dark_blue"),
+                BandMetadata(name="dark_green", aliases=["frog"]),
+                BandMetadata(name="red"),
+            ]
+        )
+        aliased = bands.add_band_name_aliases_drop_prefix(prefix="dark_")
+
+        assert list(bands) == [
+            BandMetadata(name="dark_blue"),
+            BandMetadata(name="dark_green", aliases=["frog"]),
+            BandMetadata(name="red"),
+        ]
+        assert isinstance(aliased, BandMetadataList)
+        assert list(aliased) == [
+            BandMetadata(name="dark_blue", aliases=["blue"]),
+            BandMetadata(name="dark_green", aliases=["frog", "green"]),
+            BandMetadata(name="red"),
+        ]
+
+    def test_add_band_name_aliases_drop_common_prefix(self):
+        bands = BandMetadataList(
+            [
+                BandMetadata(name="dark_blue"),
+                BandMetadata(name="dark_green", aliases=["frog"]),
+            ]
+        )
+        aliased = bands.add_band_name_aliases_drop_common_prefix()
+
+        assert list(bands) == [
+            BandMetadata(name="dark_blue"),
+            BandMetadata(name="dark_green", aliases=["frog"]),
+        ]
+        assert isinstance(aliased, BandMetadataList)
+        assert list(aliased) == [
+            BandMetadata(name="dark_blue", aliases=["blue"]),
+            BandMetadata(name="dark_green", aliases=["frog", "green"]),
+        ]
+
+
+def test_find_common_prefix():
+    assert _find_common_prefix([]) is None
+    assert _find_common_prefix(["foo"]) == "foo"
+    assert _find_common_prefix(["foo", "bar"]) == ""
+    assert _find_common_prefix(["foo", "far", "fizz"]) == "f"
+    assert _find_common_prefix(["ndvi_1", "ndvi_2", "ndvi_3"]) == "ndvi_"
 
 
 @pytest.mark.parametrize(

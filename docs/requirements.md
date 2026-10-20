@@ -1,7 +1,7 @@
 
 # openEO GeoPySpark Driver requirements and dependencies
 
-Python version: at least 3.8
+Python version: at least 3.11
 
 
 

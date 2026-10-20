@@ -10,6 +10,7 @@ from copy import deepcopy, copy
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
 from pathlib import Path
+from urllib.parse import urlparse
 
 import dateutil.parser
 import geopyspark
@@ -36,7 +37,6 @@ from shapely.geometry.base import BaseGeometry
 from openeogeotrellis import sentinel_hub, datacube_parameters
 from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
 from openeogeotrellis._backend import post_dry_run
-from openeogeotrellis.catalogs.creo import CreoCatalogClient
 import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
@@ -53,7 +53,7 @@ from openeogeotrellis.utils import (
     calculate_rough_area,
     parse_approximate_isoduration,
     reproject_cellsize,
-    health_check_extent,
+    get_extent_warning_message,
 )
 from openeogeotrellis.vault import Vault
 
@@ -84,7 +84,6 @@ logger = logging.getLogger(__name__)
 class GeoPySparkLayerCatalog(CollectionCatalog):
     def __init__(self, all_metadata: List[dict], vault: Vault = None):
         super().__init__(all_metadata=all_metadata)
-        self._geotiff_pyramid_factories = {}
         self._default_sentinel_hub_client_id = None
         self._default_sentinel_hub_client_secret = None
         self._vault = vault
@@ -116,7 +115,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
                 else:
                     raise ProcessGraphComplexityException(
-                        "The process graph is computationally too heavy and will likely time out. Disable this check with 'job_options.do_extent_check': "
+                        "Found some issues in the process graph. Disable this check with 'job_options.do_extent_check'. Issues: "
                         + " ".join(issues)
                     )
 
@@ -186,6 +185,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
         bands = load_params.bands
+        collection_band_names = metadata.band_names if metadata.has_band_dimension() else []
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             metadata = metadata.filter_bands(bands)
@@ -423,13 +423,32 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
 
         def geotiff_pyramid():
+            from openeogeotrellis.collections import geotiff_files
+
             glob_pattern = layer_source_info['glob_pattern']
             date_regex = layer_source_info['date_regex']
 
-            new_pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
+            geotiffs = [
+                (path, geotiff_files.derive_date(path, date_regex))
+                for path in geotiff_files.list_disk_geotiffs(glob_pattern)
+            ]
 
-            return self._geotiff_pyramid_factories.setdefault(collection_id, new_pyramid_factory) \
-                .pyramid_seq(extent, srs, from_date, to_date)
+            return geotiff_files.load_geotiffs(
+                jvm,
+                collection_id=collection_id,
+                geotiffs=geotiffs,
+                band_names=collection_band_names,
+                requested_band_names=normalized_band_selection,
+                from_date=from_date,
+                to_date=to_date,
+                single_level=single_level,
+                extent=extent,
+                extent_crs=srs,
+                projected_polygons=projected_polygons_native_crs,
+                datacube_params=datacubeParams,
+                metadata_properties=metadata_properties(),
+                correlation_id=correlation_id,
+            )
 
         def sentinel_hub_pyramid():
             # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
@@ -441,6 +460,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             )
 
             if dependencies:
+                from openeogeotrellis.collections import geotiff_files
+
                 dependency = dependencies.pop(0)
                 source_location = dependency['source_location']
                 card4l = dependency['card4l']
@@ -450,36 +471,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 #  - CARD4L: s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
                 #  - tiles assembled from cache: 31UDS_7_2-20190921.tif
                 date_regex = r".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
-                interpret_as_cell_type = "float32ud0"
-                lat_lon = card4l
 
                 if source_location.startswith("file:"):
-                    assembled_uri = source_location
-                    glob_pattern = f"{assembled_uri}/*.tif"
+                    glob_pattern = f"{source_location}/*.tif"
 
                     logger.info(f"Sentinel Hub pyramid from {glob_pattern}")
 
-                    pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(
-                        glob_pattern,
-                        date_regex,
-                        interpret_as_cell_type,
-                        lat_lon
-                    )
+                    geotiffs = [
+                        (path, geotiff_files.derive_date(path, date_regex))
+                        for path in geotiff_files.list_disk_geotiffs(glob_pattern)
+                    ]
                 else:
-                    s3_uri = source_location
-                    key_regex = r".+\.tif"
-                    recursive = True
+                    logger.info(f"Sentinel Hub pyramid from {source_location}")
 
-                    logger.info(f"Sentinel Hub pyramid from {s3_uri}")
-
-                    pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                        s3_uri,
-                        key_regex,
-                        date_regex,
-                        recursive,
-                        interpret_as_cell_type,
-                        lat_lon
-                    )
+                    geotiffs = [
+                        (uri, geotiff_files.derive_date(urlparse(uri).path.lstrip("/"), date_regex))
+                        for uri in geotiff_files.list_s3_geotiffs(
+                            source_location, key_regex=r".+\.tif", recursive=True, jvm=jvm
+                        )
+                    ]
 
                 if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                     metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
@@ -488,8 +498,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
                                                          wavelength_um=None))
 
-                return (pyramid_factory.datacube_seq(projected_polygons_native_crs, from_date, to_date,metadata_properties(),collection_id,datacubeParams) if single_level
-                        else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date))
+                return geotiff_files.load_geotiffs(
+                    jvm,
+                    collection_id=collection_id,
+                    geotiffs=geotiffs,
+                    band_names=metadata.band_names,
+                    requested_band_names=metadata.band_names,
+                    from_date=from_date,
+                    to_date=to_date,
+                    single_level=single_level,
+                    extent=extent,
+                    extent_crs=srs,
+                    projected_polygons=projected_polygons_native_crs,
+                    datacube_params=datacubeParams,
+                    metadata_properties=metadata_properties(),
+                    correlation_id=correlation_id,
+                    lat_lon=card4l,
+                    data_type="float32",
+                    nodata=0.0,
+                )
             else:
                 shub_band_names = metadata.band_names
 
@@ -603,19 +630,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
                                                      unflattened_metadata_properties, correlation_id))
 
-        def creo_pyramid():
-            mission = layer_source_info['mission']
-            level = layer_source_info['level']
-            catalog = CreoCatalogClient(mission=mission, level=level)
-            product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
-                                                        datetime.strptime(to_date[:10], "%Y-%m-%d"),
-                                                        ulx=west, uly=north,
-                                                        brx=east, bry=south)
-            # TODO: geotrelliss3.CreoPyramidFactory no longer exists.
-            return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
-                .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
-
-
         def globspatialonly_pyramid():
             if len(metadata.band_names) != 1:
                 raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
@@ -689,8 +703,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'sentinel-hub':
             pyramid = sentinel_hub_pyramid()
-        elif layer_source_type == 'creo':
-            pyramid = creo_pyramid()
         elif layer_source_type == "file-cgls2":
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5' or layer_source_type == 'file-glob':
@@ -761,7 +773,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 projected_polygons_native_crs,
                 from_date,
                 to_date,
-                bands,
+                normalized_band_selection,
                 datacubeParams,
                 native_cell_size,
                 {**feature_flags, "load_stac_feature_flags": load_stac_feature_flags},
@@ -1395,8 +1407,8 @@ def is_layer_too_large(
             srs = 'Auto42001'
 
     spatial_extent["crs"] = srs
-    if not health_check_extent(spatial_extent):
-        return f"Unsupported spatial extent: {spatial_extent}"
+    if message := get_extent_warning_message(spatial_extent):
+        return f"Problem with spatial extent: {message}"
 
     target_crs = native_crs
     # Resampling process overwrites native_crs and resolution from metadata.
@@ -1421,7 +1433,13 @@ def is_layer_too_large(
     if isinstance(target_crs, int):
         target_crs = "EPSG:%s" % str(target_crs)
     if srs != target_crs:
+        target_is_utm = target_crs == "Auto42001" or target_crs.startswith("EPSG:326")
+        if srs == "EPSG:4326" and target_is_utm:
+            if spatial_extent["north"] > 85 or spatial_extent["south"] < -85:
+                return f"Requested spatial extent is outside the valid range for UTM reprojection to {target_crs}."
         spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
+        if msg := get_extent_warning_message(spatial_extent):
+            return f"Problem with spatial extent after reprojection to {target_crs}: {msg}"
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])

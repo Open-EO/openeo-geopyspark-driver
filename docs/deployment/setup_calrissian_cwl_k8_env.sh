@@ -1,0 +1,72 @@
+#!/bin/bash
+# Prepares the local environment/tooling required by ./setup_calrissian_cwl_k8.sh
+set -euxo pipefail
+
+# --- Install missing CLI tools (kubectl/k3d are assumed present already in
+# most dev images; helm/aws-cli/docker-cli are the ones commonly missing). ---
+if ! command -v docker >/dev/null 2>&1; then
+    apt-get update -qq
+    apt-get install -y -qq docker.io
+fi
+
+if ! command -v helm >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 -o /tmp/get_helm.sh
+    chmod +x /tmp/get_helm.sh
+    /tmp/get_helm.sh
+fi
+
+if ! command -v aws >/dev/null 2>&1; then
+    tmpdir=$(mktemp -d)
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "$tmpdir/awscliv2.zip"
+    unzip -q -o "$tmpdir/awscliv2.zip" -d "$tmpdir"
+    "$tmpdir/aws/install"
+    rm -rf "$tmpdir"
+fi
+
+if ! command -v k3d >/dev/null 2>&1; then
+    curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+fi
+
+helm repo add yandex-s3 https://yandex-cloud.github.io/k8s-csi-s3/charts
+helm repo update yandex-s3
+
+# --- (Re)create the k3d cluster with the NodePort range (30000-30001)
+if k3d cluster list calrissian-demo-cluster >/dev/null 2>&1; then
+    k3d cluster delete calrissian-demo-cluster
+fi
+
+leftover_containers="$(docker ps -aq --filter "name=^k3d-calrissian-demo-cluster-" || true)"
+if [ -n "$leftover_containers" ]; then
+    # shellcheck disable=SC2086
+    docker rm -f $leftover_containers >/dev/null 2>&1 || true
+fi
+
+if docker network inspect "k3d-calrissian-demo-cluster" >/dev/null 2>&1; then
+    docker network rm "k3d-calrissian-demo-cluster" >/dev/null 2>&1 || true
+fi
+
+
+if ! k3d cluster create calrissian-demo-cluster -p "30000-30001:30000-30001@server:0" \
+    --k3s-arg "--snapshotter=native@server:*" \
+    --timeout 120s --no-rollback; then
+    echo "k3d cluster create failed or timed out. Logs from the k3s server node:" >&2
+    docker logs "k3d-calrissian-demo-cluster-server-0" 2>&1 | tail -n 50 >&2 || true
+    exit 1
+fi
+
+# If this script itself runs inside a container that shares the host's
+# docker socket (e.g. a dev container started with
+# `-v /var/run/docker.sock:/var/run/docker.sock`), that container is not
+# on the k3d cluster's docker network by default, so it can't reach the
+# k3d API server or its NodePort range. Attach it to the cluster network
+# so `kubectl`/`aws` calls from inside this container work, matching the
+# NODE_IP fallback added to setup_calrissian_cwl_k8.sh.
+SELF_CONTAINER_ID="$(cat /etc/hostname 2>/dev/null || true)"
+if [ -f /.dockerenv ] && [ -n "$SELF_CONTAINER_ID" ]; then
+    docker network connect "k3d-calrissian-demo-cluster" "$SELF_CONTAINER_ID" 2>/dev/null || true
+    SERVER_IP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"k3d-calrissian-demo-cluster\").IPAddress}}" "k3d-calrissian-demo-cluster-server-0")"
+    KUBECONFIG_FILE="${KUBECONFIG:-$HOME/.kube/config}"
+    sed -i "s|server: https://0.0.0.0:[0-9]*|server: https://${SERVER_IP}:6443|" "$KUBECONFIG_FILE"
+fi
+
+kubectl cluster-info

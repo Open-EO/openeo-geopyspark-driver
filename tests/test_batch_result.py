@@ -24,7 +24,7 @@ from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ListSubSet, ephemeral_fileserver
+from openeo_driver.testing import DictSubSet, ListSubSet, ephemeral_fileserver, approxify
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv, read_json
 from openeo_driver.workspace import DiskWorkspace
@@ -34,10 +34,11 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
-from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+from openeogeotrellis.job_results.result_metadata import extract_result_metadata
 from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.job_results.util import GDALINFO_SUFFIX, reproject_geometry
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import GDALINFO_SUFFIX, S3ClientBuilder, equals_approximately, reproject_geometry
+from openeogeotrellis.utils import S3ClientBuilder, equals_approximately
 from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
@@ -303,8 +304,17 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
 )
 @pytest.mark.parametrize("stac_version", ["1.0","1.1",])
 def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_version):
+    if stac_version == "1.1":
+        add_bands_statistics = True
+        detailed_asset_metadata = False
+    else:
+        add_bands_statistics = False
+        detailed_asset_metadata = True
     job_spec = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "detailed_asset_metadata": detailed_asset_metadata,
+        },
         "process_graph": {
             "loadcollection_sentinel2": {
                 "process_id": "load_collection",
@@ -337,7 +347,10 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_v
                 "arguments": {
                     "data": {"from_node": from_node},
                     "format": "GTIFF",
-                    "options": {"separate_asset_per_band": True},
+                    "options": {
+                        "separate_asset_per_band": True,
+                        "add_bands_statistics": add_bands_statistics,
+                    },
                 },
                 "result": True,
             },
@@ -589,7 +602,7 @@ def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
         'readvector1': {
             'process_id': 'read_vector',
             'arguments': {
-                'filename': 'https://artifactory.vgt.vito.be/artifactory/testdata-public/parcels/test_10.geojson'
+                'filename': 'https://auxdata.terrascope.be/openeo/testdata/parcels/test_10.geojson'
             }
         },
         'aggregatespatial1': {
@@ -981,6 +994,13 @@ def test_multiple_image_collection_results(tmp_path):
 def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, stac_version, asset_names, bands_name):
     workspace_id = "tmp"
     merge = _random_merge()
+    if stac_version == "1.1":
+        add_bands_statistics = True
+        detailed_asset_metadata = False
+    else:
+        add_bands_statistics = False
+        detailed_asset_metadata = True
+
 
     process_graph = {
         "loadcollection1": {
@@ -998,6 +1018,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
                 "data": {"from_node": "loadcollection1"},
                 "options": {
                     "attach_gdalinfo_assets": attach_gdalinfo_assets,
+                    "add_bands_statistics": add_bands_statistics,
                 },
                 "format": "GTiff"
             },
@@ -1018,6 +1039,8 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         "job_options": {
             "stac-version": stac_version,
             "remove-exported-assets": remove_original,
+            "export-workspace-enable-merge": False,
+            "detailed_asset_metadata": detailed_asset_metadata,
         },
     }
 
@@ -1194,6 +1217,14 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     workspace_id = "tmp"
     merge = _random_merge()
 
+    if stac_version == "1.1":
+        add_bands_statistics = True
+        detailed_asset_metadata = False
+    else:
+        add_bands_statistics = False
+        detailed_asset_metadata = True
+
+
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -1209,7 +1240,10 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
             "arguments": {
                 "data": {"from_node": "loadcollection1"},
                 "format": "GTiff",
-                "options": {"separate_asset_per_band": "true"},
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "add_bands_statistics": add_bands_statistics,
+                },
             },
         },
         "exportworkspace1": {
@@ -1224,7 +1258,11 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
+            "detailed_asset_metadata": detailed_asset_metadata,
+        },
         "process_graph": process_graph,
     }
 
@@ -1293,7 +1331,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
                     "maximum": 1.9375,
                     "mean": 0.96875,
                     "minimum": 0.0,
-                    "stddev": 0.57706829101936,
+                    "stddev": approxify(0.57706829101936),
                     "valid_percent": 100.0,
                 },
             }
@@ -1394,6 +1432,7 @@ def test_filepath_per_band(
     try:
         process = {
             "process_graph": process_graph,
+            "job_options": {"export-workspace-enable-merge": False},
         }
         run_job(
             process,
@@ -1807,6 +1846,14 @@ def test_export_workspace_merge_into_stac_api(
     create_collection = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
     create_item = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{collection_id}/items")
 
+    if stac_version == "1.1":
+        add_bands_statistics = True
+        detailed_asset_metadata = False
+    else:
+        add_bands_statistics = False
+        detailed_asset_metadata = True
+
+
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -1843,6 +1890,7 @@ def test_export_workspace_merge_into_stac_api(
                 "options": {
                     "separate_asset_per_band": "true",
                     "filepath_per_band": ["some/deeply/nested/folder/lon.tif", "lat.tif"],
+                    "add_bands_statistics": add_bands_statistics,
                 },
             },
         },
@@ -1861,6 +1909,7 @@ def test_export_workspace_merge_into_stac_api(
         "process_graph": process_graph,
         "job_options": {
             "stac-version": stac_version,
+            "detailed_asset_metadata": detailed_asset_metadata,
         },
     }
 
@@ -2320,6 +2369,13 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     workspace_id = "tmp"
     merge = _random_merge()
 
+    if stac_version == "1.1":
+        add_bands_statistics = True
+        detailed_asset_metadata = False
+    else:
+        add_bands_statistics = False
+        detailed_asset_metadata = True
+
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -2343,6 +2399,9 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
             "arguments": {
                 "data": {"from_node": "dropdimension1"},
                 "format": "GTiff",
+                "options": {
+                    "add_bands_statistics": add_bands_statistics,
+                },
             },
         },
         "exportworkspace1": {
@@ -2357,7 +2416,11 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
+            "detailed_asset_metadata": detailed_asset_metadata,
+        },
         "process_graph": process_graph,
     }
 
@@ -2574,7 +2637,8 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
-            "stac-version": stac_version
+            "stac-version": stac_version,
+            "export-workspace-enable-merge": False,
         },
     }
 
@@ -3961,7 +4025,7 @@ def test_corsa_decompress():
 
 
 def test_predict_onnx_double(tmp_path):
-    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_double.onnx"
+    model = "https://auxdata.terrascope.be/openeo/testdata/openeo/geotrellis-extensions/test_model_double.onnx"
     process_graph = {
         "predictOnnx1": {
             "arguments": {
@@ -4022,7 +4086,7 @@ def test_predict_onnx_double(tmp_path):
 
 
 def test_predict_onnx_reduce_sum(tmp_path):
-    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_sum_double.onnx"
+    model = "https://auxdata.terrascope.be/openeo/testdata/openeo/geotrellis-extensions/test_model_sum_double.onnx"
     process_graph = {
         "predictOnnx1": {
             "arguments": {

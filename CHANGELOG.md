@@ -12,13 +12,37 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+## In progress: 0.74.0
+
+- Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
+- Batch job metadata: report Spark execution metrics (`total_stage_runtime`, `total_executor_allocation_time`, `cpu_utilization_ratio`, `total_stage_failures`, `total_task_failures` and `peak_execution_memory`)
+- Kubernetes batch jobs: also enable OpenTelemetry metrics export on the Spark driver (previously only the executors emitted these metrics), including the `prom-scala` container port used for scraping
+- sar_backscatter: reduce default for max_processing_area_pixels to 1024, avoids to go out of memory and require increasing memory
+- Sentinel-3 OLCI L1B: support angles and meteo bands ([#1848](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1848))
+- `load_result`: use the file-based pyramid factory for loading result GeoTIFFs, retaining temporal filtering
+- `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
+- `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
+- Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
+- Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
+- Kubernetes batch jobs: remove obsolete Python 3.8 specific `PYTHONPATH` from driver and executor env ([#1899](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1899))
+
+
 ## 0.73.0
 
+- `merge_cubes`: preserve temporal metadata when merging a spatial cube with a spacetime cube ([#1830](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1830))
 - Starting batch jobs is made more lenient to support processes not known by the web application.
+- `mask`: clip oversized vector geometries to the raster footprint before reprojection to avoid topology errors with UTM/local CRS masking ([#1817](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1817))
 - Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
 - `load_stac`: disable version-migration of certain properties (e.g. `proj:epsg`) to avoid breaking post-query property filtering, and support feature flag to disable or fine-tune post-query property filtering ([#1728](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1728))
 - Improved support for separate "derived_from" auxiliary links on kubernetes deployments ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
 - Add `load_stac` feature flag `use_raw_asset_href` to force usage of raw asset href instead of leveraging standard pystac href normalization ([#1748](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1748))
+- `save_result`: Format option `retain_nodata_tiles` for GeoTiff and NetCDF to retain tiles with only nodata.
+- Remove left-over traces (dead code) related to "kafka" and "async_tasks" ([#1804](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1804))
+- Job tracker: immediately delete the Kubernetes SparkApplication (freeing up the resources it owns) once a job's final status and resource usage have been successfully persisted in the job registry. Configurable through `job_tracker_cleanup_openeo_statuses` (defaults to `["finished"]`, use an empty list to opt out).
+- Kubernetes batch jobs: make the batch job config secret owned by the SparkApplication, so that it is garbage collected together with it (best effort, on top of the existing age based secret cleanup). Requires the `patch` permission on secrets.
+- Kubernetes batch jobs: support mounting batch job results from a single shared PersistentVolumeClaim (each job using its own `subPath`) instead of creating a PersistentVolume and PersistentVolumeClaim per job, through the new `shared_results_pvc` config.
+- Produce BigTiff GeoTiffs by default ([Open-EO/openeo-geotrellis-extensions#678](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/678), [Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
+- Make `export_workspace` merge by default; its `merge` argument points to the STAC resource itself ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
 
 
 ## 0.72.0

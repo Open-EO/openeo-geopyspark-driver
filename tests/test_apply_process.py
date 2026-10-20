@@ -453,11 +453,22 @@ def _test_merge_cubes_subtract_spatial(left_spatial=False, right_spatial=False):
     layer2 = _create_spacetime_layer(cells=np.array([[nir_ramp]]))
     if right_spatial:
         layer2 = layer2.to_spatial_layer()
-    metadata = _build_metadata()
-    cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
-    cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata)
+    metadata1 = _build_metadata()
+    metadata2 = _build_metadata()
+    if not left_spatial:
+        metadata1 = metadata1.with_temporal_extent(
+            ("2017-09-25T11:37:00Z", "2017-09-25T11:37:00Z"), allow_adding_dimension=True
+        )
+    if not right_spatial:
+        metadata2 = metadata2.with_temporal_extent(
+            ("2017-09-25T11:37:00Z", "2017-09-25T11:37:00Z"), allow_adding_dimension=True
+        )
+    cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
+    cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
 
     res = cube1.merge_cubes(cube2, "subtract")
+    if left_spatial != right_spatial:
+        assert res.metadata.has_temporal_dimension()
     layer = res.pyramid.levels[0]
     if layer.layer_type != LayerType.SPATIAL:
         layer = layer.to_spatial_layer()
@@ -564,4 +575,3 @@ def test_convert_data_type():
     cells = stitched.cells[0, 0:4, 0:4]
     assert isinstance(cells[2, 2], np.uint8)
     assert cells[2, 2] == 2
-

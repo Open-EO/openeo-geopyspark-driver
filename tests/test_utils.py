@@ -1,8 +1,7 @@
 import collections
 import getpass
-import json
 import logging
-import pathlib
+from contextlib import nullcontext
 from pathlib import Path
 
 import botocore.exceptions
@@ -16,21 +15,16 @@ from openeogeotrellis.utils import (
     StatsReporter,
     describe_path,
     dict_merge_recursive,
-    json_default,
     lonlat_to_mercator_tile_indices,
     map_optional,
-    md5_checksum,
-    nullcontext,
     parse_approximate_isoduration,
     reproject_cellsize,
     single_value,
     stream_s3_binary_file_contents,
     to_s3_url,
-    parse_json_from_output,
     FileChangeWatcher,
     get_jvm,
     to_tuple,
-    unzip,
     partition,
     get_s3_file_contents,
 )
@@ -156,11 +150,6 @@ def test_lonlat_to_mercator_tile_indices(lon, lat, zoom, flip_y, expected):
     assert lonlat_to_mercator_tile_indices(longitude=lon, latitude=lat, zoom=zoom, flip_y=flip_y) == expected
 
 
-def test_nullcontext():
-    with nullcontext() as n:
-        assert n is None
-
-
 def test_single_value():
     try:
         single_value([])
@@ -179,30 +168,6 @@ def test_single_value():
         pass
 
     assert single_value({'a': ['VH'], 'b': ['VH']}.values()) == ['VH']
-
-
-@pytest.mark.parametrize(
-    ["value", "expected"],
-    [
-        (3.1415, 3.1415),
-        (pathlib.Path("tmp"), "tmp"),
-        # PosixPath is not available on Windows, but is a subclass of Path, so the previous test is enough
-        # (pathlib.PosixPath("tmp"), "tmp"),
-    ],
-)
-def test_json_default(value, expected):
-    out = json.loads(json.dumps(value, default=json_default))
-    assert out == expected
-
-
-def test_parse_json_from_output():
-    json_dict = parse_json_from_output("{}")
-    assert json_dict == {}
-
-
-def test_parse_json_from_output_complex():
-    json_dict = parse_json_from_output("""prefix\n{}\nmiddle\n{"num":\n 5}\n""")
-    assert json_dict == {"num": 5}
 
 
 class TestStatsReporter:
@@ -273,36 +238,16 @@ def test_get_s3_file_contents(mock_s3_bucket, args, expectation):
 @pytest.mark.parametrize(
     ["file_or_folder_path", "bucket_name", "expected_url"],
     [
-        # Slashes at the start and end of the path should be unified:
-        # the S3 key has no slashes at the start or end.
         ("foo", "test-bucket", "s3://test-bucket/foo"),
-        ("foo/", "test-bucket", "s3://test-bucket/foo"),
-        ("/foo", "test-bucket", "s3://test-bucket/foo"),
-        ("/foo/", "test-bucket", "s3://test-bucket/foo"),
-        ("foo/bar", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("foo/bar/", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("/foo/bar", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("/foo/bar/", "test-bucket", "s3://test-bucket/foo/bar"),
-        ("foo/bar/file.txt", "test-bucket", "s3://test-bucket/foo/bar/file.txt"),
         ("/foo/bar/file.txt", "test-bucket", "s3://test-bucket/foo/bar/file.txt"),
-        # Less likely to occur: slashes at the start or end of the bucket name,
-        # but just in case we have small mistakes in the bucket name.
-        ("foo/bar/file.txt", "test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
-        ("foo/bar/file.txt", "/test-bucket", "s3://test-bucket/foo/bar/file.txt"),
-        ("foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
-        ("/foo/bar/file.txt", "test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
-        ("/foo/bar/file.txt", "/test-bucket", "s3://test-bucket/foo/bar/file.txt"),
-        ("/foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
     ],
 )
-def test_to_s3_url(file_or_folder_path, bucket_name, expected_url):
-    actual1 = to_s3_url(file_or_folder_path, bucketname=bucket_name)
-    assert actual1 == expected_url
-
-    # Default bucket name goes through config
+def test_to_s3_url_default_bucket_from_config(file_or_folder_path, bucket_name, expected_url):
+    # explicit-bucket cases are covered by tests/job_results/test_util.py;
+    # this only covers the fallback to the config's bucket name.
     with gps_config_overrides(s3_bucket_name=bucket_name):
-        actual2 = to_s3_url(file_or_folder_path)
-        assert actual2 == expected_url
+        actual = to_s3_url(file_or_folder_path)
+        assert actual == expected_url
 
 
 spatial_extent_tap = {
@@ -461,19 +406,6 @@ def test_to_tuple():
     assert to_tuple(scala_tuple) == (1, 2, 3)
 
 
-def test_unzip():
-    pairs = [
-        (1, "one"),
-        (2, "two"),
-        (3, "three"),
-    ]
-
-    digits, words = list(unzip(*pairs))
-
-    assert digits == (1, 2, 3)
-    assert words == ("one", "two", "three")
-
-
 def test_partition():
     xs = range(10)
 
@@ -481,12 +413,3 @@ def test_partition():
 
     assert list(even) == [0, 2, 4, 6, 8]
     assert list(odd) == [1, 3, 5, 7, 9]
-
-
-def test_md5_checksum(tmp_path):
-    file = tmp_path / "file"
-
-    with open(file, "wb") as f:
-        f.write(b"hello world")
-
-    assert md5_checksum(file) == "5eb63bbbe01eeed093cb22bb8f5acdc3"

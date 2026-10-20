@@ -29,7 +29,6 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkCubeMetadata,
     GeopysparkDataCube,
 )
-from openeogeotrellis.numpy_aggregators import max_composite
 from tests.datacube_fixtures import layer_with_one_band_and_three_dates
 
 
@@ -363,11 +362,6 @@ class TestMultipleDates(TestCase):
     def test_aggregate_temporal_100(self):
         self._test_aggregate_temporal([["2017-01-01", "2018-01-01"]])
 
-    def test_max_aggregator(self):
-        tiles = [self.tile,self.tile2]
-        composite = max_composite(tiles)
-        self.assertEqual(2.0, composite.cells[0][0])
-
     def test_aggregate_max_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
@@ -622,19 +616,6 @@ def rct_savitzky_golay(udf_data:UdfData):
 @pytest.mark.parametrize(
     "udf_code",
     [
-        """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        from openeo_udf.api.udf_data import UdfData  # Old style openeo_udf API
-
-        def hyper_sum(udf_data: UdfData):
-            # Iterate over each tile
-            cube_list = []
-            for cube in udf_data.get_datacube_list():
-                mean = cube.array.sum(dim="t")
-                mean.name = cube.id + "_sum"
-                cube_list.append(DataCube(array=mean))
-            udf_data.set_datacube_list(cube_list)
-    """,
         """
         from openeo.udf import XarrayDataCube, UdfData
 

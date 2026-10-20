@@ -11,6 +11,7 @@ import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
+import importlib.resources
 
 import dateutil.parser
 import kubernetes.client
@@ -38,24 +39,15 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
 )
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import S3ClientBuilder
 
-try:
-    # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
-    import importlib_resources
-except ImportError:
-    import importlib.resources
-
-    importlib_resources = importlib.resources
-
 
 _log = logging.getLogger(__name__)
-
+keep_as_url_prefix = "<keep_as_url>"  # Magix prefix for the moment to allow debugging on staging
 
 class CalrissianLaunchConfigBuilder:
     """
@@ -120,7 +112,10 @@ class CalrissianLaunchConfigBuilder:
     def get_calrissian_args(self) -> list[str]:
         return [
             "--pod-env-vars", f"{self._BASE_PATH}/{self._ENVIRONMENT_FILE}",
-            "--pod-labels", f"{self._BASE_PATH}/{self._POD_LABELS_FILE}"
+            "--pod-labels", f"{self._BASE_PATH}/{self._POD_LABELS_FILE}",
+
+            # Fallback Docker image for CWL tools that don't specify their own `DockerRequirement`.
+            f"--default-container={self._config.input_staging_image}",
         ]
 
 
@@ -178,6 +173,18 @@ class CalrissianS3Result:
         return target
 
 
+def _is_string_array_type(type_spec) -> bool:
+    """Check whether a CWL type declaration describes an array of strings."""
+    if isinstance(type_spec, str):
+        return type_spec == "string[]"
+    if isinstance(type_spec, dict):
+        return type_spec.get("type") == "array" and type_spec.get("items") == "string"
+    if isinstance(type_spec, list):
+        # E.g. optional types like ["null", "string[]"]
+        return any(_is_string_array_type(t) for t in type_spec if t != "null")
+    return False
+
+
 class CwLSource:
     """
     Simple container of CWL source code.
@@ -187,13 +194,53 @@ class CwLSource:
     When necessary, this simple abstraction can be evolved easily in something more sophisticated.
     """
 
-    def __init__(self, content: str):
+    def __init__(self, content: str, source: Union[None, str, Path] = None):
         self._cwl = content
+        self._source = source
         yaml_parsed = list(yaml.safe_load_all(self._cwl))
         assert len(yaml_parsed) >= 1
 
     def get_content(self) -> str:
         return self._cwl
+
+    def get_source(self) -> Union[None, str, Path]:
+        return self._source
+
+    def _get_entrypoint_document(self) -> Optional[dict]:
+        """
+        Get the (parsed) CWL document that acts as the entrypoint of this CWL source:
+        the single document itself, or, in case of a `$graph` with multiple processes,
+        the one with id "main" (falling back on the last one, by convention).
+        """
+        yaml_parsed = list(yaml.safe_load_all(self._cwl))[0]
+        if "$graph" in yaml_parsed:
+            docs = yaml_parsed["$graph"]
+            return next((d for d in docs if d.get("id") == "main"), docs[-1] if docs else None)
+        return yaml_parsed
+
+    def get_input_type(self, input_name: str):
+        """
+        Get the CWL type declaration of a given top-level input of this CWL source's entrypoint document
+        (e.g. `"string"`, `"string[]"`, `{"type": "array", "items": "string"}`, ...), if it can be determined.
+        """
+        entrypoint = self._get_entrypoint_document()
+        if not entrypoint:
+            return None
+        inputs = entrypoint.get("inputs")
+        if isinstance(inputs, dict):
+            input_spec = inputs.get(input_name)
+        elif isinstance(inputs, list):
+            input_spec = next((i for i in inputs if isinstance(i, dict) and i.get("id") == input_name), None)
+        else:
+            return None
+        if isinstance(input_spec, dict):
+            return input_spec["type"]
+        # Shorthand notation: the input spec itself is just the type.
+        return input_spec
+
+    def is_string_array_input(self, input_name: str) -> bool:
+        """Does the given top-level input of this CWL source's entrypoint document have a string array type?"""
+        return _is_string_array_type(self.get_input_type(input_name))
 
     def estimate_max_memory_usage(self):
         yaml_parsed = list(yaml.safe_load_all(self._cwl))[0]
@@ -242,7 +289,11 @@ class CwLSource:
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
         # noinspection HttpUrlsUsage
-        if content.lower().startswith("http://") or content.lower().startswith("https://"):
+        if (
+            content.lower().startswith("http://")
+            or content.lower().startswith("https://")
+            or content.lower().startswith(keep_as_url_prefix)
+        ):
             return cls.from_url(content)
         elif (
             content.lower().endswith(".cwl")
@@ -263,21 +314,21 @@ class CwLSource:
     @classmethod
     def from_path(cls, path: Union[str, Path]) -> CwLSource:
         with Path(path).open(mode="r", encoding="utf-8") as f:
-            return cls(content=f.read())
+            return cls(content=f.read(), source=path)
 
     @classmethod
     def from_url(cls, url: str) -> CwLSource:
-        resp = requests.get(url)
+        resp = requests.get(url.replace(keep_as_url_prefix, "", 1))
         resp.raise_for_status()
-        return cls(content=resp.text)
+        return cls(content=resp.text, source=url)
 
     @classmethod
     def from_resource(cls, anchor: str, path: str) -> CwLSource:
         """
         Read CWL from a packaged resource file in importlib.resources-style.
         """
-        content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
-        return cls(content=content)
+        content = importlib.resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
+        return cls(content=content, source=path)
 
 
 class CalrissianJobLauncher:
@@ -521,7 +572,7 @@ class CalrissianJobLauncher:
         cwl_path: str,
         cwl_arguments: List[str],
         env_vars: Optional[Dict[str, str]] = None,
-    ) -> Tuple[kubernetes.client.V1Job, str, str]:
+    ) -> Tuple[kubernetes.client.V1Job, str, str, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.
 
@@ -533,6 +584,7 @@ class CalrissianJobLauncher:
             - k8s job manifest
             - relative output directory (inside the output volume)
             - relative path to the CWL outputs listing (JSON dump inside the output volume)
+            - relative path to the CWL stderr/tool log (inside the output volume)
         """
         name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
@@ -544,8 +596,10 @@ class CalrissianJobLauncher:
         tmp_dir = self._volume_tmp.mount_path.rstrip("/") + "/"
         relative_output_dir = name
         relative_cwl_outputs_listing = f"{name}.cwl-outputs.json"
+        relative_stderr_log = f"{name}.cwl-stderr.log"
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
         cwl_outputs_listing = str(Path(self._volume_output.mount_path) / relative_cwl_outputs_listing)
+        stderr_log = str(Path(self._volume_output.mount_path) / relative_stderr_log)
 
         labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
 
@@ -553,12 +607,15 @@ class CalrissianJobLauncher:
             self._calrissian_base_arguments
             + self._calrissian_launch_config.get_calrissian_args()
             + [
+                "--tmpdir-prefix=" + tmp_dir,
                 "--tmp-outdir-prefix",
                 tmp_dir,
                 "--outdir",
                 output_dir,
                 "--stdout",
                 cwl_outputs_listing,
+                "--stderr",
+                stderr_log,
                 cwl_path,
             ]
             + cwl_arguments
@@ -583,6 +640,16 @@ class CalrissianJobLauncher:
                 value="NO",
             )
         ]
+        if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+            container_env_vars.append(
+                kubernetes.client.V1EnvVar(
+                    name="CALRISSIAN_DELETE_PODS",  # Debug: keep step pods around so their k8s pod logs can still
+                    # be inspected (e.g. via `kubectl logs`) after a failure, since calrissian's own log capturing
+                    # (follow_logs) can miss very short-lived step pods
+                    value="NO",
+                )
+            )
+
         if env_vars:
             container_env_vars.extend(kubernetes.client.V1EnvVar(name=k, value=v) for k, v in env_vars.items())
 
@@ -633,7 +700,7 @@ class CalrissianJobLauncher:
                 backoff_limit=self._backoff_limit,
             ),
         )
-        return manifest, relative_output_dir, relative_cwl_outputs_listing
+        return manifest, relative_output_dir, relative_cwl_outputs_listing, relative_stderr_log
 
     def launch_job_and_wait(
         self,
@@ -723,6 +790,26 @@ class CalrissianJobLauncher:
         volume_name = pvc.spec.volume_name
         return volume_name
 
+    def _log_cwl_stderr(self, relative_stderr_log: str, cause: Exception) -> None:
+        """
+        Best-effort attempt to fetch and log the CWL `--stderr` tool log (written to the output volume, see
+        `create_cwl_job_manifest`) after a CWL job failure, since the ephemeral step pods (and their
+        `kubectl logs`) are typically already gone by the time we notice the failure.
+        """
+        try:
+            output_volume_name = self.get_output_volume_name()
+            stderr_result = CalrissianS3Result(
+                s3_region=self._s3_region,
+                s3_bucket=self._s3_bucket,
+                s3_key=f"{output_volume_name}/{relative_stderr_log.strip('/')}",
+            )
+            stderr_content = stderr_result.read(encoding="utf-8")
+            _log.error(f"CWL job failed ({cause}). CWL tool log ({stderr_result.s3_uri()}):\n{stderr_content}")
+        except Exception as log_read_exception:
+            _log.warning(
+                f"CWL job failed ({cause}). Failed to read CWL tool log {relative_stderr_log=}: {log_read_exception}"
+            )
+
     def run_cwl_workflow(
         self,
         cwl_source: CwLSource,
@@ -739,8 +826,13 @@ class CalrissianJobLauncher:
         :return: output of the CWL workflow as a string.
         """
         # Input staging
-        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
-        self.launch_job_and_wait(manifest=input_staging_manifest)
+        source = cwl_source.get_source()
+        if source and (str(source).lower().startswith(keep_as_url_prefix)):
+            # This allows to keep relative paths working.
+            cwl_path = source.replace(keep_as_url_prefix, "", 1)
+        else:
+            input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
+            self.launch_job_and_wait(manifest=input_staging_manifest)
 
         if isinstance(cwl_arguments, dict):
             cwl_source_arguments = CwLSource.from_string(json.dumps(cwl_arguments))
@@ -752,16 +844,23 @@ class CalrissianJobLauncher:
             cwl_arguments = [cwl_arguments_path]
 
         # CWL job
-        cwl_manifest, relative_output_dir, relative_cwl_outputs_listing = self.create_cwl_job_manifest(
-            cwl_path=cwl_path,
-            cwl_arguments=cwl_arguments,
-            env_vars=env_vars,
+        cwl_manifest, relative_output_dir, relative_cwl_outputs_listing, relative_stderr_log = (
+            self.create_cwl_job_manifest(
+                cwl_path=cwl_path,
+                cwl_arguments=cwl_arguments,
+                env_vars=env_vars,
+            )
         )
 
         # Calrissian secret for launch config file
         self._calrissian_launch_config.create_secret_for_files(job=cwl_manifest.metadata.name)
 
-        cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
+        try:
+            cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
+        except Exception as e:
+            if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+                self._log_cwl_stderr(relative_stderr_log=relative_stderr_log, cause=e)
+            raise
         self._calrissian_launch_config.cleanup_secret_for_files()
 
         # Collect results
@@ -794,6 +893,9 @@ def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
             list_list = [recurse(item) for item in obj]
             # flatten lists:
             return [item for sublist in list_list for item in sublist]
+        if not isinstance(obj, dict):
+            # Scalar CWL outputs (e.g. string/int/bool/None) don't reference any files.
+            return []
         if obj["class"] == "File":
             return [obj["path"]]
         elif obj["class"] == "Directory":
@@ -945,6 +1047,13 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
     return root_path
 
 
+def _get_stac_item_urls(stac_root: str) -> List[str]:
+    """Fetch the (self) URLs/paths of all STAC items found under the given STAC root (catalog/collection)."""
+    catalog = pystac.Catalog.from_file(stac_root)
+    item_urls = [item.get_self_href() for item in catalog.get_all_items()]
+    return item_urls
+
+
 def cwl_to_stac(
     cwl_arguments: Union[List[str], dict],
     env: EvalEnv,
@@ -966,6 +1075,7 @@ def cwl_to_stac(
 
     for key in cwl_arguments:
         val = cwl_arguments[key]
+        from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
         if isinstance(val, GeopysparkDataCube):
             save_result = to_save_result(val)  # Is to_save_result needed?
             assert isinstance(save_result, ImageCollectionResult), (
@@ -994,7 +1104,13 @@ def cwl_to_stac(
             )
 
             res_url = str(collection_file)
-            cwl_arguments[key] = res_url
+            if cwl_source.is_string_array_input(key):
+                # Parameter expects an array of strings: pass the individual STAC item URLs
+                # instead of the STAC root/catalog URL.
+                cwl_arguments[key] = _get_stac_item_urls(res_url)
+            else:
+                cwl_arguments[key] = res_url
+    _log.info("CWL arguments: " + json.dumps(cwl_arguments))
     ensure_kubernetes_config()
 
     _log.info(f"Loading CWL from {cwl_source=}")

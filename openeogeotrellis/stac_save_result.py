@@ -12,6 +12,7 @@ from flask import Response
 from openeo_driver.datastructs import StacAsset
 from openeo_driver.save_result import SaveResult
 from openeo_driver.util.stac_utils import get_files_from_stac_catalog, get_items_from_stac_catalog
+from openeogeotrellis.utils import typechecked
 
 
 class StacSaveResult(SaveResult):
@@ -20,7 +21,8 @@ class StacSaveResult(SaveResult):
     Metadata in collection.json might be lost.
     """
 
-    def __init__(self, stac_root: str):
+    @typechecked
+    def __init__(self, stac_root: Union[str, Path]):
         super().__init__(format=None, options=None)
         self.stac_root = stac_root
         self.stac_root_local: Optional[str] = None
@@ -28,12 +30,14 @@ class StacSaveResult(SaveResult):
     def save_result(self, filename: str) -> str:
         raise NotImplementedError("save_result not implemented for type: {t}".format(t=type(self)))
 
+    @typechecked
     def write_assets(self, directory: Union[str, Path]) -> Dict[str, StacAsset]:
         """
         Copy over the stac catalog to the expected directory
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        stac_assets = get_files_from_stac_catalog(self.stac_root, include_metadata=True)
+        stac_root_str = str(self.stac_root)
+        stac_assets = get_files_from_stac_catalog(stac_root_str, include_metadata=True)
         if str(directory).endswith("out"):
             directory = str(directory)[:-4]
 
@@ -44,7 +48,7 @@ class StacSaveResult(SaveResult):
             # Reconstruct the URL with the parent path
             return str(parsed._replace(path=parent_path).geturl())
 
-        root = parent(self.stac_root)
+        root = parent(stac_root_str)
 
         def copy_asset(asset_path: str) -> str:
             asset_path_parsed = urlparse(asset_path)
@@ -62,7 +66,7 @@ class StacSaveResult(SaveResult):
                 shutil.copy(asset_path, dest_path)
             return str(dest_path)
 
-        self.stac_root_local = copy_asset(self.stac_root)
+        self.stac_root_local = copy_asset(stac_root_str)
         assert self.stac_root_local
 
         for asset in stac_assets:

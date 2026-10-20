@@ -4,10 +4,12 @@ import json
 import logging
 
 import os
+import re
 from typing import Union
 from unittest.mock import MagicMock
 
 import dirty_equals
+import kubernetes.client.exceptions
 import mock
 import pytest
 import shapely
@@ -29,11 +31,15 @@ from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
-from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
+from openeogeotrellis.integrations.kubernetes import (
+    k8s_render_manifest_template,
+    k8s_set_secret_owner_reference,
+    K8S_SPARK_APP_STATE,
+)
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
@@ -245,7 +251,7 @@ def test_extra_validation_layer_fail(backend_implementation):
     assert errors[0]['code'] == "Internal"
 
 
-def test_extra_validation_without_extent(backend_implementation):
+def test_extra_validation_without_temporal_extent(backend_implementation):
     processing = GpsProcessing()
     source_id1 = SourceId("load_collection", arguments=("ESA_WORLDCOVER_10M_2021_V2", None), pg_node_id="lc1")
     env_source_constraints = [
@@ -261,6 +267,24 @@ def test_extra_validation_without_extent(backend_implementation):
                 "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert errors == []
+
+def test_extra_validation_with_world_extent(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2022-01-01", "2022-01-01"],
+            "spatial_extent": {"south": -90, "west": -180, "north": 90, "east": 180},
+            "bands": ["VV", "VH", "HV", "HH"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]["code"] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]["message"].lower()
 
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
@@ -310,12 +334,12 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
-    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
+    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (80.0, 0.0), (0.0, 60.0), (80.0, 60.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["HH", "HV", "VV"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -324,7 +348,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["DEM"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -343,11 +367,11 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
-    polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
+    polygon2 = shapely.geometry.Polygon([(0, 0), (80, 0), (0, 60), (80, 60)])
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["HH", "HV", "VV"],
             "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
@@ -356,7 +380,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 80.0, "east": 60.0},
             "bands": ["DEM"],
             "resample": { "target_crs": "EPSG:4326" },
             "aggregate_spatial": {
@@ -468,7 +492,7 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 60.0, 'crs': 'EPSG:4326'},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 40.0, 'crs': 'EPSG:4326'},
             "bands": ["DEM"],
             "resample": {
                 "target_crs": {
@@ -613,6 +637,19 @@ class TestGpsProcessing:
                     gpsCube.fancy_cube_op(factor=2, label="y")
                     m.openeo.geotrelliscommon.CubeProcessRegistry.invoke.assert_called_once()
 
+                    # Cube arguments must be replaced by their RDD at the same pyramid level.
+                    otherLayer = MagicMock(spec=TiledRasterLayer)
+                    otherLayer.layer_type = LayerType.SPATIAL
+                    otherCube = GeopysparkDataCube(Pyramid({0: otherLayer}))
+                    invoke = m.openeo.geotrelliscommon.CubeProcessRegistry.invoke
+                    invoke.reset_mock()
+                    gpsCube.fancy_cube_op(other=otherCube, cubes=[otherCube], factor=2)
+                    invoke.assert_called_once()
+                    _, pid, invoke_kwargs = invoke.call_args.args
+                    assert pid == "fancy_cube_op"
+                    other_rdd = otherLayer.srdd.rdd.return_value
+                    assert invoke_kwargs == {"other": other_rdd, "cubes": [other_rdd], "factor": 2}
+
 
         class MyCube(DriverDataCube):
             def __init__(self):
@@ -743,7 +780,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             user_id=user_id,
             started_ms=None,
             finished_ms=None,
-            process_id="load_collection",
+            process_ids=["load_collection"],
             square_meters=pytest.approx(1200 * 1200, rel=0.01),
             source_id=None,
         )
@@ -857,6 +894,74 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
     )
 
 
+class TestK8sSetSecretOwnerReference:
+    SPARK_APP = {
+        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+        "kind": "SparkApplication",
+        "metadata": {"name": "a-1234", "namespace": "spark-jobs", "uid": "cafe-1234"},
+    }
+
+    def test_sets_owner_reference(self):
+        core_api = mock.Mock()
+
+        assert (
+            k8s_set_secret_owner_reference(
+                core_api, namespace="spark-jobs", secret_name="cfg-a-1234", owner=self.SPARK_APP
+            )
+            is True
+        )
+
+        core_api.patch_namespaced_secret.assert_called_once_with(
+            name="cfg-a-1234",
+            namespace="spark-jobs",
+            body={
+                "metadata": {
+                    "ownerReferences": [
+                        {
+                            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+                            "kind": "SparkApplication",
+                            "name": "a-1234",
+                            "uid": "cafe-1234",
+                            "controller": False,
+                            # Must stay False: we have no "update" permission on the owner's finalizers.
+                            "blockOwnerDeletion": False,
+                        }
+                    ]
+                }
+            },
+        )
+
+    @pytest.mark.parametrize("owner", [{}, {"metadata": {}}, {"metadata": {"name": "a-1234"}}])
+    def test_no_uid_in_owner(self, owner, caplog):
+        caplog.set_level(logging.WARNING)
+        core_api = mock.Mock()
+
+        assert (
+            k8s_set_secret_owner_reference(core_api, namespace="spark-jobs", secret_name="cfg-a-1234", owner=owner)
+            is False
+        )
+
+        core_api.patch_namespaced_secret.assert_not_called()
+        assert "Not setting owner reference on secret cfg-a-1234" in caplog.text
+
+    def test_patch_failure_is_just_a_warning(self, caplog):
+        """Adopting the secret is best effort: a separate cleanup based on "created_at" remains the safety net."""
+        caplog.set_level(logging.WARNING)
+        core_api = mock.Mock()
+        core_api.patch_namespaced_secret.side_effect = kubernetes.client.exceptions.ApiException(
+            status=403, reason="Forbidden"
+        )
+
+        assert (
+            k8s_set_secret_owner_reference(
+                core_api, namespace="spark-jobs", secret_name="cfg-a-1234", owner=self.SPARK_APP
+            )
+            is False
+        )
+
+        assert "Failed to set owner reference on secret cfg-a-1234" in caplog.text
+
+
 def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_config_path):
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",
@@ -882,6 +987,99 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
             ),
         )
     )
+
+
+class TestK8sBatchJobResultsVolume:
+    """Rendering of the batch job results volume, with and without a shared results PVC."""
+
+    @staticmethod
+    def _render(**kwargs) -> dict:
+        return k8s_render_manifest_template(
+            "sparkapplication.yaml.j2",
+            propagatable_web_app_driver_envars={},
+            job_name="a-1234",
+            job_id_full="j-abc",
+            fuse_mount_batchjob_s3_bucket=True,
+            **kwargs,
+        )
+
+    @staticmethod
+    def _results_volume(app_dict: dict) -> dict:
+        [volume] = [v for v in app_dict["spec"]["volumes"] if v["name"] == "batch-job-results"]
+        return volume
+
+    @staticmethod
+    def _results_mounts(app_dict: dict) -> list:
+        return [
+            mount
+            for role in ["driver", "executor"]
+            for mount in app_dict["spec"][role]["volumeMounts"]
+            if mount["name"] == "batch-job-results"
+        ]
+
+    def test_per_job_volume_by_default(self):
+        """Without a shared PVC: claim the per job PVC and mount it as a whole."""
+        app_dict = self._render()
+
+        assert self._results_volume(app_dict) == {
+            "name": "batch-job-results",
+            "persistentVolumeClaim": {"claimName": "a-1234", "readOnly": False},
+        }
+        mounts = self._results_mounts(app_dict)
+        assert len(mounts) == 2  # driver + executor
+        for mount in mounts:
+            assert mount == {"name": "batch-job-results", "mountPath": "/batch_jobs/j-abc"}
+            assert "subPath" not in mount
+
+    def test_shared_results_pvc(self):
+        """With a shared PVC: claim that one and mount only the job's own subPath of it."""
+        app_dict = self._render(shared_results_pvc="openeo-batch-results")
+
+        assert self._results_volume(app_dict) == {
+            "name": "batch-job-results",
+            "persistentVolumeClaim": {"claimName": "openeo-batch-results", "readOnly": False},
+        }
+        mounts = self._results_mounts(app_dict)
+        assert len(mounts) == 2  # driver + executor
+        for mount in mounts:
+            # The mount path is the same as without a shared PVC, so the batch job sees no difference.
+            assert mount == {
+                "name": "batch-job-results",
+                "mountPath": "/batch_jobs/j-abc",
+                "subPath": "j-abc",
+            }
+
+    def test_no_results_volume_without_fuse_mount(self):
+        app_dict = k8s_render_manifest_template(
+            "sparkapplication.yaml.j2",
+            propagatable_web_app_driver_envars={},
+            job_name="a-1234",
+            job_id_full="j-abc",
+            fuse_mount_batchjob_s3_bucket=False,
+            shared_results_pvc="openeo-batch-results",
+        )
+
+        assert [v for v in app_dict["spec"]["volumes"] if v["name"] == "batch-job-results"] == []
+        assert self._results_mounts(app_dict) == []
+
+
+def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend_config_path):
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        open_telemetry_prometheus_port=19464,
+    )
+
+    assert app_dict["spec"]["executor"]["ports"] == [
+        {"containerPort": 19464, "name": "prom-scala", "protocol": "TCP"},
+        {"containerPort": 9465, "name": "prom-python", "protocol": "TCP"},
+    ]
+    assert "-Dotel.exporter.prometheus.port=19464" in app_dict["spec"]["executor"]["javaOptions"]
+
+    # Kubernetes requires port names to be a valid IANA_SVC_NAME (at most 15 characters)
+    for port in app_dict["spec"]["executor"]["ports"]:
+        assert len(port["name"]) <= 15
+        assert re.fullmatch("[a-z0-9]([a-z0-9-]*[a-z0-9])?", port["name"])
 
 
 def test_k8s_sparkapplication_dict_gdal_envars(backend_config_path):
@@ -1160,7 +1358,7 @@ class TestGpsBatchJobs:
         "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
         return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
     )
-    def test_start_k8s_job_persists_results_metadata_uri(
+    def test_start_k8s_job_persists_results_metadata_uri_and_infra_id(
         self,
         mock_get_spark_pod_status,
         mock_create_spark_pod,
@@ -1172,15 +1370,167 @@ class TestGpsBatchJobs:
         job_registry,
         mock_s3_bucket,
         fast_sleep,
+        monkeypatch,
     ):
-        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        monkeypatch.setenv("ETL_INFRA_ID", "my-test-dev")
+        with gps_config_overrides(infra_id=GpsBackendConfig().infra_id):
+            self._create_dummy_batch_job(backend_implementation, self._dummy_user)
 
-        job_id, job = next(iter(job_registry.db.items()))
-        assert job.get("results_metadata_uri") is None
+            job_id, job = next(iter(job_registry.db.items()))
+            assert job.get("results_metadata_uri") is None
 
-        backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+            backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
         mock_create_spark_pod.assert_called_once()
         assert job.get("results_metadata_uri") == f"s3://{mock_s3_bucket.name}/batch_jobs/{job_id}/job_metadata.json"
+        assert job["infra_id"] == "my-test-dev"
+
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.create_namespaced_secret", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.patch_namespaced_secret", return_value=mock.MagicMock())
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.create_namespaced_custom_object",
+        return_value={
+            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+            "kind": "SparkApplication",
+            "metadata": {"name": "a-1234", "uid": "cafe-1234"},
+        },
+    )
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
+        return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
+    )
+    def test_start_k8s_job_adopts_batch_job_cfg_secret(
+        self,
+        mock_get_spark_pod_status,
+        mock_create_spark_pod,
+        mock_patch_secret,
+        mock_create_secret,
+        mock_get_pod_image,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_s3_bucket,
+        fast_sleep,
+    ):
+        """The batch job config secret is created before the Spark application, and adopted by it afterwards."""
+        with gps_config_overrides(provide_s3_profiles_and_tokens=True):
+            self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+            job_id, job = next(iter(job_registry.db.items()))
+
+            backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+
+        # Job started as usual.
+        assert job["status"] == JOB_STATUS.QUEUED
+        assert job["application_id"] is not None
+        mock_create_secret.assert_called_once()
+        mock_create_spark_pod.assert_called_once()
+
+        # And the secret is now owned by the Spark application.
+        secret_name = f"cfg-{job['application_id']}"
+        mock_patch_secret.assert_called_once()
+        _, kwargs = mock_patch_secret.call_args
+        assert kwargs["name"] == secret_name
+        assert kwargs["body"] == {
+            "metadata": {
+                "ownerReferences": [
+                    {
+                        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+                        "kind": "SparkApplication",
+                        "name": "a-1234",
+                        "uid": "cafe-1234",
+                        "controller": False,
+                        "blockOwnerDeletion": False,
+                    }
+                ]
+            }
+        }
+
+    @pytest.mark.parametrize(
+        ["shared_results_pvc", "expect_per_job_volume"],
+        [
+            (None, True),  # legacy behaviour: a PV and PVC per batch job
+            ("openeo-batch-results", False),  # shared PVC: nothing to create per batch job
+        ],
+    )
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.create_persistent_volume", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.create_namespaced_persistent_volume_claim", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
+        return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
+    )
+    def test_start_k8s_job_results_volume(
+        self,
+        mock_get_spark_pod_status,
+        mock_create_spark_pod,
+        mock_create_pvc,
+        mock_create_pv,
+        mock_get_pod_image,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_s3_bucket,
+        fast_sleep,
+        shared_results_pvc,
+        expect_per_job_volume,
+    ):
+        """A per job PV/PVC is only created when there is no shared results PVC to mount instead."""
+        with gps_config_overrides(fuse_mount_batchjob_s3_bucket=True, shared_results_pvc=shared_results_pvc):
+            self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+            job_id, job = next(iter(job_registry.db.items()))
+
+            backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+
+        # Job is started either way.
+        assert job["status"] == JOB_STATUS.QUEUED
+        mock_create_spark_pod.assert_called_once()
+
+        assert mock_create_pv.called is expect_per_job_volume
+        assert mock_create_pvc.called is expect_per_job_volume
+
+    @pytest.mark.parametrize(
+        ["shared_results_pvc", "expect_per_job_volume"],
+        [(None, True), ("openeo-batch-results", False)],
+    )
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.delete_persistent_volume", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.delete_namespaced_persistent_volume_claim", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CustomObjectsApi.delete_namespaced_custom_object", return_value=mock.MagicMock())
+    def test_cancel_k8s_job_results_volume(
+        self,
+        mock_delete_spark_pod,
+        mock_delete_pvc,
+        mock_delete_pv,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        shared_results_pvc,
+        expect_per_job_volume,
+    ):
+        """The shared results PVC outlives individual jobs, so it must never be deleted when cancelling one."""
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id, job = next(iter(job_registry.db.items()))
+        job["status"] = JOB_STATUS.RUNNING
+        job["application_id"] = "a-1234"
+
+        with gps_config_overrides(fuse_mount_batchjob_s3_bucket=True, shared_results_pvc=shared_results_pvc):
+            backend_implementation.batch_jobs.cancel_job(job_id, self._dummy_user.user_id)
+
+        mock_delete_spark_pod.assert_called_once()
+        assert mock_delete_pv.called is expect_per_job_volume
+        assert mock_delete_pvc.called is expect_per_job_volume
 
     def test_getters_read_from_s3_results_metadata_uri(
         self,

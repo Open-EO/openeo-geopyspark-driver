@@ -8,6 +8,7 @@ metadata:
   labels:
     user: {{ user_id }}
     correlation_id: {{ job_id_full }}
+    credit_plan: {{ credit_plan }}
 {%- endblock %}
 spec:
 {%- block spec_options %}
@@ -111,7 +112,7 @@ spec:
   volumes:
 {%- block volume_layercatalog %}
   {%- if layer_catalog_init_image != "DISABLED" %}
-    - name: layercatalogs
+    - name: "{{ 'initdata' if initdata_dir else 'layercatalogs' }}"
       emptyDir: {}
   {%- endif %}
 {%- endblock %}
@@ -134,7 +135,7 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
     - name: "batch-job-results"
       persistentVolumeClaim:
-        claimName: {{ job_name }}
+        claimName: {{ shared_results_pvc if shared_results_pvc else job_name }}
         readOnly: false
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
@@ -177,8 +178,8 @@ spec:
           - name: TARGET_DIR
             value: {{ layer_catalog_init_dir }}
         volumeMounts:
-          - name: "layercatalogs"
-            mountPath: {{ layer_catalog_init_dir }}
+          - name: "{{ 'initdata' if initdata_dir else 'layercatalogs' }}"
+            mountPath: "{{ initdata_dir if initdata_dir else layer_catalog_init_dir }}"
         {%- block init_container_layer_catalog_resources %}
         resources:
           requests:
@@ -214,6 +215,8 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
+      - name: OPENEO_ADDITIONAL_EXECUTION_METRICS_FILE
+        value: "{{ additional_execution_metrics_file }}"
   {%- block gdal_aws_env %}
       - name: AWS_ACCESS_KEY_ID
         value: {{ aws_access_key_id }}
@@ -260,8 +263,6 @@ spec:
         value: "EMPTY_DIR"
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
         value: "YES"
-      - name: PYTHONPATH
-        value: "/opt/openeo/lib/python3.8/site-packages/"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -270,6 +271,8 @@ spec:
         value: "TRUE"
       - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
         value: "{{fuse_mount_batchjob_s3_bucket}}"
+      - name: OPENEO_OTEL_ENABLED
+        value: "{{ open_telemetry_enabled }}"
       - name: OPENEO_EJR_API
         value: {{ openeo_ejr_api }}
       - name: OPENEO_EJR_BACKEND_ID
@@ -305,6 +308,9 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
+{%- if shared_results_pvc %}
+        subPath: {{ job_id_full }}
+{%- endif %}
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
       - name: "batch-job-cfg"
@@ -317,8 +323,8 @@ spec:
 {%- endif %}
 {%- block volume_mount_layercatalog %}
 {%- if layer_catalog_init_image != "DISABLED" %}
-      - name: "layercatalogs"
-        mountPath: {{ layer_catalog_init_dir }}
+      - name: "{{ 'initdata' if initdata_dir else 'layercatalogs' }}"
+        mountPath: "{{ initdata_dir if initdata_dir else layer_catalog_init_dir }}"
 {%- endif %}
 {%- endblock %}
 {%- endblock %}
@@ -326,8 +332,11 @@ spec:
     annotations:
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     ports:
-      - containerPort: 9464
-        name: prom-executor
+      - containerPort: {{ open_telemetry_prometheus_port | default(9464, true) }}
+        name: prom-scala
+        protocol: TCP
+      - containerPort: {{ open_telemetry_prometheus_port_python | default(9465, true) }}
+        name: prom-python
         protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
@@ -335,7 +344,7 @@ spec:
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
+    javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.exporter.prometheus.port={{ open_telemetry_prometheus_port | default(9464, true) }} -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
 {%- endblock %}
 {%- if mount_tmp or layer_catalog_init_image != "DISABLED" %}
     initContainers:
@@ -373,6 +382,10 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
+      - name: OPENEO_OTEL_ENABLED
+        value: "{{ open_telemetry_enabled }}"
+      - name: OPENEO_OTEL_PROMETHEUS_METRICS_PORT_PYTHON
+        value: "{{ open_telemetry_prometheus_port_python | default(9465, true) }}"
 {{ self.gdal_aws_env() }}
       - name: AWS_DIRECT
         value: "TRUE"
@@ -410,8 +423,6 @@ spec:
         value: "20"
       - name: GDAL_HTTP_RETRY_DELAY
         value: "10"
-      - name: PYTHONPATH
-        value: "/opt/openeo/lib/python3.8/site-packages/"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -454,6 +465,9 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
+{%- if shared_results_pvc %}
+        subPath: {{ job_id_full }}
+{%- endif %}
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
       - name: "batch-job-cfg"

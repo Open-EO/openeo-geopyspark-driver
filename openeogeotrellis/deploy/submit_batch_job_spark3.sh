@@ -108,11 +108,13 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  --add-opens=java.base/sun.net.util=ALL-UNNAMED"
 
 
+# TODO: avoid guessing JEP_DIR this way (brittle, and undocumented/internal build assumptions)
 if [[ $YARN_CONTAINER_RUNTIME_DOCKER_IMAGE =~ .*python([0-9]{3}).* ]]; then
   PYTHON_VERSION="${BASH_REMATCH[1]}"
   FORMATTED_PYTHON_VERSION="${PYTHON_VERSION:0:1}.${PYTHON_VERSION:1}"
 else
-  FORMATTED_PYTHON_VERSION="3.8"
+  echo "WARNING: Could not determine Python version from docker image: $YARN_CONTAINER_RUNTIME_DOCKER_IMAGE. Assuming Python 3.11" >&2
+  FORMATTED_PYTHON_VERSION="3.11"
 fi
 JEP_DIR="/opt/venv/lib64/python${FORMATTED_PYTHON_VERSION}/site-packages/jep"
 

@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.integrations.credit_check_registry import get_credit_check
 from openeogeotrellis.constants import (
     JOB_OPTION_LOG_LEVEL,
     JOB_OPTION_LOGGING_THRESHOLD,
@@ -158,6 +159,29 @@ class JobOptions:
         },
     )
 
+    credit_plans: List[str] = field(
+        default_factory=list,
+        metadata={
+            "description": get_credit_check().get_job_option_description(),
+            "experimental": True,
+            "public": False,
+        },
+    )
+
+    spark_context_cleanup: str = field(
+        default="none",
+        metadata={
+            "description": "How to release the Spark driver's executors once save_result "
+            "writing is done, before writing final metadata/exports. "
+            "'stop' fully shuts down the SparkContext, "
+            "'kill-executors' only kills the executors and keeps the SparkContext usable, "
+            "'none' (current default) leaves everything running.",
+            "public": False,
+            "experimental": True,
+            "enum": ["stop", "kill-executors", "none"],
+        },
+    )
+
     @staticmethod
     def as_logging_threshold_arg(value) -> str:
         value = value.upper()
@@ -210,6 +234,9 @@ class JobOptions:
                 if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
                     self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
                     #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
+
+        if len(self.credit_plans) > 0:
+            get_credit_check().check_format_user_provided_plans(self.credit_plans)
 
     def soft_errors_arg(self) -> str:
         value = self.soft_errors
@@ -410,6 +437,8 @@ class K8SOptions(JobOptions):
             "public": False
         },
     )
+
+
 
     def validate(self):
         max_cores = 4

@@ -14,7 +14,7 @@ from unittest import mock
 import dirty_equals
 import pytest
 from mock import MagicMock
-from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.testing import DictSubSet, ListSubSet
@@ -31,18 +31,15 @@ from openeogeotrellis.deploy.batch_job import (
     _extract_and_install_udf_dependencies,
     run_job,
 )
-from openeogeotrellis.deploy.batch_job_metadata import (
-    _convert_asset_outputs_to_s3_urls,
-    _get_tracker,
-    extract_result_metadata,
-)
-from openeogeotrellis.integrations.gdal import (
+from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
+from openeogeotrellis.job_results.raster_metadata import (
     AssetRasterMetadata,
     BandStatistics,
     _get_projection_extension_metadata,
     parse_gdal_raster_metadata,
     read_gdal_raster_metadata,
 )
+from openeogeotrellis.job_results.result_metadata import convert_asset_outputs_to_s3_urls, extract_result_metadata
 from openeogeotrellis.metrics_tracking import MetricsTracker, global_tracker
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import get_jvm, S3ClientBuilder, stream_s3_binary_file_contents, to_s3_url
@@ -147,16 +144,15 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         },
     )
     cube = cube.filter_bbox(west=4, south=51, east=5, north=52)
-    geometries = DelayedVector(str(get_test_data_file("multipolygon01.geojson")))
+    geometries = DriverVectorCube.from_fiona([str(get_test_data_file("multipolygon01.geojson"))])
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
 
     metadata = extract_result_metadata(tracer)
+    # Ring start vertex/orientation depends on the shapely/GEOS version: compare geometry semantically.
+    geometry = metadata.pop("geometry")
+    assert shape(geometry).normalize().equals_exact(box(5.0, 5.0, 45.0, 40.0).normalize(), tolerance=1e-9)
     expected = {
         "bbox": [5.0, 5.0, 45.0, 40.0],
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": (((45.0, 5.0), (45.0, 40.0), (5.0, 40.0), (5.0, 5.0), (45.0, 5.0)),),
-        },
         "area": {"value": approx(6763173869883.0, 1.0), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
@@ -356,7 +352,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
     geo_json_data = mapping(geometries_lat_lon)
     delayed_vector_file.write_text(json.dumps(geo_json_data))
 
-    geometries = DelayedVector(str(delayed_vector_file))
+    geometries = DriverVectorCube.from_fiona([str(delayed_vector_file)])
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
 
     metadata = extract_result_metadata(tracer)
@@ -1656,13 +1652,13 @@ def test_get_projection_extension_metadata(json_file, expected_metadata):
     assert proj_metadata == expected_metadata
 
 
-@mock.patch("openeogeotrellis.integrations.gdal.read_gdal_info")
+@mock.patch("openeogeotrellis.job_results.raster_metadata.read_gdal_info")
 def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
     netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
     nc_json_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc.json"
 
-    def read_json_file(netcdf_uri: str) -> dict:
+    def read_json_file(netcdf_uri: str, **kwargs) -> dict:
         if netcdf_uri == str(netcdf_path):
             # json_path = netcdf_uri + ".json"
             json_path = nc_json_path
@@ -1984,7 +1980,7 @@ def test_convert_asset_outputs_to_s3_urls():
     """Test that it converts a metadata dict, translating each output_dir to a URL with the s3:// scheme."""
 
     metadata = get_job_metadata_without_s3(job_dir=Path("/batch_jobs/j-260129154402432e802f5309b026ece0"))
-    metadata = _convert_asset_outputs_to_s3_urls(metadata)
+    metadata = convert_asset_outputs_to_s3_urls(metadata, output_href=to_s3_url)
 
     assert (
         metadata["assets"]["openEO_2017-11-21Z.tif"]["href"]
