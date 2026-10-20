@@ -276,8 +276,8 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         assert f"{prefix}_22.nc" in asset_filenames
         assert f"{prefix}_myTextId.nc" in asset_filenames
     else:
-        assert "openEO_22.nc" in asset_filenames
-        assert "openEO_myTextId.nc" in asset_filenames
+        assert "save_22.nc" in asset_filenames
+        assert "save_myTextId.nc" in asset_filenames
 
     for _, theAsset in assets:
         bands = [Band(**b) for b in theAsset["bands"]]
@@ -293,13 +293,13 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         (
             "loadcollection_sentinel2",
             {
-                "openEO_2021-06-05Z_TileRow.tif",
-                "openEO_2021-06-05Z_TileCol.tif",
-                "openEO_2021-06-15Z_TileRow.tif",
-                "openEO_2021-06-15Z_TileCol.tif",
+                "save1_2021-06-05Z_TileRow.tif",
+                "save1_2021-06-05Z_TileCol.tif",
+                "save1_2021-06-15Z_TileRow.tif",
+                "save1_2021-06-15Z_TileCol.tif",
             },
         ),
-        ("reducedimension_temporal", {"openEO_TileRow.tif", "openEO_TileCol.tif"}),
+        ("reducedimension_temporal", {"save1_TileRow.tif", "save1_TileCol.tif"}),
     ],
 )
 @pytest.mark.parametrize("stac_version", ["1.0","1.1",])
@@ -489,10 +489,10 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, st
         asset_minima[Path(asset_metadata["href"]).name] = ds["Longitude"].min().item()
 
     assert asset_minima == {
-        "openEO_0.nc": 1.0,
-        "openEO_1.nc": 4.0,
-        "openEO_2.nc": 2.0,
-        "openEO_3.nc": 5.0,
+        "save_0.nc": 1.0,
+        "save_1.nc": 4.0,
+        "save_2.nc": 2.0,
+        "save_3.nc": 5.0,
     }
 
 
@@ -837,7 +837,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     items = metadata["items"]
     assert len(items) == 2
 
-    item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_0.nc")][0]
+    item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/save_0.nc")][0]
 
     assert item0["bbox"] == [0.1, 0.1, 1.8, 1.8]
     assert (
@@ -855,7 +855,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
     }]
 
-    item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
+    item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/save_1.nc")][0]
     assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
     assert (
         shape(item1["geometry"])
@@ -981,8 +981,8 @@ def test_multiple_image_collection_results(tmp_path):
 
     output_files = os.listdir(tmp_path)
 
-    assert "openEO_2021-01-05Z.tif" in output_files
-    assert "openEO.nc" in output_files
+    assert "saveresult1_2021-01-05Z.tif" in output_files
+    assert "saveresult2.nc" in output_files
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
@@ -2440,8 +2440,8 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO.nc" in job_dir_files
-        assert "openEO.tif" in job_dir_files
+        assert "saveresult1.nc" in job_dir_files
+        assert "saveresult2.tif" in job_dir_files
 
         assert {
             Path("collection.json"),
@@ -2467,7 +2467,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
             }
         ]
 
-        geotiff_asset_copy_path = tmp_path / "openEO.tif.copy"
+        geotiff_asset_copy_path = tmp_path / "saveresult2.tif.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
@@ -3600,14 +3600,14 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     assets = metadata["assets"]
     assert len(assets) == 2
 
-    assert assets["openEO_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
-    assert assets["openEO_0.nc"]["geometry"] == {
+    assert assets["save_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
+    assert assets["save_0.nc"]["geometry"] == {
         "type": "Polygon",
         "coordinates": [[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]]],
     }
 
-    assert assets["openEO_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
-    assert assets["openEO_1.nc"]["geometry"] == {
+    assert assets["save_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
+    assert assets["save_1.nc"]["geometry"] == {
         "type": "Polygon",
         "coordinates": [[[5.0, 4.0], [5.0, 5.0], [4.0, 5.0], [4.0, 4.0], [5.0, 4.0]]],
     }
