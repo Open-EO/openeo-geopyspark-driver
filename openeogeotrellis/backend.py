@@ -2333,12 +2333,16 @@ class GpsBatchJobs(backend.BatchJobs):
     def _resolve_udf_dependency_files_for_k8s(
         self, udf_dependency_files: List[str], *, job_id: str, user_id: str
     ) -> List[str]:
-        return presign_s3_urls_for_internal_usage(
-            udf_dependency_files,
-            job_id=job_id,
-            user_id=user_id,
-            expiration=get_backend_config().udf_dependency_presigned_url_expiration,
-        )
+        try:
+            return presign_s3_urls_for_internal_usage(
+                udf_dependency_files,
+                job_id=job_id,
+                user_id=user_id,
+                expiration=get_backend_config().udf_dependency_presigned_url_expiration,
+            )
+        except ValueError as e:
+            # UDF dependency URIs are user provided, so invalid ones are a bad request.
+            raise OpenEOApiException(status_code=400, message=f"Invalid UDF dependency: {e}") from e
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT

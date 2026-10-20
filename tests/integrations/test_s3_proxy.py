@@ -3,7 +3,6 @@ from unittest import mock
 
 import pytest
 
-from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
@@ -33,14 +32,12 @@ class TestSplitS3UriAndAlias:
         assert alias is None
 
     def test_multiple_hashes_rejected(self):
-        with pytest.raises(OpenEOApiException) as exc_info:
+        with pytest.raises(ValueError, match="at most one '#'"):
             split_s3_uri_and_alias("s3://bucket/key#alias#extra")
-        assert exc_info.value.status_code == 400
 
     def test_empty_alias_rejected(self):
-        with pytest.raises(OpenEOApiException) as exc_info:
+        with pytest.raises(ValueError, match="non-empty alias"):
             split_s3_uri_and_alias("s3://bucket/key#")
-        assert exc_info.value.status_code == 400
 
 
 class TestPresignS3UrlsForInternalUsage:
@@ -131,7 +128,7 @@ class TestPresignS3UrlsForInternalUsage:
         """Bucket with no matching workspace config (unknown region) should raise S3ProxyDisabled."""
         monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, moto_server)
         with gps_config_overrides(workspaces={}):
-            with pytest.raises(S3ProxyDisabled, match="unknown region"):
+            with pytest.raises(S3ProxyDisabled, match="not a known workspace bucket"):
                 presign_s3_urls_for_internal_usage(
                     ["s3://some-unknown-bucket/key#alias"],
                     job_id="j-001",
