@@ -25,6 +25,7 @@ without compromising stable operations.
 - Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
 - Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
 - Kubernetes batch jobs: remove obsolete Python 3.8 specific `PYTHONPATH` from driver and executor env ([#1899](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1899))
+- Expose `data_type` and `nodata` in job results metadata for GeoTIFF and NetCDF assets ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
 
 
 ## 0.73.0
