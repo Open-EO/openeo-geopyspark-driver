@@ -341,13 +341,15 @@ class TestSmallJobOptions:
         assert self._check(backend_implementation, process_graph) is False
 
     def test_too_many_nodes(self, backend_implementation):
-        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=8)
-        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == 9
+        max_nodes = get_backend_config().small_job_max_nodes
+        # A job is small when it has fewer than `small_job_max_nodes` nodes
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=max_nodes - 2)
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == max_nodes - 1
         assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
         # Dry run should not modify the original process graph
-        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == 9
-        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=9)
-        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == 10
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == max_nodes - 1
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=max_nodes - 1)
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == max_nodes
         assert self._determine(backend_implementation, process_graph) == {}
 
     def test_run_udf(self, backend_implementation):
