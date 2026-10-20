@@ -2374,7 +2374,10 @@ class GpsBatchJobs(backend.BatchJobs):
             return False
         estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
         # Unknown size (some estimate failed) could be large, so don't consider it small.
-        return estimated_input_pixel is not None and estimated_input_pixel < config.small_job_max_estimated_input_pixel
+        # An estimate of 0 (e.g. no sources found, or a point extent) is suspicious, so don't consider that small either.
+        return (
+            estimated_input_pixel is not None and 0 < estimated_input_pixel < config.small_job_max_estimated_input_pixel
+        )
 
     @typechecked
     def _determine_small_job_options(
