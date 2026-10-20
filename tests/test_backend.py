@@ -254,6 +254,30 @@ def test_calculate_estimated_input_pixel_two_load_collections(backend_implementa
         assert volume([(source_id1, constraints), (source_id2, constraints)]) is None
 
 
+def test_calculate_estimated_input_pixel_sentinel2_real_job(backend_implementation):
+    # Real CDSE job j-2610201140164cbea5ccd5f486b199e3: 3 bands, 1 observation, nearly full coverage.
+    # Its job results reported "Input Pixel 167.859 mega-pixel".
+    source_id = SourceId("load_collection", arguments=("SENTINEL2_L2A", None), pg_node_id="lc")
+    constraints = {
+        "temporal_extent": ["2026-10-06", "2026-10-06"],
+        "spatial_extent": {"west": 3.8, "south": 50.7, "east": 5.5, "north": 51.1},
+        "bands": ["B04", "B03", "B02"],
+    }
+    source_constraints = [(source_id, constraints)]
+    env = EvalEnv(
+        values={
+            ENV_SOURCE_CONSTRAINTS: source_constraints,
+            "backend_implementation": backend_implementation,
+            "version": "1.2.0",
+        }
+    )
+    estimated = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
+    print(f"{estimated=}")
+    assert estimated == pytest.approx(167.859e6, rel=0.02)  # from job results
+    assert estimated == pytest.approx(12054 * 4716 * 3, rel=0.02)  # from resulting tiff, w*h*bands
+    assert estimated == pytest.approx(170479349.9419, rel=0.0001)  # actual result
+
+
 class TestSmallJobOptions:
     @staticmethod
     def _load_collection_graph(spatial_extent: dict, extra_nodes: int = 0) -> dict:
