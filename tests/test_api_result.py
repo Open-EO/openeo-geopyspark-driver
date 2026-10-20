@@ -328,11 +328,6 @@ def test_udp_simple_temporal_reduce(api100, user_defined_process_registry):
 
 @pytest.mark.parametrize("udf_code", [
     """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            return DataCube(cube.get_array().max("t"))
-    """,
-    """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
             return XarrayDataCube(cube.get_array().max("t"))
@@ -403,12 +398,6 @@ def test_udp_udf_reduce_temporal(api100, user_defined_process_registry, udf_code
 @pytest.mark.parametrize(
     "udf_code",
     [
-        """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            offset = context.get("offset", 34)
-            return DataCube(cube.get_array().max("t") + offset)
-    """,
         """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
@@ -485,15 +474,6 @@ def test_udp_udf_reduce_temporal_with_parameter(api100, user_defined_process_reg
 @pytest.mark.parametrize(
     "udf_code",
     [
-        """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            l_scale = context.get("l_scale", 100)
-            d_scale = context.get("d_scale", 1)
-            array = cube.get_array()
-            res = l_scale * array.sel(bands="Longitude") + d_scale * array.sel(bands="Day")
-            return DataCube(res)
-    """,
         """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
@@ -629,12 +609,6 @@ def test_apply_square_pixels(api100):
 @pytest.mark.parametrize(
     "udf_code",
     [
-        """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            array = cube.get_array()
-            return DataCube(array * array)
-    """,
         """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
@@ -1274,12 +1248,6 @@ class TestApplyRunUDFWithContext:
     "udf_code",
     [
         """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            offset = context.get("offset", 100)
-            return DataCube(cube.get_array() + offset)
-    """,
-        """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
             offset = context.get("offset", 100)
@@ -1757,11 +1725,6 @@ def test_reduce_dimension_array_create_array_concat(api100):
 
 
 @pytest.mark.parametrize("udf_code", [
-    """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            return DataCube(cube.get_array().max("t"))
-    """,
     """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:

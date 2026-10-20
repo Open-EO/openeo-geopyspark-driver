@@ -617,19 +617,6 @@ def rct_savitzky_golay(udf_data:UdfData):
     "udf_code",
     [
         """
-        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
-        from openeo_udf.api.udf_data import UdfData  # Old style openeo_udf API
-
-        def hyper_sum(udf_data: UdfData):
-            # Iterate over each tile
-            cube_list = []
-            for cube in udf_data.get_datacube_list():
-                mean = cube.array.sum(dim="t")
-                mean.name = cube.id + "_sum"
-                cube_list.append(DataCube(array=mean))
-            udf_data.set_datacube_list(cube_list)
-    """,
-        """
         from openeo.udf import XarrayDataCube, UdfData
 
         def hyper_sum(udf_data: UdfData):

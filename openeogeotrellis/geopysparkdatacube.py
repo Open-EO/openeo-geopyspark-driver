@@ -2817,7 +2817,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         def reproject_point(x, y):
             transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-            return transformer.transform(x, y)
+            return tuple(float(coordinate) for coordinate in transformer.transform(x, y))
 
         reprojected_xmin1, reprojected_ymin1 = reproject_point(xmin, ymin)
         reprojected_xmax1, reprojected_ymax1 = reproject_point(xmax, ymax)
