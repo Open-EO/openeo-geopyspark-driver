@@ -2368,7 +2368,8 @@ class GpsBatchJobs(backend.BatchJobs):
         env, source_constraints = dry_run()
         # Input pixels can only be estimated for load_collection, and only reliably for some collections.
         if any(
-            source_id.process_id != "load_collection" or source_id.arguments[0] not in config.small_job_collections
+            source_id.process_id != "load_collection"
+            or source_id.arguments[0] not in config.small_job_included_collections
             for source_id, _ in source_constraints
         ):
             return False
