@@ -21,9 +21,9 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     LOGGING_CONTEXT_BATCH_JOB,
     GlobalExtraLoggingFilter,
-    get_logging_config,
     setup_logging,
 )
+from openeogeotrellis.util.audience_logging import get_logging_config
 from openeo_driver.utils import EvalEnv
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeo_driver.workspacerepository import backend_config_workspace_repository
