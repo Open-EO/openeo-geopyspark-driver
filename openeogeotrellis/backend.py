@@ -17,7 +17,7 @@ import zipfile
 import importlib.metadata
 from copy import deepcopy
 from decimal import Decimal
-from functools import lru_cache, partial, reduce
+from functools import cache, lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set, Any
@@ -54,13 +54,30 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
-from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
-                                  ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, ProcessUnsupportedException, )
-from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
-                                       get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
-    _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
+from openeo_driver.errors import (
+    InternalException,
+    JobNotFinishedException,
+    OpenEOApiException,
+    ServiceUnsupportedException,
+    ProcessParameterInvalidException,
+    ProcessUnsupportedException,
+)
+from openeo_driver.jobregistry import (
+    DEPENDENCY_STATUS,
+    JOB_STATUS,
+    ElasticJobRegistry,
+    PARTIAL_JOB_STATUS,
+    get_ejr_credentials_from_env,
+)
+from openeo_driver.ProcessGraphDeserializer import (
+    ENV_FINAL_RESULT,
+    ENV_SAVE_RESULT,
+    ConcreteProcessing,
+    _extract_load_parameters,
+    ENV_MAX_BUFFER,
+    ENV_DRY_RUN_TRACER,
+    ENV_SOURCE_CONSTRAINTS,
+)
 from openeo_driver.processgraph import ProcessGraphFlatDict
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -69,7 +86,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
-from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results.result_metadata import CollectNodesVisitor, CollectUniqueProcessIdsVisitor
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -119,7 +136,9 @@ from openeogeotrellis.job_registry import (
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     get_layer_catalog,
-    extra_validation_load_collection, WHITELIST,
+    estimate_load_collection_pixels,
+    extra_validation_load_collection,
+    WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
@@ -162,6 +181,7 @@ from openeogeotrellis.utils import (
     S3ClientBuilder,
     single_value,
     to_projected_polygons,
+    typechecked,
     zk_client,
 )
 from openeogeotrellis.vault import Vault
@@ -1575,6 +1595,31 @@ class GpsProcessing(ConcreteProcessing):
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
+    @typechecked
+    def calculate_estimated_input_pixel(
+        self, env: EvalEnv, source_constraints: List[SourceConstraint]
+    ) -> Optional[float]:
+        """
+        Estimate the total input pixels (pixels x temporal observations x bands)
+        loaded by all `load_collection` source constraints.
+
+        :return: estimated input pixels, or None if any `load_collection` could not be estimated.
+        """
+        total_pixels = 0.0
+        # copy because _extract_load_parameters is stateful
+        env = env.push({ENV_MAX_BUFFER: {}, ENV_SOURCE_CONSTRAINTS: deepcopy(source_constraints)})
+        for source_id, _constraints in deepcopy(source_constraints):
+            if source_id.process_id != "load_collection":
+                continue
+            cid = source_id.arguments[0]
+            load_params = _extract_load_parameters(env, source_id=source_id)
+            pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
+            if error:
+                logger.warning(f"calculate_estimated_input_pixel: failed to estimate {cid!r}: {error}")
+                return None
+            total_pixels += pixels
+        return total_pixels
+
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
             # TODO: remove this temporary feature flag https://github.com/Open-EO/openeo-geopyspark-driver/issues/404
@@ -1816,11 +1861,22 @@ class GpsBatchJobs(backend.BatchJobs):
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
         isKube = ConfigParams().is_kube_deploy
+        options_class = K8SOptions if isKube else JobOptions
+        # Shared by small job detection and dependency scheduling
+        dry_run = self._lazy_dry_run(
+            process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
+        )
 
-        if isKube:
-            options = K8SOptions.from_dict(job_options)
-        else:
-            options = JobOptions.from_dict(job_options)
+        if any(k not in job_options for k in options_class.performance_options()):
+            small_job_options = self._determine_small_job_options(
+                process_graph=job_process_graph, api_version=api_version, dry_run=dry_run, logger_adapter=log
+            )
+            # Explicitly set job options (e.g. by the user or through `default_job_options`) take precedence.
+            job_options = {**small_job_options, **job_options}
+            # Some job runners (e.g. YARN) read the job options from job_info again.
+            job_info["job_options"] = job_options
+
+        options = options_class.from_dict(job_options)
         options.validate()
 
         # Job-options are validated at this point
@@ -1852,8 +1908,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                process_graph=job_process_graph,
-                api_version=api_version,
+                dry_run=dry_run,
                 user_id=user_id,
                 job_id=job_id,
                 job_options=job_options,
@@ -2232,17 +2287,13 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
             return None
 
-    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
+    def _dry_run_source_constraints(
         self,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
-        job_id: str,
-        job_options: dict,
-        sentinel_hub_client_alias: str,
-        get_vault_token: Callable[[str], str],
         logger_adapter: logging.LoggerAdapter,
-    ) -> List[dict]:
+    ) -> Tuple[EvalEnv, List[SourceConstraint]]:
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, convert_node
 
@@ -2282,6 +2333,111 @@ class GpsBatchJobs(backend.BatchJobs):
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
+        return env, source_constraints
+
+    @typechecked
+    def _lazy_dry_run(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        user_id: str,
+        logger_adapter: logging.LoggerAdapter,
+    ) -> Callable[[], Tuple[EvalEnv, List[SourceConstraint]]]:
+        """
+        Build a function that dry runs the process graph on first call and returns the cached result afterwards.
+        """
+
+        @cache
+        def dry_run() -> Tuple[EvalEnv, List[SourceConstraint]]:
+            # deepcopy because the dry run modifies the process graph in place
+            return self._dry_run_source_constraints(
+                process_graph=deepcopy(process_graph),
+                api_version=api_version,
+                user_id=user_id,
+                logger_adapter=logger_adapter,
+            )
+
+        return dry_run
+
+    @typechecked
+    def _check_small_job(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
+    ) -> bool:
+        """
+        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes,
+        only whitelisted collections and few estimated input pixels.
+        """
+        config = get_backend_config()
+        # deepcopy because the visitor modifies the process graph in place
+        nodes = CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes
+        if len(nodes) >= config.small_job_max_nodes:
+            return False
+
+        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+        for node in nodes:
+            process_id = node.get("process_id")
+            if process_id == "run_udf":
+                return False
+            # Same resolution as `apply_process`: anything not found in the backend registry
+            # (e.g. "user" namespace or remote URL namespace) is a user-defined process.
+            if not process_registry.contains(process_id, namespace=node.get("namespace") or "backend"):
+                return False
+
+        env, source_constraints = dry_run()
+        # Input pixels can only be estimated for load_collection, and only reliably for some collections.
+        if any(
+            source_id.process_id != "load_collection"
+            or source_id.arguments[0] not in config.small_job_included_collections
+            for source_id, _ in source_constraints
+        ):
+            return False
+        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
+        # Unknown size (some estimate failed) could be large, so don't consider it small.
+        # An estimate of 0 (e.g. no sources found, or a point extent) is suspicious, so don't consider that small either.
+        return (
+            estimated_input_pixel is not None and 0 < estimated_input_pixel < config.small_job_max_estimated_input_pixel
+        )
+
+    @typechecked
+    def _determine_small_job_options(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
+        logger_adapter: logging.LoggerAdapter,
+    ) -> dict:
+        """
+        Return the job options to use when the job is considered small (see `_check_small_job`),
+        or an empty dict when the job is not small.
+        """
+        config = get_backend_config()
+        if not config.small_job_options:
+            return {}
+        try:
+            is_small = self._check_small_job(process_graph=process_graph, api_version=api_version, dry_run=dry_run)
+        except Exception as e:
+            logger_adapter.warning(f"Failed to determine whether job is small: {e!r}", exc_info=True)
+            return {}
+        if not is_small:
+            return {}
+        logger_adapter.info(f"Small job detected: using {config.small_job_options=}")
+        return dict(config.small_job_options)
+
+    @typechecked
+    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
+        self,
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
+        user_id: str,
+        job_id: str,
+        job_options: dict,
+        sentinel_hub_client_alias: str,
+        get_vault_token: Callable[[str], str],
+        logger_adapter: logging.LoggerAdapter,
+    ) -> List[dict]:
+        _, source_constraints = dry_run()
 
         job_dependencies = []
         batch_request_cache = {}

@@ -185,3 +185,8 @@ class TestCreditPlansJobOption:
     def test_credit_plans_multiple_plans_accepted(self):
         job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a", "plan-b"]})
         assert job_options.credit_plans == ["plan-a", "plan-b"]
+
+
+def test_performance_options():
+    assert "max-executors" in JobOptions.performance_options()
+    assert "executor-request-cores" in K8SOptions.performance_options()

@@ -2,9 +2,11 @@ import sys
 
 import json
 import logging
+import math
 
 import os
 import re
+from copy import deepcopy
 from typing import Union
 from unittest.mock import MagicMock
 
@@ -30,7 +32,13 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
+from openeogeotrellis.backend import (
+    GeoPySparkBackendImplementation,
+    GpsBatchJobs,
+    GpsProcessing,
+    GpsUdfRuntimes,
+)
+from openeogeotrellis.job_results.result_metadata import CollectNodesVisitor
 from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
@@ -212,6 +220,242 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
     assert errors[0]['code'] == "ExtentTooLarge"
+
+
+def test_calculate_estimated_input_pixel_two_load_collections(backend_implementation):
+    processing = GpsProcessing()
+    constraints = {
+        "temporal_extent": ["2019-01-01", "2019-01-02"],
+        "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+        "bands": ["DEM"],
+    }
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
+
+    def volume(source_constraints):
+        env = EvalEnv(
+            values={
+                ENV_SOURCE_CONSTRAINTS: source_constraints,
+                "backend_implementation": backend_implementation,
+                "version": "1.0.0",
+            }
+        )
+        return processing.calculate_estimated_input_pixel(env, source_constraints)
+
+    single = volume([(source_id1, constraints)])
+    assert 0 < single < math.inf
+    assert volume([(source_id2, constraints)]) == single
+    assert volume([(source_id1, constraints), (source_id2, constraints)]) == 2 * single
+
+    # Any failed estimate makes the total volume unknown
+    with mock.patch(
+        "openeogeotrellis.backend.estimate_load_collection_pixels",
+        side_effect=[(single, None), (None, {"code": "Failed"})],
+    ):
+        assert volume([(source_id1, constraints), (source_id2, constraints)]) is None
+
+
+def test_calculate_estimated_input_pixel_sentinel2_real_job(backend_implementation):
+    # Real CDSE job j-2610201140164cbea5ccd5f486b199e3: 3 bands, 1 observation, nearly full coverage.
+    # Its job results reported "Input Pixel 167.859 mega-pixel".
+    source_id = SourceId("load_collection", arguments=("SENTINEL2_L2A", None), pg_node_id="lc")
+    constraints = {
+        "temporal_extent": ["2026-10-06", "2026-10-06"],
+        "spatial_extent": {"west": 3.8, "south": 50.7, "east": 5.5, "north": 51.1},
+        "bands": ["B04", "B03", "B02"],
+    }
+    source_constraints = [(source_id, constraints)]
+    env = EvalEnv(
+        values={
+            ENV_SOURCE_CONSTRAINTS: source_constraints,
+            "backend_implementation": backend_implementation,
+            "version": "1.2.0",
+        }
+    )
+    estimated = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
+    print(f"{estimated=}")
+    assert estimated == pytest.approx(167.859e6, rel=0.02)  # from job results
+    assert estimated == pytest.approx(12054 * 4716 * 3, rel=0.02)  # from resulting tiff, w*h*bands
+    assert estimated == pytest.approx(170479349.9419, rel=0.0001)  # actual result
+
+
+class TestSmallJobOptions:
+    @staticmethod
+    def _load_collection_graph(spatial_extent: dict, extra_nodes: int = 0) -> dict:
+        process_graph = {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "COPERNICUS_30",
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": ["2020-01-01", "2020-01-02"],
+                },
+            }
+        }
+        previous = "lc"
+        for i in range(extra_nodes):
+            process_graph[f"fb{i}"] = {
+                "process_id": "filter_bands",
+                "arguments": {"data": {"from_node": previous}, "bands": ["DEM"]},
+            }
+            previous = f"fb{i}"
+        process_graph[previous]["result"] = True
+        return process_graph
+
+    SMALL_EXTENT = {"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}
+    LARGE_EXTENT = {"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}
+
+    _API_VERSION = "1.2.0"
+    _LOGGER_ADAPTER = logging.LoggerAdapter(logging.getLogger(__name__), extra={})
+
+    def _dry_run(self, backend_implementation, process_graph: dict):
+        return backend_implementation.batch_jobs._lazy_dry_run(
+            process_graph=process_graph,
+            api_version=self._API_VERSION,
+            user_id="john",
+            logger_adapter=self._LOGGER_ADAPTER,
+        )
+
+    def _determine(self, backend_implementation, process_graph: dict):
+        return backend_implementation.batch_jobs._determine_small_job_options(
+            process_graph=process_graph,
+            api_version=self._API_VERSION,
+            dry_run=self._dry_run(backend_implementation, process_graph),
+            logger_adapter=self._LOGGER_ADAPTER,
+        )
+
+    def _check(self, backend_implementation, process_graph: dict) -> bool:
+        return backend_implementation.batch_jobs._check_small_job(
+            process_graph=process_graph,
+            api_version=self._API_VERSION,
+            dry_run=self._dry_run(backend_implementation, process_graph),
+        )
+
+    def test_lazy_dry_run(self, backend_implementation):
+        batch_jobs = backend_implementation.batch_jobs
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        with mock.patch.object(
+            batch_jobs, "_dry_run_source_constraints", wraps=batch_jobs._dry_run_source_constraints
+        ) as dry_run_source_constraints:
+            dry_run = self._dry_run(backend_implementation, process_graph)
+            assert dry_run_source_constraints.call_count == 0
+            env, source_constraints = dry_run()
+            assert [source_id.process_id for source_id, _ in source_constraints] == ["load_collection"]
+            assert dry_run() == (env, source_constraints)
+            assert dry_run_source_constraints.call_count == 1
+
+    def test_no_dry_run_when_too_many_nodes(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=9)
+        dry_run = mock.Mock()
+        assert (
+            backend_implementation.batch_jobs._check_small_job(
+                process_graph=process_graph, api_version=self._API_VERSION, dry_run=dry_run
+            )
+            is False
+        )
+        dry_run.assert_not_called()
+
+    def test_small_job(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
+        assert self._check(backend_implementation, process_graph) is True
+
+    def test_large_estimated_input_pixel(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.LARGE_EXTENT)
+        assert self._determine(backend_implementation, process_graph) == {}
+        assert self._check(backend_implementation, process_graph) is False
+
+    def test_too_many_nodes(self, backend_implementation):
+        max_nodes = get_backend_config().small_job_max_nodes
+        # A job is small when it has fewer than `small_job_max_nodes` nodes
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=max_nodes - 2)
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == max_nodes - 1
+        assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
+        # Dry run should not modify the original process graph
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == max_nodes - 1
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=max_nodes - 1)
+        assert len(CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes) == max_nodes
+        assert self._determine(backend_implementation, process_graph) == {}
+
+    def test_run_udf(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        del process_graph["lc"]["result"]
+        process_graph["apply"] = {
+            "process_id": "apply",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {
+                    "process_graph": {
+                        "udf": {
+                            "process_id": "run_udf",
+                            "arguments": {"data": {"from_parameter": "x"}, "udf": "x", "runtime": "Python"},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+            "result": True,
+        }
+        assert self._determine(backend_implementation, process_graph) == {}
+
+    @pytest.mark.parametrize(
+        "namespace",
+        [None, "user", "https://share.test/udp/my_udp.json"],
+    )
+    def test_user_defined_process(self, backend_implementation, namespace):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        del process_graph["lc"]["result"]
+        process_graph["udp"] = {
+            "process_id": "my_udp",
+            "namespace": namespace,
+            "arguments": {"data": {"from_node": "lc"}},
+            "result": True,
+        }
+        assert self._determine(backend_implementation, process_graph) == {}
+
+    def test_backend_namespace(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT, extra_nodes=1)
+        process_graph["fb0"]["namespace"] = "backend"
+        assert self._determine(backend_implementation, process_graph) == {"max-executors": 5}
+
+    def test_partially_unknown_estimated_input_pixel(self, backend_implementation):
+        process_graph = self._load_collection_graph(self.SMALL_EXTENT)
+        del process_graph["lc"]["result"]
+        process_graph["lc2"] = dict(process_graph["lc"])
+        process_graph["merge"] = {
+            "process_id": "merge_cubes",
+            "arguments": {"cube1": {"from_node": "lc"}, "cube2": {"from_node": "lc2"}},
+            "result": True,
+        }
+        assert self._check(backend_implementation, process_graph) is True
+        with mock.patch(
+            "openeogeotrellis.backend.estimate_load_collection_pixels",
+            side_effect=[(10, None), (None, {"code": "Failed"})],
+        ):
+            assert self._check(backend_implementation, process_graph) is False
+
+    def test_non_load_collection_source(self, backend_implementation):
+        process_graph = {
+            "ls": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/collections/foo"},
+                "result": True,
+            }
+        }
+        assert self._determine(backend_implementation, process_graph) == {}
+
+    def test_disabled(self, backend_implementation):
+        with gps_config_overrides(small_job_options={}):
+            assert self._determine(backend_implementation, self._load_collection_graph(self.SMALL_EXTENT)) == {}
+
+    def test_custom_config(self, backend_implementation):
+        with gps_config_overrides(
+            small_job_options={"max-executors": 3, "executor-memory": "1G"}, small_job_max_estimated_input_pixel=1e12
+        ):
+            assert self._determine(backend_implementation, self._load_collection_graph(self.LARGE_EXTENT)) == {
+                "max-executors": 3,
+                "executor-memory": "1G",
+            }
 
 
 def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
