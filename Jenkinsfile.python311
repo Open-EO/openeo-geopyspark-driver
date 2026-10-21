@@ -31,15 +31,15 @@ pythonPipeline {
   build_wheel = true
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest'
+  custom_test_image = 'openeo-docker.repo.vito.be/almalinux9-spark4-py311-openeo:latest'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
   enable_caching = true
   enable_uv = true
   test_coverage = false
-  artifactory_server = ['rss', 'sas']
+  artifactory_server = 'sas'
   wheel_repo_sas = 'openeo-pypi-local'
   wheel_repo_dev_sas = 'openeo-pypi-local'
-  promotion_artifactory_server = 'rss'
+  extra_index_repo = 'openeo-pypi'
 }
