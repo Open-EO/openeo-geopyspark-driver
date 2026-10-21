@@ -1595,11 +1595,13 @@ class GpsProcessing(ConcreteProcessing):
 
     @typechecked
     def calculate_estimated_input_pixel(
-        self, env: EvalEnv, source_constraints: List[SourceConstraint]
+        self, env: EvalEnv, source_constraints: List[SourceConstraint], strict: bool = False
     ) -> Optional[float]:
         """
         Estimate the total input pixels (pixels x temporal observations x bands)
         loaded by all `load_collection` source constraints.
+
+        :param strict: fail (return None) when no GSD was found for a collection, instead of assuming a default.
 
         :return: estimated input pixels, or None if any `load_collection` could not be estimated.
         """
@@ -1611,7 +1613,9 @@ class GpsProcessing(ConcreteProcessing):
                 continue
             cid = source_id.arguments[0]
             load_params = _extract_load_parameters(env, source_id=source_id)
-            pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
+            pixels, error = estimate_load_collection_pixels(
+                collection_id=cid, load_params=load_params, env=env, strict=strict
+            )
             if error:
                 logger.warning(f"calculate_estimated_input_pixel: failed to estimate {cid!r}: {error}")
                 return None
@@ -2373,7 +2377,7 @@ class GpsBatchJobs(backend.BatchJobs):
             for source_id, _ in source_constraints
         ):
             return False
-        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
+        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints, strict=True)
         # Unknown size (some estimate failed) could be large, so don't consider it small.
         # An estimate of 0 (e.g. no sources found, or a point extent) is suspicious, so don't consider that small either.
         return (
