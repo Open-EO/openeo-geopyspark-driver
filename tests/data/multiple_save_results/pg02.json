@@ -17,7 +17,10 @@
         "bands": [
           "B04",
           "B11"
-        ]
+        ],
+        "featureflags": {
+            "synthetic_data_override_celltype": "int16"
+        }
       }
     },
     "reduce2": {
