@@ -2163,7 +2163,9 @@ class GeopysparkDataCube(DriverDataCube):
                 proj_bbox=tuple(asset_metadata.get("proj:bbox")),
                 proj_shape=tuple(asset_metadata.get("proj:shape")),
                 proj_epsg=asset_metadata.get("proj:epsg"),
-                bands=bands
+                bands=bands,
+                data_type=asset.dataType(),
+                nodata=asset.nodata(),  # py4j takes care of the conversion from java.lang.Number
             )
 
         if format in ["GTIFF", "PNG"]:
@@ -2294,7 +2296,6 @@ class GeopysparkDataCube(DriverDataCube):
                     bands = []
                     if self.metadata.has_band_dimension():
                         bands = [{k:v for k,v in b._asdict().items() if v is not None} for b in self.metadata.bands]
-                    nodata = max_level.layer_metadata.no_data_value
 
                     max_level_rdd = max_level.srdd.rdd()
 
@@ -2364,7 +2365,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, format_type="image/tiff; application=geotiff", nodata=nodata)
+                            job_items.build_items(written, format_type="image/tiff; application=geotiff")
                         )
                     elif batch_mode and not is_temporal_layer and sample_by_feature:
                         format_opts.validate_sample_by_feature_with_separate_asset_per_band()
@@ -2394,7 +2395,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, format_type="image/tiff; application=geotiff", nodata=nodata)
+                            job_items.build_items(written, format_type="image/tiff; application=geotiff")
                         )  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
@@ -2429,7 +2430,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, format_type="image/tiff; application=geotiff", nodata=nodata)
+                            job_items.build_items(written, format_type="image/tiff; application=geotiff")
                         )
             else:
                 if not save_filename.endswith(".png"):
@@ -2459,7 +2460,6 @@ class GeopysparkDataCube(DriverDataCube):
                 dim_names['bands'] = self.metadata.band_dimension.name
             if self.metadata.has_temporal_dimension():
                 dim_names['t'] = self.metadata.temporal_dimension.name
-            nodata = max_level.layer_metadata.no_data_value
             global_metadata = format_opts.file_metadata
             zlevel = format_opts.zlevel
             add_bands_statistics = format_opts.add_bands_statistics
@@ -2481,7 +2481,7 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                     for java_item in java_items
                 ]
-                return job_items.build_items(written, format_type="application/x-netcdf", nodata=nodata)
+                return job_items.build_items(written, format_type="application/x-netcdf")
 
             if batch_mode and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
