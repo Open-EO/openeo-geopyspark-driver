@@ -32,7 +32,7 @@ from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.stac.extents import SpatioTemporalExtent
 from openeogeotrellis.stac.item_collection import ItemCollection
-from openeogeotrellis.stac.projection import compute_cellsize, get_asset_property, get_proj_metadata
+from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property
 from openeogeotrellis.util.datastructures import NoveltyTracker
 from openeogeotrellis.util.projection import is_utm_epsg_code
 
@@ -356,8 +356,14 @@ def build_asset_table(
                 continue
             opensearch_stats["assets"] += 1
 
-            proj_epsg, proj_bbox, proj_shape = get_proj_metadata(
+            asset_proj_metadata = ProjectionMetadata.from_asset(
                 asset=asset, item=itm, fix_proj_transform=fix_proj_transform
+            )
+            # TODO: avoid unpacking of proj_epsg, proj_bbox, proj_shape, just use asset_proj_metadata directly
+            proj_epsg, proj_bbox, proj_shape = (
+                asset_proj_metadata.epsg,
+                asset_proj_metadata.bbox,
+                asset_proj_metadata.shape,
             )
             opensearch_stats[f"assets with {proj_epsg=}"] += 1
             if proj_epsg:

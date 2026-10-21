@@ -8,7 +8,8 @@ import datetime as dt
 import pystac
 import pytest
 
-from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property, get_proj_metadata
+from openeo.testing.stac import StacDummyBuilder
+from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property
 
 SOME_DATETIME = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
 
@@ -58,6 +59,92 @@ class TestProjectionMetadata:
         assert a == b
         assert a != c
 
+    @pytest.mark.parametrize(
+        ["item_properties", "asset_extra_fields", "expected"],
+        [
+            (
+                # Minimal
+                {},
+                {},
+                (None, None, None, None),
+            ),
+            (
+                # at item level
+                {"proj:code": "EPSG:32631", "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                {},
+                ("EPSG:32631", 32631, (12, 34, 56, 78), (12, 34)),
+            ),
+            (
+                # at item level (legacy proj:epsg)
+                {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                {},
+                ("EPSG:32631", 32631, (12, 34, 56, 78), (12, 34)),
+            ),
+            (
+                # at asset level
+                {},
+                {"proj:code": "EPSG:32631", "proj:shape": [20, 10], "proj:bbox": [0, 0, 100, 200]},
+                ("EPSG:32631", 32631, (0, 0, 100, 200), (20, 10)),
+            ),
+            (
+                # at asset level
+                {},
+                {"proj:code": "EPSG:32631", "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                ("EPSG:32631", 32631, (12, 34, 56, 78), (12, 34)),
+            ),
+            (
+                # at asset level (legacy proj:epsg)
+                {},
+                {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                ("EPSG:32631", 32631, (12, 34, 56, 78), (12, 34)),
+            ),
+            (
+                # At bands level
+                # (https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391, https://github.com/stac-extensions/projection/issues/25)
+                {},
+                {
+                    "bands": [
+                        {
+                            "name": "B04",
+                            "proj:code": "EPSG:32631",
+                            "proj:shape": [12, 34],
+                            "proj:bbox": [12, 34, 56, 78],
+                        },
+                        {
+                            "name": "B02",
+                            "proj:code": "EPSG:32631",
+                            "proj:shape": [12, 34],
+                            "proj:bbox": [12, 34, 56, 78],
+                        },
+                    ]
+                },
+                ("EPSG:32631", 32631, (12, 34, 56, 78), (12, 34)),
+            ),
+            (
+                # Mixed
+                {"proj:code": "EPSG:32631"},
+                {
+                    "proj:shape": [12, 34],
+                    "bands": [
+                        {"name": "B04", "proj:bbox": [12, 34, 56, 78]},
+                    ],
+                },
+                ("EPSG:32631", 32631, (12, 34, 56, 78), (12, 34)),
+            ),
+            (
+                # Mixed and precedence
+                {"proj:code": "EPSG:32631", "proj:shape": [10, 10]},
+                {"proj:code": "EPSG:32602", "proj:shape": [32, 32]},
+                ("EPSG:32602", 32602, None, (32, 32)),
+            ),
+        ],
+    )
+    def test_get_proj_metadata_from_asset(self, item_properties, asset_extra_fields, expected):
+        asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
+        item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
+        m = ProjectionMetadata.from_asset(asset=asset, item=item)
+        assert (m.code, m.epsg, m.bbox, m.shape) == expected
+
 
 class TestGetAssetProperty:
     def test_direct_field(self):
@@ -78,15 +165,3 @@ class TestGetAssetProperty:
 
 def test_compute_cellsize():
     assert compute_cellsize((0, 0, 100, 200), (20, 10)) == (10.0, 10.0)
-
-
-def test_get_proj_metadata():
-    item = pystac.Item(id="item1", geometry=None, bbox=None, datetime=SOME_DATETIME, properties={})
-    asset = pystac.Asset(
-        href="asset.tif",
-        extra_fields={"proj:code": "EPSG:32631", "proj:bbox": [0, 0, 100, 200], "proj:shape": [20, 10]},
-    )
-    epsg, bbox, shape = get_proj_metadata(asset=asset, item=item)
-    assert epsg == 32631
-    assert bbox == (0, 0, 100, 200)
-    assert shape == (20, 10)

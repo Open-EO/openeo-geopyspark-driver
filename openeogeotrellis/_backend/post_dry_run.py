@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import collections
+import collections.abc
 import logging
 import math
-import typing
 from typing import Callable, List, Tuple, Union, Dict, Set, Optional
 
 import pyproj
@@ -382,8 +382,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
 
 
 def _determine_best_grid_from_proj_metadata(
-    # TODO: type annotation `collections.abc.Collection` would be more future proof, but we're still stuck at python 3.8 compability #1060
-    projection_metadatas: typing.Collection[ProjectionMetadata],
+    projection_metadatas: collections.abc.Collection[ProjectionMetadata],
 ) -> Union[_GridInfo, None]:
     """
     Determine best CRS+resolution (e.g. most common)

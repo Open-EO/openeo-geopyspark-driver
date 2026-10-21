@@ -1,0 +1,187 @@
+name: Build jep wheels
+on:
+  workflow_dispatch:
+    inputs:
+      jep_version:
+        description: "jep version to build"
+        required: true
+        default: "4.3.2"
+      release_tag:
+        description: "GitHub release tag to publish the wheels to"
+        required: true
+        default: "jep-wheels"
+      publish:
+        description: "Publish the wheels to the GitHub release"
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Set JAVA_HOME
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      - name: Build wheel
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "numpy>=2.3.3,<2.5" setuptools wheel
+          python -m pip download --no-binary :all: --no-deps --no-build-isolation \
+            "jep==${{ inputs.jep_version }}" -d sdist
+          mkdir src
+          tar -xzf sdist/*.tar.gz -C src --strip-components=1
+          # jep <= 4.2.0 only looks for numpy headers in `numpy/core/include` (numpy 1.x layout).
+          # With numpy 2.x the headers are in `numpy/_core/include`: jep then silently builds
+          # WITHOUT numpy support (NDArray/DirectNDArray are not converted to numpy arrays).
+          # `numpy.get_include()` works for both layouts.
+          python - <<'PY'
+          import pathlib
+          p = pathlib.Path("src/setup.py")
+          s = p.read_text()
+          old = "include_path = os.path.join(numpy.__path__[0], 'core', 'include')"
+          if old in s:
+              p.write_text(s.replace(old, "include_path = numpy.get_include()"))
+              print("Patched src/setup.py to use numpy.get_include()")
+          else:
+              print("No setup.py patch needed")
+          PY
+          build() {
+            python -m pip wheel -v --no-build-isolation --no-deps ./src -w wheelhouse 2>&1 | tee build.log
+          }
+          if ! build; then
+            # jep <= 4.1.x imports `setuptools.dep_util`, which was removed from newer setuptools
+            echo "Build failed, retrying with setuptools<69"
+            python -m pip install "setuptools<69"
+            build
+          fi
+          ls -l wheelhouse
+          # Fail when jep was built without numpy support
+          grep -q "numpy include found at" build.log \
+            || { echo "::error::numpy headers not found: jep was built without numpy support"; exit 1; }
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          python -m pip install wheelhouse/*.whl
+          # Jep only works embedded in a JVM, so test it through a small Java program.
+          SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+          LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+          LDLIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LDLIBRARY'))")
+          JAR=$(ls "$SITE"/jep/jep-*.jar | head -n1)
+          echo "jep jar: $JAR; libpython: $LIBDIR/$LDLIB"
+          ls -l "$SITE"/jep/
+          cat > "$RUNNER_TEMP/JepSmokeTest.java" <<'EOF'
+          import java.nio.ByteBuffer;
+          import java.nio.ByteOrder;
+          import java.nio.FloatBuffer;
+          import jep.DirectNDArray;
+          import jep.Interpreter;
+          import jep.NDArray;
+          import jep.SharedInterpreter;
+          public class JepSmokeTest {
+              static void check(boolean ok, String msg) {
+                  if (!ok) throw new AssertionError(msg);
+                  System.out.println("OK: " + msg);
+              }
+              static void run(String label) throws Exception {
+                  System.out.println("--- " + label + " (thread " + Thread.currentThread().getName() + ")");
+                  try (Interpreter interp = new SharedInterpreter()) {
+                      interp.exec("import sys, numpy, jep");
+                      System.out.println("python: " + interp.getValue("sys.version", String.class));
+                      System.out.println("jep:    " + interp.getValue("jep.__version__", String.class));
+                      String np = interp.getValue("numpy.__version__", String.class);
+                      System.out.println("numpy:  " + np);
+                      check(Integer.parseInt(np.split("\\.")[0]) >= 2, "numpy >= 2");
+                      Long sum = interp.getValue("int(numpy.arange(10).sum())", Long.class);
+                      check(sum == 45L, "numpy computation (sum=" + sum + ")");
+                      // Java -> numpy (copy)
+                      interp.set("a", new NDArray<>(new double[]{1, 2, 3, 4}, 2, 2));
+                      String aType = interp.getValue("type(a).__module__ + '.' + type(a).__name__", String.class);
+                      check(aType.equals("numpy.ndarray"), "NDArray converted to numpy (type=" + aType + ")");
+                      Double s = interp.getValue("float(a.sum())", Double.class);
+                      check(s == 10.0, "NDArray -> numpy (sum=" + s + ", shape=" + interp.getValue("str(a.shape)") + ")");
+                      // numpy -> Java
+                      Object back = interp.getValue("numpy.arange(6, dtype=numpy.float32).reshape(2, 3) * 2");
+                      check(back instanceof NDArray, "numpy -> NDArray (" + back.getClass().getName() + ")");
+                      // Java direct buffer <-> numpy (zero copy), as used for tile data
+                      FloatBuffer buf = ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+                      for (int i = 0; i < 4; i++) buf.put(i, i);
+                      interp.set("d", new DirectNDArray<>(buf, 4));
+                      interp.exec("d *= 10");
+                      check(buf.get(3) == 30.0f, "DirectNDArray in-place modification (" + buf.get(3) + ")");
+                      // Python exceptions must map to JepException instead of crashing
+                      try {
+                          interp.exec("raise ValueError('expected')");
+                          throw new AssertionError("no exception raised");
+                      } catch (jep.JepException e) {
+                          check(e.getMessage().contains("expected"), "Python exception -> JepException");
+                      }
+                  }
+              }
+              public static void main(String[] args) throws Exception {
+                  run("main thread");
+                  // Spark runs UDFs on executor threads: also test creating an interpreter on another thread.
+                  Throwable[] err = new Throwable[1];
+                  Thread t = new Thread(() -> {
+                      try { run("worker thread"); } catch (Throwable e) { err[0] = e; }
+                  }, "jep-worker");
+                  t.start();
+                  t.join();
+                  if (err[0] != null) throw new RuntimeException(err[0]);
+                  System.out.println("Jep smoke test passed");
+              }
+          }
+          EOF
+          PYTHONPATH="$SITE" LD_LIBRARY_PATH="$LIBDIR" LD_PRELOAD="$LIBDIR/$LDLIB" \
+            java -Djava.library.path="$SITE/jep" -XX:ErrorFile="$RUNNER_TEMP/hs_err_smoke_%p.log" \
+            -cp "$JAR" "$RUNNER_TEMP/JepSmokeTest.java" 2>&1 | tee "$RUNNER_TEMP/jep_smoke.log"
+          grep -q "Jep smoke test passed" "$RUNNER_TEMP/jep_smoke.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jep-wheel-py${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+      - name: Upload build and smoke test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jep-logs-py${{ matrix.python-version }}
+          path: |
+            build.log
+            ${{ runner.temp }}/jep_smoke.log
+            ${{ runner.temp }}/hs_err_*.log
+          if-no-files-found: ignore
+  release:
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jep-wheel-py*
+          path: wheels
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "$TAG" \
+              --notes "jep wheels (numpy>=2, JDK 21). Install: pip install --find-links https://github.com/${{ github.repository }}/releases/expanded_assets/$TAG jep"
+          gh release upload "$TAG" wheels/*.whl --clobber

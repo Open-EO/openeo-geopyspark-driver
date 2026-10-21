@@ -239,6 +239,16 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_max_executors: int = 100
 
+    # More small_job_* info here: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1104
+    # Empty dict disables (default). E.g. `{"max-executors": 5}`.
+    # On Kubernetes, keep max-executors >= minExecutors (2) of the SparkApplication.
+    small_job_options: dict = attrs.Factory(dict)
+    small_job_max_nodes: int = 5
+    small_job_max_estimated_input_pixel: float = 1_000_000
+    # Only collections that are very reliable can get the small_job_options.
+    # E.g. `["SENTINEL2_L2A", "COPERNICUS_30"]`.
+    small_job_included_collections: List[str] = attrs.Factory(list)
+
     default_driver_memory: str = "8G"
 
     default_driver_memoryOverhead: str = "2G"
@@ -373,6 +383,11 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Directory where config specific to job execution will be mounted for batch jobs.
     """
     batch_job_config_dir: Path = Path("/opt/job_config")
+
+    """
+    The ID identifying the infrastructure on which execution happens
+    """
+    infra_id: str = attrs.Factory(lambda: os.environ.get("ETL_INFRA_ID", ""))
 
     """
     A mapping of region names to proxy endpoints

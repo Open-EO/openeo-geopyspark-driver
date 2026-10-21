@@ -67,3 +67,15 @@ class TestGeopysparkCubeMetadata:
                 metadata.filter_temporal(start=that_start, end=that_end)
         else:
             raise ValueError(f"Invalid test case: {expected=}")
+
+
+def test_get_GSD_in_meters_band_aliases():
+    metadata = GeopysparkCubeMetadata(
+        {
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B04"]}},
+            "summaries": {"eo:bands": [{"name": "B04", "aliases": ["IMAGE_RED"], "gsd": 10}]},
+        }
+    )
+    gsd = metadata.get_GSD_in_meters()
+    assert gsd["B04"] == (10, 10)
+    assert gsd["IMAGE_RED"] == (10, 10)

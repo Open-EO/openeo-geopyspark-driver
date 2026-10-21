@@ -185,7 +185,7 @@ class UdfRuntimeSpecified(typing.NamedTuple):
     # Runtime name, e.g. "Python", "Python-Jep", ...
     name: str
 
-    # Runtime version (if explicitly specified), e.g. "3.8", "3.11"
+    # Runtime version (if explicitly specified), e.g. "3.11", "3.14"
     version: Optional[str] = None
 
 

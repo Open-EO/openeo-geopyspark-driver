@@ -153,6 +153,17 @@ class TestCapabilities:
             },
         }
 
+    def test_changelog(self, api100, monkeypatch, pytestconfig):
+        # Lacking something better at the moment, some poor-man's jar lookup and config
+        jar_path = next((pytestconfig.rootpath / "jars").glob("geotrellis-extensions-*.jar"), None)
+        monkeypatch.setenv("OPENEO_GEOTRELLIS_EXTENSIONS_JAR", jar_path)
+
+        resp = api100.get("/CHANGELOG").assert_status_code(200)
+        html = resp.text
+        assert '<h2 id="openeo-geopyspark-driver"' in html
+        assert '<h2 id="openeo-python-driver"' in html
+        assert '<h2 id="openeo-geotrellis-extensions"' in html
+
 
 class TestCollections:
     _CRS_AUTO_42001 = {'$schema': 'https://proj.org/schemas/v0.2/projjson.schema.json', 'type': 'GeodeticCRS',
@@ -1248,6 +1259,43 @@ class TestBatchJobs:
             assert batch_job_args[21:23] == [TEST_USER, job_id]
             assert batch_job_args[23] == '0.0'
             assert batch_job_args[27] == 'https://host.com/my.jar'
+
+    @pytest.mark.parametrize(
+        ["spatial_extent", "job_options", "expected_max_executors"],
+        [
+            # Small spatial extent: small job
+            ({"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}, {}, "5"),
+            # Explicit max-executors always wins
+            ({"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}, {"max-executors": 7}, "7"),
+            # Large spatial extent: not a small job
+            ({"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}, {}, "100"),
+        ],
+    )
+    def test_yarn_mode_start_job_small_job_options(
+        self,
+        api,
+        batch_job_output_root,
+        mock_yarn_backend_config,
+        spatial_extent,
+        job_options,
+        expected_max_executors,
+    ):
+        # Should work on Kubernetes too, but easier to test with YARN
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "COPERNICUS_30",
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": ["2020-01-01", "2020-01-02"],
+                },
+                "result": True,
+            }
+        }
+        data = api.get_process_graph_dict(process_graph, title="Dummy")
+        data["job_options"] = job_options
+        batch_job_args, job_id, env = self._create_and_start_job_yarn_mode(data, api)
+        assert batch_job_args[20] == expected_max_executors
 
     def _create_and_start_job_yarn_mode(self, job_data, api):
         res = api.post('/jobs', json=job_data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)

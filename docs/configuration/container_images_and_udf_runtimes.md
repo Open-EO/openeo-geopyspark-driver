@@ -85,20 +85,20 @@ config = GpsBackendConfig(
     ...,
     container_images_and_udf_runtimes=[
         {
-            "image_ref": "docker.example/openeo-geotrellis-py38:123",
-            "image_aliases": ["python38"],
-            "preference": 38,
-            "udf_runtimes": [
-                {"name": "Python", "version": "3.8"},
-            ],
-            "udf_runtime_libraries": {"numpy": "1.22.4", "xarray": "0.16.2"},
-        },
-        {
             "image_ref": "docker.example/openeo-geotrellis-py311:123",
             "image_aliases": ["python311"],
             "preference": 311,
             "udf_runtimes": [
                 {"name": "Python", "version": "3.11"},
+            ],
+            "udf_runtime_libraries": {"numpy": "1.22.4", "xarray": "0.16.2"},
+        },
+        {
+            "image_ref": "docker.example/openeo-geotrellis-py314:123",
+            "image_aliases": ["python314"],
+            "preference": 314,
+            "udf_runtimes": [
+                {"name": "Python", "version": "3.14"},
                 {"name": "Python", "version": "3", "preference": 100},
             ],
             "udf_runtime_libraries": {"numpy": "2.3.3", "xarray": "2024.7.0"},

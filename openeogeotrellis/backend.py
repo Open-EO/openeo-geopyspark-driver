@@ -13,10 +13,11 @@ import time
 import traceback
 import urllib
 import uuid
+import zipfile
 import importlib.metadata
 from copy import deepcopy
 from decimal import Decimal
-from functools import lru_cache, partial, reduce
+from functools import cache, lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set, Any
@@ -53,13 +54,30 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
-from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
-                                  ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, ProcessUnsupportedException, )
-from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
-                                       get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
-    _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
+from openeo_driver.errors import (
+    InternalException,
+    JobNotFinishedException,
+    OpenEOApiException,
+    ServiceUnsupportedException,
+    ProcessParameterInvalidException,
+    ProcessUnsupportedException,
+)
+from openeo_driver.jobregistry import (
+    DEPENDENCY_STATUS,
+    JOB_STATUS,
+    ElasticJobRegistry,
+    PARTIAL_JOB_STATUS,
+    get_ejr_credentials_from_env,
+)
+from openeo_driver.ProcessGraphDeserializer import (
+    ENV_FINAL_RESULT,
+    ENV_SAVE_RESULT,
+    ConcreteProcessing,
+    _extract_load_parameters,
+    ENV_MAX_BUFFER,
+    ENV_DRY_RUN_TRACER,
+    ENV_SOURCE_CONSTRAINTS,
+)
 from openeo_driver.processgraph import ProcessGraphFlatDict
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -68,7 +86,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
-from openeogeotrellis.job_results.result_metadata import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.job_results.result_metadata import CollectNodesVisitor, CollectUniqueProcessIdsVisitor
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -116,7 +134,9 @@ from openeogeotrellis.job_registry import (
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     get_layer_catalog,
-    extra_validation_load_collection, WHITELIST,
+    estimate_load_collection_pixels,
+    extra_validation_load_collection,
+    WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
@@ -155,9 +175,11 @@ from openeogeotrellis.utils import (
     mdc_include,
     mdc_remove,
     normalize_temporal_extent,
+    reproject_cellsize,
     S3ClientBuilder,
     single_value,
     to_projected_polygons,
+    typechecked,
     zk_client,
 )
 from openeogeotrellis.vault import Vault
@@ -701,18 +723,17 @@ Example usage:
                 requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
                 return requested_bbox_lonlat.as_polygon().intersects(shapely.geometry.box(*item.bbox))
 
-            uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
-                                                              asset.extra_fields.get("eo:bands", []))
-                                  for item in job_results.get_items()
-                                  if intersects_spatial_extent(item)
-                                  for asset in item.get_assets().values()
-                                  if asset.media_type == "image/tiff; application=geotiff"}
-
-            timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
+            uris_with_metadata = {
+                asset.get_absolute_href(): (item.datetime.isoformat(), asset.extra_fields.get("eo:bands", []), item.bbox)
+                for item in job_results.get_items()
+                if intersects_spatial_extent(item)
+                for asset in item.get_assets().values()
+                if asset.media_type == "image/tiff; application=geotiff"
+            }
             logger.info(f"{len(uris_with_metadata)=}")
 
             try:
-                eo_bands = single_value(eo_bands for _, eo_bands in uris_with_metadata.values())
+                eo_bands = single_value(eo_bands for _, eo_bands, _ in uris_with_metadata.values())
                 band_names = [eo_band["name"] for eo_band in eo_bands]
             except ValueError as e:
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
@@ -721,13 +742,18 @@ Example usage:
             job_results_bbox = BoundingBox.from_wsen_tuple(
                 job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
             )
+            source_assets = [
+                (uri, timestamp, [eo_band["name"] for eo_band in eo_bands],
+                 item_bbox or job_results_bbox.as_wsen_tuple())
+                for uri, (timestamp, eo_bands, item_bbox) in uris_with_metadata.items()
+            ]
             # TODO: this assumes that job result data is gridded in best UTM already?
             job_results_epsg = job_results_bbox.best_utm()
             logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         else:
             paths_with_metadata = {
-                asset["href"]: (asset.get("datetime"), asset.get("bands", []))
+                asset["href"]: (asset.get("datetime"), asset.get("bands", []), asset.get("bbox"))
                 for _, asset in self.batch_jobs.get_result_assets(
                     job_id=job_id, user_id=user_id
                 ).items()
@@ -739,16 +765,15 @@ Example usage:
                 raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
                                          status_code=501)
 
-            if not all(timestamp is not None for timestamp, _ in paths_with_metadata.values()):
+            if not all(timestamp is not None for timestamp, _, _ in paths_with_metadata.values()):
                 raise OpenEOApiException(
                     message=f"Cannot load results of job {job_id} because they lack timestamp information.",
                     status_code=400)
 
-            timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
-            logger.info(f"{timestamped_uris=}")
+            logger.info(f"{len(paths_with_metadata)=}")
 
             try:
-                eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
+                eo_bands = single_value(eo_bands for _, eo_bands, _ in paths_with_metadata.values())
                 band_names = [eo_band.name for eo_band in eo_bands]
             except ValueError as e:
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
@@ -758,6 +783,11 @@ Example usage:
             job_results_bbox = BoundingBox.from_wsen_tuple(
                 job_info.bbox, crs="EPSG:4326"
             )
+            source_assets = [
+                (path, timestamp, [band.name for band in asset_bands],
+                 asset_bbox or job_results_bbox.as_wsen_tuple())
+                for path, (timestamp, asset_bands, asset_bbox) in paths_with_metadata.items()
+            ]
             job_results_epsg = job_info.epsg
             logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
@@ -772,11 +802,66 @@ Example usage:
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
+        start, end = dt.datetime.fromisoformat(from_date), dt.datetime.fromisoformat(to_date)
+        source_assets = [
+            (uri, timestamp, asset_band_names, asset_bbox)
+            for uri, timestamp, asset_band_names, asset_bbox in source_assets
+            if start <= dt.datetime.fromisoformat(timestamp) < end
+        ]
+        if not source_assets:
+            raise load_stac.NoDataAvailableException(
+                message=f"No result assets of job {job_id} available for temporal extent {temporal_extent}."
+            )
+
         jvm = get_jvm()
 
-        pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
+        opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+        for uri, timestamp, asset_band_names, asset_bbox in source_assets:
+            feature = (
+                jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+                .withId(uri)
+                .withCollectionId(job_id)
+                .withNominalDate(timestamp)
+                .withBBox(*map(float, asset_bbox))
+                .withCRS(f"EPSG:{job_results_epsg}")
+                .addLink(uri, "data", 1.0, 0.0, asset_band_names)
+                .build()
+            )
+            opensearch_client.addFeature(feature)
 
+        raster_path = jvm.geotrellis.raster.geotiff.GeoTiffPath(source_assets[0][0])
+        raster_source = jvm.geotrellis.raster.geotiff.GeoTiffRasterSource(
+            raster_path, jvm.scala.Option.empty(), jvm.scala.Option.empty()
+        )
+        source_cell_size = raster_source.cellSize()
         single_level = env.get('pyramid_levels', 'all') != 'all'
+        layout_crs = f"EPSG:{job_results_epsg}" if single_level else "EPSG:3857"
+        cell_width, cell_height = reproject_cellsize(
+            spatial_extent={
+                "west": job_results_bbox.west,
+                "south": job_results_bbox.south,
+                "east": job_results_bbox.east,
+                "north": job_results_bbox.north,
+                "crs": job_results_bbox.crs,
+            },
+            input_resolution=(float(source_cell_size.width()), float(source_cell_size.height())),
+            input_crs=raster_source.crs().toString(),
+            to_crs=layout_crs,
+        )
+        max_spatial_resolution = jvm.geotrellis.raster.CellSize(
+            cell_width, cell_height
+        )
+        pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+            opensearch_client,
+            job_id,
+            band_names,
+            None,
+            max_spatial_resolution,
+            False,
+            0.0,
+        )
+        metadata_properties = jvm.java.util.Collections.emptyMap()
+        correlation_id = ""
 
         if single_level:
             target_bbox = requested_bbox or job_results_bbox
@@ -792,8 +877,6 @@ Example usage:
                 getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
             ).reproject(projected_polygons, job_results_epsg)
 
-            metadata_properties = None
-            correlation_id = None
             data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
             getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
@@ -804,10 +887,11 @@ Example usage:
                 extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
                 extent_crs = requested_bbox.crs
             else:
-                extent = extent_crs = None
+                extent = jvm.geotrellis.vector.Extent(*job_results_bbox.as_wsen_tuple())
+                extent_crs = job_results_bbox.crs
 
             pyramid = pyramid_factory.pyramid_seq(
-                extent, extent_crs, from_date, to_date
+                extent, extent_crs, from_date, to_date, metadata_properties, correlation_id
             )
 
         metadata = metadata.filter_bbox(
@@ -1259,28 +1343,49 @@ Example usage:
         return "\n".join(lines[index:index2]).strip()
 
     def changelog(self) -> Union[str, Path, flask.Response]:
-        html = openeo_driver.util.changelog.multi_project_changelog(
-            [
-                {
-                    "name": "openeo-geopyspark-driver",
-                    "version": importlib.metadata.version(distribution_name="openeo-geopyspark"),
-                    "changelog_path": openeo_driver.util.changelog.get_changelog_path(
-                        data_files_dir="openeo-geopyspark-driver",
-                        src_root=Path(openeogeotrellis.__file__).parent.parent,
-                        filename="CHANGELOG.md",
-                    ),
-                },
-                {
-                    "name": "openeo-python-driver",
-                    "version": importlib.metadata.version(distribution_name="openeo_driver"),
-                    "changelog_path": openeo_driver.util.changelog.get_changelog_path(
-                        data_files_dir="openeo-python-driver-data",
-                        src_root=Path(openeo_driver.__file__).parent.parent,
-                        filename="CHANGELOG.md",
-                    ),
-                },
-            ]
+        projects = [
+            {
+                "name": "openeo-geopyspark-driver",
+                "version": importlib.metadata.version(distribution_name="openeo-geopyspark"),
+                "changelog_path": openeo_driver.util.changelog.get_changelog_path(
+                    data_files_dir="openeo-geopyspark-driver",
+                    src_root=Path(openeogeotrellis.__file__).parent.parent,
+                    filename="CHANGELOG.md",
+                ),
+            },
+            {
+                "name": "openeo-python-driver",
+                "version": importlib.metadata.version(distribution_name="openeo_driver"),
+                "changelog_path": openeo_driver.util.changelog.get_changelog_path(
+                    data_files_dir="openeo-python-driver-data",
+                    src_root=Path(openeo_driver.__file__).parent.parent,
+                    filename="CHANGELOG.md",
+                ),
+            },
+        ]
+
+        openeo_geotrellis_extensions_jar = os.environ.get(
+            "OPENEO_GEOTRELLIS_EXTENSIONS_JAR",
+            # Note: this hardcoded path is based on current conventions in current docker images.
+            "/opt/geotrellis-extensions-static.jar",
         )
+        try:
+            if Path(openeo_geotrellis_extensions_jar).exists():
+                with zipfile.ZipFile(openeo_geotrellis_extensions_jar, "r") as jar:
+                    changelog_content = jar.read("CHANGELOG.md").decode("utf-8")
+                changelog_html = openeo_driver.util.changelog.markdown_changelog_to_html(changelog_content)
+                projects.append(
+                    {
+                        "name": "openeo-geotrellis-extensions",
+                        # TODO: extract version, e.g. from jar manifest?
+                        "version": "n/a",
+                        "changelog_html": changelog_html,
+                    }
+                )
+        except Exception as exc:
+            logger.warning(f"Failed to get changelog from {openeo_geotrellis_extensions_jar=}: {exc=}")
+
+        html = openeo_driver.util.changelog.multi_project_changelog(projects=projects)
         return flask.make_response(html, {"Content-Type": "text/html"})
 
     def set_request_id(self, request_id: str):
@@ -1491,6 +1596,31 @@ class GpsProcessing(ConcreteProcessing):
         except Exception as e:
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
+
+    @typechecked
+    def calculate_estimated_input_pixel(
+        self, env: EvalEnv, source_constraints: List[SourceConstraint]
+    ) -> Optional[float]:
+        """
+        Estimate the total input pixels (pixels x temporal observations x bands)
+        loaded by all `load_collection` source constraints.
+
+        :return: estimated input pixels, or None if any `load_collection` could not be estimated.
+        """
+        total_pixels = 0.0
+        # copy because _extract_load_parameters is stateful
+        env = env.push({ENV_MAX_BUFFER: {}, ENV_SOURCE_CONSTRAINTS: deepcopy(source_constraints)})
+        for source_id, _constraints in deepcopy(source_constraints):
+            if source_id.process_id != "load_collection":
+                continue
+            cid = source_id.arguments[0]
+            load_params = _extract_load_parameters(env, source_id=source_id)
+            pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
+            if error:
+                logger.warning(f"calculate_estimated_input_pixel: failed to estimate {cid!r}: {error}")
+                return None
+            total_pixels += pixels
+        return total_pixels
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
@@ -1733,11 +1863,22 @@ class GpsBatchJobs(backend.BatchJobs):
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
         isKube = ConfigParams().is_kube_deploy
+        options_class = K8SOptions if isKube else JobOptions
+        # Shared by small job detection and dependency scheduling
+        dry_run = self._lazy_dry_run(
+            process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
+        )
 
-        if isKube:
-            options = K8SOptions.from_dict(job_options)
-        else:
-            options = JobOptions.from_dict(job_options)
+        if any(k not in job_options for k in options_class.performance_options()):
+            small_job_options = self._determine_small_job_options(
+                process_graph=job_process_graph, api_version=api_version, dry_run=dry_run, logger_adapter=log
+            )
+            # Explicitly set job options (e.g. by the user or through `default_job_options`) take precedence.
+            job_options = {**small_job_options, **job_options}
+            # Some job runners (e.g. YARN) read the job options from job_info again.
+            job_info["job_options"] = job_options
+
+        options = options_class.from_dict(job_options)
         options.validate()
 
         # Job-options are validated at this point
@@ -1769,8 +1910,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                process_graph=job_process_graph,
-                api_version=api_version,
+                dry_run=dry_run,
                 user_id=user_id,
                 job_id=job_id,
                 job_options=job_options,
@@ -2010,7 +2150,9 @@ class GpsBatchJobs(backend.BatchJobs):
                         # method the state was valid it is best to just NOOP and communicate the job is started.
                         log.info(f"Job start requested, but already in state {latest_job_status}")
                         return
-                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                    infra_id = get_backend_config().infra_id
+                    status_kwargs = {"infra_id": infra_id} if infra_id else {}
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED, **status_kwargs)
                     # Note: with a shared results PVC, there is nothing to create per job:
                     # the batch job just mounts a subPath of that (externally managed) claim.
                     if (
@@ -2128,17 +2270,13 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
             return None
 
-    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
+    def _dry_run_source_constraints(
         self,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
-        job_id: str,
-        job_options: dict,
-        sentinel_hub_client_alias: str,
-        get_vault_token: Callable[[str], str],
         logger_adapter: logging.LoggerAdapter,
-    ) -> List[dict]:
+    ) -> Tuple[EvalEnv, List[SourceConstraint]]:
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, convert_node
 
@@ -2178,6 +2316,111 @@ class GpsBatchJobs(backend.BatchJobs):
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
+        return env, source_constraints
+
+    @typechecked
+    def _lazy_dry_run(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        user_id: str,
+        logger_adapter: logging.LoggerAdapter,
+    ) -> Callable[[], Tuple[EvalEnv, List[SourceConstraint]]]:
+        """
+        Build a function that dry runs the process graph on first call and returns the cached result afterwards.
+        """
+
+        @cache
+        def dry_run() -> Tuple[EvalEnv, List[SourceConstraint]]:
+            # deepcopy because the dry run modifies the process graph in place
+            return self._dry_run_source_constraints(
+                process_graph=deepcopy(process_graph),
+                api_version=api_version,
+                user_id=user_id,
+                logger_adapter=logger_adapter,
+            )
+
+        return dry_run
+
+    @typechecked
+    def _check_small_job(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
+    ) -> bool:
+        """
+        Check whether a job is small: few process graph nodes, no UDFs or user-defined processes,
+        only whitelisted collections and few estimated input pixels.
+        """
+        config = get_backend_config()
+        # deepcopy because the visitor modifies the process graph in place
+        nodes = CollectNodesVisitor().accept_process_graph(deepcopy(process_graph)).nodes
+        if len(nodes) >= config.small_job_max_nodes:
+            return False
+
+        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+        for node in nodes:
+            process_id = node.get("process_id")
+            if process_id == "run_udf":
+                return False
+            # Same resolution as `apply_process`: anything not found in the backend registry
+            # (e.g. "user" namespace or remote URL namespace) is a user-defined process.
+            if not process_registry.contains(process_id, namespace=node.get("namespace") or "backend"):
+                return False
+
+        env, source_constraints = dry_run()
+        # Input pixels can only be estimated for load_collection, and only reliably for some collections.
+        if any(
+            source_id.process_id != "load_collection"
+            or source_id.arguments[0] not in config.small_job_included_collections
+            for source_id, _ in source_constraints
+        ):
+            return False
+        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
+        # Unknown size (some estimate failed) could be large, so don't consider it small.
+        # An estimate of 0 (e.g. no sources found, or a point extent) is suspicious, so don't consider that small either.
+        return (
+            estimated_input_pixel is not None and 0 < estimated_input_pixel < config.small_job_max_estimated_input_pixel
+        )
+
+    @typechecked
+    def _determine_small_job_options(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
+        logger_adapter: logging.LoggerAdapter,
+    ) -> dict:
+        """
+        Return the job options to use when the job is considered small (see `_check_small_job`),
+        or an empty dict when the job is not small.
+        """
+        config = get_backend_config()
+        if not config.small_job_options:
+            return {}
+        try:
+            is_small = self._check_small_job(process_graph=process_graph, api_version=api_version, dry_run=dry_run)
+        except Exception as e:
+            logger_adapter.warning(f"Failed to determine whether job is small: {e!r}", exc_info=True)
+            return {}
+        if not is_small:
+            return {}
+        logger_adapter.info(f"Small job detected: using {config.small_job_options=}")
+        return dict(config.small_job_options)
+
+    @typechecked
+    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
+        self,
+        dry_run: Callable[[], Tuple[EvalEnv, List[SourceConstraint]]],
+        user_id: str,
+        job_id: str,
+        job_options: dict,
+        sentinel_hub_client_alias: str,
+        get_vault_token: Callable[[str], str],
+        logger_adapter: logging.LoggerAdapter,
+    ) -> List[dict]:
+        _, source_constraints = dry_run()
 
         job_dependencies = []
         batch_request_cache = {}

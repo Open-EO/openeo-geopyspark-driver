@@ -190,11 +190,7 @@ class GeometrySimplifier:
             ):
                 geometry = geometry.envelope
             # Flatten to single (multi)polygon
-            if hasattr(geopandas.GeoSeries, "union_all"):
-                simplified: shapely.geometry.base.BaseGeometry = geometry.union_all(method="unary")
-            else:
-                # TODO: remove this fallback for geopandas<1.0.0 once Python 3.8 support is dropped
-                simplified: shapely.geometry.base.BaseGeometry = geometry.unary_union
+            simplified: shapely.geometry.base.BaseGeometry = geometry.union_all(method="unary")
         elif isinstance(geometry, (shapely.geometry.Polygon, shapely.geometry.MultiPolygon)):
             simplified = geometry
         else:

@@ -1,19 +1,12 @@
-import argparse
 import contextlib
 import json
 import re
-import sys
-from email import message
 from typing import Optional, Iterable
 
 import dirty_equals
 import pytest
 
 from openeogeotrellis.catalog.enrich import LinksList
-
-if sys.version_info < (3, 10):
-    # TODO #1060 clean up once python 3.8/3.9 support can be dropped
-    pytest.skip("openeogeotrellis.catalog.manage requires at least Python 3.10+", allow_module_level=True)
 
 
 from openeo.testing.stac import StacDummyBuilder
@@ -32,6 +25,7 @@ from openeogeotrellis.catalog.manage import (
     _BuildItem,
     BandMetadataList,
     _find_common_prefix,
+    normalize_openeo_collection_id,
 )
 
 
@@ -1222,3 +1216,9 @@ class TestLayerCatalogManagerCliApp:
             ],
             [],
         )
+
+
+def test_normalize_collection_id():
+    assert normalize_openeo_collection_id("s2-toc-v2") == "S2_TOC_V2"
+    assert normalize_openeo_collection_id("s2% toc +V2") == "S2_TOC_V2"
+    assert normalize_openeo_collection_id("  s2% toc +V2 ") == "S2_TOC_V2"

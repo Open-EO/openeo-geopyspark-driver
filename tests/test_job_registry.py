@@ -448,16 +448,18 @@ class TestDoubleJobRegistry:
                 job_id="j-456", user_id="alice", process=self.DUMMY_PROCESS
             )
             double_jr.set_application_id(job_id="j-456", user_id="alice", application_id="a-456")
-            double_jr.set_status(job_id="j-456", user_id="alice", status=JOB_STATUS.QUEUED)
+            double_jr.set_status(job_id="j-456", user_id="alice", status=JOB_STATUS.QUEUED, infra_id="my-test-dev")
 
             double_jr.create_job(
                 job_id="j-789", user_id="john", process=self.DUMMY_PROCESS
             )
 
             active_jobs = list(double_jr.list_active_jobs(require_application_id=True))
+            active_jobs_for_infra = list(double_jr.list_active_jobs(infra_id="my-test-dev"))
 
         active_job_ids = set(job["job_id"] for job in active_jobs)
         assert active_job_ids == {"j-456"}
+        assert {job["job_id"] for job in active_jobs_for_infra} == {"j-456"}
 
 
 class TestDoubleJobRegistryWithEjr:

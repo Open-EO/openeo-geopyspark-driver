@@ -4,6 +4,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, NullResult
 
 from openeogeotrellis.job_results.result_metadata import (
+    CollectNodesVisitor,
     assemble_result_metadata,
     convert_asset_outputs_to_s3_urls,
     href_from_job_local_path,
@@ -148,3 +149,40 @@ def test_href_from_job_local_path_file():
 def test_href_from_job_local_path_s3():
     href = href_from_job_local_path("/tmp/aux.txt", job_local_href_format="s3", s3_bucket_name="my-bucket")
     assert href == "s3://my-bucket/tmp/aux.txt"
+
+
+def test_collect_nodes():
+    process_graph = {
+        "lc": {"process_id": "load_collection", "arguments": {"id": "S2"}},
+        "apply": {
+            "process_id": "apply",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {
+                    "process_graph": {
+                        "abs": {"process_id": "absolute", "arguments": {"x": {"from_parameter": "x"}}},
+                        "add": {
+                            "process_id": "add",
+                            "arguments": {"x": {"from_node": "abs"}, "y": 1},
+                            "result": True,
+                        },
+                    }
+                },
+            },
+        },
+        "save": {"process_id": "save_result", "arguments": {"data": {"from_node": "apply"}}, "result": True},
+    }
+    assert len(CollectNodesVisitor().accept_process_graph(process_graph).nodes) == 5
+
+
+def test_collect_nodes_shared_node():
+    """A node referenced multiple times is counted once."""
+    process_graph = {
+        "lc": {"process_id": "load_collection", "arguments": {"id": "S2"}},
+        "merge": {
+            "process_id": "merge_cubes",
+            "arguments": {"cube1": {"from_node": "lc"}, "cube2": {"from_node": "lc"}},
+            "result": True,
+        },
+    }
+    assert len(CollectNodesVisitor().accept_process_graph(process_graph).nodes) == 2

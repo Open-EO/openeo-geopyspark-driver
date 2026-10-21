@@ -148,6 +148,25 @@ class TestDownload:
     with get_test_data_file("geometries/polygons02.geojson").open() as f:
         features = json.load(f)
 
+    def test_write_assets_use_s3proxy_writes_to_s3_bucket(self, monkeypatch):
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer_with_two_bands_and_one_date()}))
+
+        class Captured(Exception):
+            pass
+
+        def fake_save_stitched(self, spatial_rdd, path, *args, **kwargs):
+            raise Captured(path)
+
+        monkeypatch.setattr(GeopysparkDataCube, "_save_stitched", fake_save_stitched)
+
+        with pytest.raises(Captured) as exc_info:
+            imagecollection.write_assets(
+                "/batch_jobs/j-123/out.tif",
+                format="GTiff",
+                format_options={"batch_mode": True, "stitch": True, "use_s3proxy": True, "s3_bucket": "my-bucket"},
+            )
+        assert exc_info.value.args[0] == "s3://my-bucket/batch_jobs/j-123/out.tif"
+
     def test_write_assets_samples(self, tmp_path):
         """
 
@@ -185,10 +204,15 @@ class TestDownload:
                     dirty_equals.IsPartialDict(name="band_one"),
                     dirty_equals.IsPartialDict(name="band_two"),
                 ],
+                "raster:bands": [
+                    dirty_equals.IsPartialDict(name="band_one"),
+                    dirty_equals.IsPartialDict(name="band_two"),
+                ],
                 "bbox": dirty_equals.IsListOrTuple(length=4),
                 "datetime": "2017-09-25T11:37:00Z",
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                 "href": str(tmp_path / name),
+                "data_type": "int32",
                 "nodata": -1,
                 "roles": ["data"],
                 "type": "image/tiff; application=geotiff",
@@ -277,8 +301,10 @@ class TestDownload:
                                              tile_grid, filename_prefix,bands_metadata,add_bands_statistics):
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
+            expected_data_type = "int32"
         else:
             imagecollection = imagecollection_with_two_bands_spatial_only
+            expected_data_type = "float64"
 
         if bands_metadata == "s":
             bands_metadata = {"red":{"SCALE":1.23}}
@@ -324,6 +350,7 @@ class TestDownload:
                         "bbox": dirty_equals.IsListOrTuple(length=4),
                         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                         "href": str(tmp_path / name),
+                        "data_type": expected_data_type,
                         "nodata": -1,
                         "proj:epsg" : 4326,
                         "proj:bbox": dirty_equals.IsListOrTuple(length=4),

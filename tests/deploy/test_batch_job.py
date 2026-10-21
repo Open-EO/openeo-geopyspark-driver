@@ -14,7 +14,7 @@ from unittest import mock
 import dirty_equals
 import pytest
 from mock import MagicMock
-from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.testing import DictSubSet, ListSubSet
@@ -144,16 +144,15 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         },
     )
     cube = cube.filter_bbox(west=4, south=51, east=5, north=52)
-    geometries = DelayedVector(str(get_test_data_file("multipolygon01.geojson")))
+    geometries = DriverVectorCube.from_fiona([str(get_test_data_file("multipolygon01.geojson"))])
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
 
     metadata = extract_result_metadata(tracer)
+    # Ring start vertex/orientation depends on the shapely/GEOS version: compare geometry semantically.
+    geometry = metadata.pop("geometry")
+    assert shape(geometry).normalize().equals_exact(box(5.0, 5.0, 45.0, 40.0).normalize(), tolerance=1e-9)
     expected = {
         "bbox": [5.0, 5.0, 45.0, 40.0],
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": (((45.0, 5.0), (45.0, 40.0), (5.0, 40.0), (5.0, 5.0), (45.0, 5.0)),),
-        },
         "area": {"value": approx(6763173869883.0, 1.0), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
@@ -353,7 +352,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
     geo_json_data = mapping(geometries_lat_lon)
     delayed_vector_file.write_text(json.dumps(geo_json_data))
 
-    geometries = DelayedVector(str(delayed_vector_file))
+    geometries = DriverVectorCube.from_fiona([str(delayed_vector_file)])
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
 
     metadata = extract_result_metadata(tracer)
