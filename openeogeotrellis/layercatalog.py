@@ -1332,6 +1332,8 @@ def _get_load_collection_pixel_params(
             "Auto42001",
         )
     else:
+        # Metadata is not always reliable, and there are cases that when aliases are used, the GSD is not available.
+        # Using max_gsd is an easy workaround before we have a better solution.
         max_gsd = metadata.get_max_GSD_in_meters()
         if max_gsd is None:
             # The largest GSD I encountered was 25km. Double it as very permissive guess:
