@@ -118,26 +118,26 @@ class TestBuildItemsBatch:
         # Quirk: an empty (but non-None) band_indices list is falsy, so BATCH includes all bands.
         bands = [{"name": "B01"}, {"name": "B02"}]
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
-        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
         assert result["assets"]["openEO"]["bands"] == bands
 
     def test_band_indices_none_uses_all_bands(self):
         bands = [{"name": "B01"}]
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
-        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
         assert result["assets"]["openEO"]["bands"] == bands
 
 
 class TestBuildItemsPlain:
     def test_band_indices_none_omits_bands_key(self):
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
         assert "bands" not in result["assets"]["openEO"]
         assert "properties" not in result
 
     def test_geometry_and_bbox_always_present(self):
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], format_type="image/tiff; application=geotiff", nodata=None)["item1"]
+        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
         asset = result["assets"]["openEO"]
         assert asset["geometry"]["type"] == "Polygon"
         assert len(asset["bbox"]) == 4
@@ -152,10 +152,11 @@ class TestBuildItemsNetcdf:
                     path="/a.nc",
                     bands=[{"name": "B01", "statistics": {"minimum": 0}}],
                     proj_epsg=4326,
+                    nodata=-1,
                 )
             ]
         )
-        result = build_items([item], format_type="application/x-netcdf", nodata=-1)["item1"]
+        result = build_items([item], format_type="application/x-netcdf")["item1"]
         assert "properties" not in result
         asset = result["assets"]["openEO"]
         assert asset["bands"] == asset["raster:bands"] == [{"name": "B01", "statistics": {"minimum": 0}}]
@@ -164,7 +165,7 @@ class TestBuildItemsNetcdf:
 
     def test_netcdf_item_without_bbox_has_no_geometry(self):
         item = _item(bbox=None, assets=[WrittenAsset(key="openEO", path="/a.nc")])
-        result = build_items([item], format_type="application/x-netcdf", nodata=None)["item1"]
+        result = build_items([item], format_type="application/x-netcdf")["item1"]
         assert "geometry" not in result
         assert "bbox" not in result
         # dict_no_none strips the per-asset geometry/bbox keys entirely when absent.

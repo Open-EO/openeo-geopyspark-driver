@@ -533,6 +533,7 @@ class JobTracker:
                 max_age=3 * 30,
                 max_updated_ago=14,
                 require_application_id=True,
+                infra_id=get_backend_config().infra_id or None,
             )
 
             for job_info in jobs_to_track:
@@ -597,14 +598,28 @@ class JobTracker:
             )
             stats["new metadata"] += 1
         except AppNotFound:
+            infra_id = get_backend_config().infra_id
+            if infra_id:
+                # Jobs are listed per `infra_id`, so this job belongs to this infra: a missing app is a real problem.
+                log.error(f"App not found: {job_id=} {application_id=} {infra_id=}; setting job status to error")
+                # Deliberately no cost calculation/reporting, usage reporting or cleanup here:
+                # infra issues should not trigger user costs.
+                double_job_registry.set_status(
+                    job_id=job_id,
+                    user_id=user_id,
+                    status=JOB_STATUS.ERROR,
+                    finished=Rfc3339(propagate_none=True).datetime(now_utc()),
+                )
+                stats["app not found: set error"] += 1
+                return
+
             log.warning(
                 f"App not found: {job_id=} {application_id=}; "
                 f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
                 exc_info=False,  # omit noisy stack trace for non-exceptional situation
             )
-            # TODO: originally, we set the job status here to "error", but that is potentially
-            #       destructive in distributed context with partial replication.
-            #       So we just don't touch anything and skip it instead for now.
+            # Without `infra_id` we can't tell if the job is ours (distributed context with partial replication),
+            # so don't touch anything and skip it.
             stats["skip: app not found"] += 1
             return
 

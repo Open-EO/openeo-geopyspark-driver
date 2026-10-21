@@ -18,7 +18,10 @@
           "B04",
           "B03",
           "B02"
-        ]
+        ],
+        "featureflags": {
+            "synthetic_data_override_celltype": "int16"
+        }
       }
     },
     "reduce2": {

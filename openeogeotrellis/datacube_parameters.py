@@ -91,8 +91,12 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         synthetic_data_override_udf = feature_flags.get("synthetic_data_override_udf", None)
         option = jvm.scala.Option
         option_synthetic_udf = option.apply(synthetic_data_override_udf) if synthetic_data_override_udf else option.empty()
+        # UdfLanguage is a scala Enumeration defined in the `geotrelliscommon` package object
+        # An object nested in a package object compiles to the class `package$UdfLanguage$`.
+        udf_language_enum = getattr(getattr(jvm.org.openeo.geotrelliscommon, "package$UdfLanguage$"), "MODULE$")
+        udf_language = udf_language_enum.Python()
         syntheticDataOverride =  jvm.org.openeo.geotrelliscommon.SyntheticDataOverride(
-            synthetic_data_override_celltype, option_synthetic_udf
+            synthetic_data_override_celltype, option_synthetic_udf, udf_language
         )
         datacubeParams.setSyntheticDataOverride(syntheticDataOverride)
 
