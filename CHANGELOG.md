@@ -23,6 +23,7 @@ without compromising stable operations.
 - `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
 - `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
 - Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
+- Conservative batch job parameter auto-tuning. Instead of using a fixed default for max-executors, an appropriate value may be selected automatically based on process graph analysis. ([#1104](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1104))
 - Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
 - Kubernetes batch jobs: remove obsolete Python 3.8 specific `PYTHONPATH` from driver and executor env ([#1899](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1899))
 - Job tracker: when `infra_id` is configured, only list active jobs of that infra, and on `AppNotFound` log an error and set the job status to `error`
