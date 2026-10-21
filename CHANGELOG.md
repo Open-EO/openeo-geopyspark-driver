@@ -27,6 +27,7 @@ without compromising stable operations.
 - Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
 - Kubernetes batch jobs: remove obsolete Python 3.8 specific `PYTHONPATH` from driver and executor env ([#1899](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1899))
 - Job tracker: when `infra_id` is configured, only list active jobs of that infra, and on `AppNotFound` log an error and set the job status to `error`
+- Expose `data_type` and `nodata` in job results metadata for GeoTIFF and NetCDF assets ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
 
 
 ## 0.73.0
