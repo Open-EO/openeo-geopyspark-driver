@@ -2155,6 +2155,10 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
                         "crs": 3035,
                     },
                     "temporal_extent": ["2024-01-05", "2024-01-06"],
+                    "bands": ["B03"],
+                    "featureflags": {
+                        "synthetic_data_override_celltype": "int16"
+                    }
                 },
             },
             "saveresult1": {
