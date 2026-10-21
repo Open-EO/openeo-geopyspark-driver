@@ -263,7 +263,7 @@ def run_job(
 
     # TODO: migrate all raw job option usage to parsed job options
     job_options = job_specification.get("job_options", {})
-    parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
+    parsed_job_options: JobOptions = JobOptions.from_dict(job_options, job_specification["process_graph"])
 
     stac11_mode = parsed_job_options.stac_version == "1.1"
     omit_derived_from_links = parsed_job_options.omit_derived_from_links or stac11_mode

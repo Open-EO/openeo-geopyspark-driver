@@ -2,7 +2,7 @@ import dataclasses
 import logging
 import re
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
@@ -18,6 +18,20 @@ from openeogeotrellis.util.byteunit import byte_string_as
 
 
 JOB_OPTION_DISABLE = "disable"
+
+
+def is_simple_process_graph(process_graph: Optional[dict]) -> bool:
+    """TODO: Placeholder implementation, need to implement!"""
+    if not isinstance(process_graph, dict) or not process_graph:
+        return False
+    return len(process_graph) <= 3
+
+
+def _is_truthy(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return value is True
+
 
 @dataclass
 class JobOptions:
@@ -159,6 +173,17 @@ class JobOptions:
         },
     )
 
+    allow_dynamic_job_options: bool = field(
+        default=False,
+        metadata={
+            "name": "allow_dynamic_job_options",
+            "description": "Allow the backend to adapt job options (e.g. lower executor-memory) based on the process graph. "
+            "Explicitly specified job options are never overridden.",
+            "experimental": True,
+            "public": False,
+        },
+    )
+
     credit_plans: List[str] = field(
         default_factory=list,
         metadata={
@@ -258,7 +283,7 @@ class JobOptions:
                                  status_code=400)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "JobOptions":
+    def from_dict(cls, data: Dict[str, Any], process_graph: Optional[dict] = None) -> "JobOptions":
 
         init_kwargs = {}
         for field in fields(cls):
@@ -300,6 +325,13 @@ class JobOptions:
 
         if python_max is not None and python_max > 0:
             init_kwargs["python_memory"] = f"{python_max}b"
+
+        if (
+            _is_truthy(init_kwargs.get("allow_dynamic_job_options"))
+            and "executor-memory" not in data
+            and is_simple_process_graph(process_graph)
+        ):
+            init_kwargs["executor_memory"] = "1G"
 
 
         return cls(**init_kwargs)
