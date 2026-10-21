@@ -48,6 +48,11 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_set_secret_owner_reference,
     K8S_SPARK_APP_STATE,
 )
+from openeogeotrellis.integrations.s3proxy.exceptions import (
+    CredentialsException,
+    S3ProxyDisabled,
+    S3ProxyUnsupportedBucketType,
+)
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
@@ -1076,6 +1081,22 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
     )
 
 
+def test_k8s_sparkapplication_dict_presigned_udf_dependencies(backend_config_path):
+    presigned = (
+        "http://s3proxy.internal/bucket/deps/lib.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+        "&X-Amz-Credential=key%2F20260101%2Feu-central-1%2Fs3%2Faws4_request&X-Amz-Signature=abc123"
+    )
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        archives=f"{presigned}#venv,https://example.com/other.zip#other",
+        py_files=[f"{presigned}#lib", "https://example.com/helper.py"],
+        openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
+        propagatable_web_app_driver_envars={},
+    )
+    assert app_dict["spec"]["sparkConf"]["spark.archives"] == f"{presigned}#venv,https://example.com/other.zip#other"
+    assert app_dict["spec"]["deps"]["files"][-2:] == [f"{presigned}#lib", "https://example.com/helper.py"]
+
+
 def test_k8s_s3_profiles_and_token():
     # Given a test token and test content for a AWS config file
     test_token = "mytoken1"
@@ -1965,6 +1986,23 @@ class TestGpsBatchJobs:
         else:
             assert caplog.messages == []
 
+    @pytest.mark.parametrize(
+        ["error", "expected_status"],
+        [
+            (ValueError("bad uri"), 400),
+            (S3ProxyUnsupportedBucketType("unknown bucket"), 400),
+            (S3ProxyDisabled("no proxy"), 500),
+            (CredentialsException(), 500),
+        ],
+    )
+    def test_resolve_udf_dependencies_for_k8s_errors(self, error, expected_status):
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        with mock.patch("openeogeotrellis.backend.presign_s3_urls_for_internal_usage", side_effect=error):
+            with pytest.raises(OpenEOApiException) as exc_info:
+                gps_batch_jobs._resolve_udf_dependencies_for_k8s(
+                    ["s3://bucket/key.zip"], job_id="j-123", user_id="alice"
+                )
+        assert exc_info.value.status_code == expected_status
 
 
 class TestGpsUdfRuntimes:

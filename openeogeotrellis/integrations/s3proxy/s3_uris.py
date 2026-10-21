@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
@@ -20,11 +21,15 @@ def get_bucket_key_from_uri(s3_uri: str) -> Tuple[str, str]:
     return bucket, key
 
 
+# Restrict aliases to plain file names: they end up in the Spark application manifest.
+_ALIAS_REGEX = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
 def split_s3_uri_and_alias(s3_uri: str) -> Tuple[str, Optional[str]]:
     """Split an S3 URI into the URI without alias and an optional alias fragment.
 
     Returns (s3_uri_without_alias, alias) where alias may be None if no '#' is present.
-    Raises ValueError if the URI has more than one '#' or an empty alias.
+    Raises ValueError if the URI has more than one '#', or an empty or otherwise invalid alias.
     """
     if s3_uri.count("#") > 1:
         raise ValueError(f"Invalid S3 URI {s3_uri!r}: expected at most one '#'.")
@@ -32,5 +37,7 @@ def split_s3_uri_and_alias(s3_uri: str) -> Tuple[str, Optional[str]]:
         s3_uri_without_alias, alias = s3_uri.split("#", 1)
         if not alias:
             raise ValueError(f"Invalid S3 URI {s3_uri!r}: expected non-empty alias after '#'.")
+        if not _ALIAS_REGEX.match(alias):
+            raise ValueError(f"Invalid S3 URI {s3_uri!r}: alias may only contain letters, digits, '.', '_' and '-'.")
         return s3_uri_without_alias, alias
     return s3_uri, None

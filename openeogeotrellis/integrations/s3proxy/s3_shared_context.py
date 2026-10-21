@@ -50,32 +50,33 @@ def get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, internal
 def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, internal: bool) -> S3Client:
     """Construct a boto3 S3 client pointed at the S3 proxy for the given bucket and job context.
 
-    Raises S3ProxyDisabled if the bucket is not a known workspace bucket (no region available)
-    or if no proxy endpoint is configured for the bucket's region.
+    Raises S3ProxyUnsupportedBucketType if the bucket is not a known workspace bucket (no region available).
+    Raises S3ProxyDisabled if no proxy endpoint is configured for the bucket's region.
     """
     bucket_details = BucketDetails.from_name(bucket)
     # Currently only workspace buckets are supported: they are the only bucket type for which
     # we can derive both a region (needed to pick the proxy endpoint) and a role ARN.
     if not is_workspace_bucket(bucket_details):
-        raise S3ProxyDisabled(
+        raise S3ProxyUnsupportedBucketType(
             f"Bucket {bucket!r} is not a known workspace bucket; cannot determine region for S3 proxy."
         )
     region_name = bucket_details.region
-    try:
-        if internal:
-            endpoint_url = os.environ[AWSConfig.S3PROXY_S3_ENDPOINT_URL]
-        else:
-            endpoint_url = get_backend_config().s3_region_proxy_endpoints[region_name]
-        creds = get_job_aws_credentials_for_proxy(job_id, user_id, _get_role_arn(bucket_details))
-        return boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            region_name=region_name,
-            config=Config(signature_version="s3v4"),
-            **creds.as_client_kwargs(),
-        )
-    except KeyError:
-        raise S3ProxyDisabled(f"No S3 proxy endpoint configured for region {region_name!r}.")
+    if internal:
+        endpoint_url = os.environ.get(AWSConfig.S3PROXY_S3_ENDPOINT_URL)
+        if not endpoint_url:
+            raise S3ProxyDisabled(f"No internal S3 proxy endpoint configured ({AWSConfig.S3PROXY_S3_ENDPOINT_URL}).")
+    else:
+        endpoint_url = get_backend_config().s3_region_proxy_endpoints.get(region_name)
+        if not endpoint_url:
+            raise S3ProxyDisabled(f"No S3 proxy endpoint configured for region {region_name!r}.")
+    creds = get_job_aws_credentials_for_proxy(job_id, user_id, _get_role_arn(bucket_details))
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        region_name=region_name,
+        config=Config(signature_version="s3v4"),
+        **creds.as_client_kwargs(),
+    )
 
 
 def presign_s3_urls_for_internal_usage(
@@ -88,6 +89,9 @@ def presign_s3_urls_for_internal_usage(
 
     Non-S3 URIs are passed through unchanged. S3 URIs may optionally carry a Spark alias
     fragment (``s3://bucket/key#alias``); if present it is re-appended after the presigned URL.
+
+    Note that the effective lifetime of the presigned URLs is also capped by the lifetime
+    of the STS credentials they are signed with.
     """
     resolved = []
     for uri in s3_uris:
@@ -97,6 +101,8 @@ def presign_s3_urls_for_internal_usage(
 
         s3_uri_without_alias, alias = split_s3_uri_and_alias(uri)
         bucket, key = get_bucket_key_from_uri(s3_uri_without_alias)
+        if not bucket or not key:
+            raise ValueError(f"Invalid S3 URI {s3_uri_without_alias!r}: expected form s3://<bucket>/<key>")
         s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id, internal=True)
         presigned_url = create_presigned_url(
             s3_client,
@@ -107,20 +113,19 @@ def presign_s3_urls_for_internal_usage(
         )
         if presigned_url is None:
             raise OpenEOApiException(
-                status_code=400,
+                status_code=500,
                 message=f"Could not create a presigned url for {s3_uri_without_alias} job_id={job_id} user={user_id}",
             )
 
         parsed = urlparse(presigned_url)
         if not (parsed.scheme and parsed.netloc and parsed.path):
             raise OpenEOApiException(
-                status_code=400,
-                message=f"Generated invalid presigned url {presigned_url!r} for {s3_uri_without_alias} job_id={job_id} user={user_id}",
+                status_code=500,
+                message=f"Generated invalid presigned url for {s3_uri_without_alias} job_id={job_id} user={user_id}",
             )
 
         resolved_uri = f"{presigned_url}#{alias}" if alias is not None else presigned_url
-        logger.info(
-            f"Resolved S3 URI {s3_uri_without_alias!r} to presigned URL: {resolved_uri!r}"
-        )
+        # Don't log the presigned URL itself: its query string carries the signature and session token.
+        logger.info(f"Resolved S3 URI {s3_uri_without_alias!r} to presigned URL on {parsed.netloc!r}")
         resolved.append(resolved_uri)
     return resolved

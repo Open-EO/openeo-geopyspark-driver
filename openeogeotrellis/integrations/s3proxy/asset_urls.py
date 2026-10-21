@@ -36,4 +36,3 @@ class PresignedS3AssetUrls(AssetUrl):
         if url is None:
             raise ValueError(f"Could not create a presigned url for s3://{bucket}/{key} job_id={job_id} user={user_id}")
         return url
-

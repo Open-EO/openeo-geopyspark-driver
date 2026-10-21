@@ -1,10 +1,12 @@
+import logging
 from datetime import datetime, timezone
 from unittest import mock
 
 import pytest
 
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
-from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled
+from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3ProxyUnsupportedBucketType
+from openeogeotrellis.integrations.s3proxy import s3_shared_context
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
 from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri, split_s3_uri_and_alias
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
@@ -39,9 +41,20 @@ class TestSplitS3UriAndAlias:
         with pytest.raises(ValueError, match="non-empty alias"):
             split_s3_uri_and_alias("s3://bucket/key#")
 
+    @pytest.mark.parametrize("alias", ["my alias", "a/b", "x\n- local:///evil", "a:b"])
+    def test_invalid_alias_rejected(self, alias):
+        with pytest.raises(ValueError, match="alias may only contain"):
+            split_s3_uri_and_alias(f"s3://bucket/key#{alias}")
+
 
 class TestPresignS3UrlsForInternalUsage:
     """Tests for presign_s3_urls_for_internal_usage using moto fixtures."""
+
+    @pytest.fixture(autouse=True)
+    def clean_proxy_client_cache(self):
+        s3_shared_context._client_cache.flush()
+        yield
+        s3_shared_context._client_cache.flush()
 
     @pytest.fixture
     def workspace_bucket(self) -> str:
@@ -124,11 +137,51 @@ class TestPresignS3UrlsForInternalUsage:
         assert "#" not in result[0]
         assert result[0].startswith("http")
 
-    def test_unknown_bucket_raises_s3_proxy_disabled(self, moto_server, mock_s3_client, mock_sts_client, monkeypatch):
-        """Bucket with no matching workspace config (unknown region) should raise S3ProxyDisabled."""
+    def test_presigned_url_not_logged(
+        self, s3_bucket_with_object, moto_server, monkeypatch, workspace_bucket, mock_job_credentials, caplog
+    ):
+        """The presigned URL carries credentials in its query string, so it must not end up in the logs."""
+        caplog.set_level(logging.DEBUG)
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, moto_server)
+        with gps_config_overrides(
+            workspaces={"my_ws": ObjectStorageWorkspace(bucket=workspace_bucket, region="eu-central-1")}
+        ):
+            [result] = presign_s3_urls_for_internal_usage(
+                [f"s3://{workspace_bucket}/deps/mylib.zip"],
+                job_id="j-001",
+                user_id="alice",
+                expiration=3600,
+            )
+
+        assert "Signature=" in result
+        assert "Signature=" not in caplog.text
+        assert result not in caplog.text
+
+    @pytest.mark.parametrize(
+        "uri", ["s3:///deps/mylib.zip", "s3://openeo-fake-bucketname", "s3://openeo-fake-bucketname/"]
+    )
+    def test_missing_bucket_or_key_rejected(self, uri, moto_server, monkeypatch):
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, moto_server)
+        with pytest.raises(ValueError, match="expected form"):
+            presign_s3_urls_for_internal_usage([uri], job_id="j-001", user_id="alice", expiration=3600)
+
+    def test_missing_internal_endpoint_raises_s3_proxy_disabled(self, monkeypatch, workspace_bucket):
+        monkeypatch.delenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, raising=False)
+        with gps_config_overrides(
+            workspaces={"my_ws": ObjectStorageWorkspace(bucket=workspace_bucket, region="eu-central-1")}
+        ):
+            with pytest.raises(S3ProxyDisabled, match="No internal S3 proxy endpoint"):
+                presign_s3_urls_for_internal_usage(
+                    [f"s3://{workspace_bucket}/deps/mylib.zip"], job_id="j-001", user_id="alice", expiration=3600
+                )
+
+    def test_unknown_bucket_raises_unsupported_bucket_type(
+        self, moto_server, mock_s3_client, mock_sts_client, monkeypatch
+    ):
+        """Bucket with no matching workspace config (unknown region) should raise S3ProxyUnsupportedBucketType."""
         monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, moto_server)
         with gps_config_overrides(workspaces={}):
-            with pytest.raises(S3ProxyDisabled, match="not a known workspace bucket"):
+            with pytest.raises(S3ProxyUnsupportedBucketType, match="not a known workspace bucket"):
                 presign_s3_urls_for_internal_usage(
                     ["s3://some-unknown-bucket/key#alias"],
                     job_id="j-001",

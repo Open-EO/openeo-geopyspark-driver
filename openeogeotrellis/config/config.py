@@ -396,8 +396,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     """
     Expiration time in seconds for presigned URLs used for internal UDF dependency access.
+    Effectively capped by the lifetime of the STS credentials the URLs are signed with (12 hours).
     """
-    udf_dependency_presigned_url_expiration: int = 24 * 3600
+    udf_dependency_presigned_url_expiration: int = 12 * 3600
 
     # FreeIPA server to use (for user lookup/creation)
     freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)
