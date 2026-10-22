@@ -122,6 +122,9 @@ from openeogeotrellis.integrations.kubernetes import (
     ensure_kubernetes_config,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
+from openeogeotrellis.integrations.s3proxy.exceptions import ProxyException, S3ProxyUnsupportedBucketType
+from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
+from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -2052,6 +2055,12 @@ class GpsBatchJobs(backend.BatchJobs):
             max_result_size = '5g'
             if _parse_memory(max_result_size) < _parse_memory(options.driver_memory):
                 max_result_size = options.driver_memory
+            py_files = self._resolve_udf_dependencies_for_k8s(
+                options.udf_dependency_files, job_id=job_id, user_id=user_id
+            )
+            archives = self._resolve_udf_dependencies_for_k8s(
+                options.udf_dependency_archives, job_id=job_id, user_id=user_id
+            )
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
@@ -2098,8 +2107,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
-                archives=",".join(options.udf_dependency_archives),
-                py_files = options.udf_dependency_files,
+                archives=",".join(archives),
+                py_files=py_files,
                 logging_threshold=options.log_level,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
@@ -2248,6 +2257,22 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(
                         f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
                     )
+
+    def _resolve_udf_dependencies_for_k8s(self, uris: List[str], *, job_id: str, user_id: str) -> List[str]:
+        """Resolve UDF dependency URIs (files or archives), replacing S3 URIs with presigned URLs."""
+        try:
+            return presign_s3_urls_for_internal_usage(
+                uris,
+                job_id=job_id,
+                user_id=user_id,
+                expiration=get_backend_config().udf_dependency_presigned_url_expiration,
+            )
+        except (ValueError, S3ProxyUnsupportedBucketType) as e:
+            # UDF dependency URIs are user provided, so invalid ones are a bad request.
+            raise OpenEOApiException(status_code=400, message=f"Invalid UDF dependency: {e}") from e
+        except ProxyException as e:
+            # Remaining proxy errors (e.g. no proxy configured, credentials issues) are deployment problems.
+            raise OpenEOApiException(status_code=500, message=f"Failed to resolve UDF dependency: {e}") from e
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
@@ -2659,7 +2684,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if uri_parts.scheme == "file":
                 return try_get_results_metadata_from_disk(uri_parts.path)
             elif uri_parts.scheme == "s3":
-                bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+                bucket, key = get_bucket_key_from_uri(results_metadata_uri)
                 return try_get_results_metadata_from_object_storage(key, bucket)
             else:
                 raise NotImplementedError(results_metadata_uri)
