@@ -608,6 +608,11 @@ Example usage:
                             "description": "If true, tiles that contain only nodata values will be retained in the output.",
                             "default": False,
                         },
+                        "add_bands_statistics":{
+                            "type": "boolean",
+                            "description": "If true, statistics (minimum, maximum, mean, stddev, valid_percent) will be calculated on the backend for each band and added to the output metadata.",
+                            "default": False,
+                        },
                     },
                 },
                 "PNG": {
@@ -661,6 +666,11 @@ Example usage:
                         "retain_nodata_tiles": {
                             "type": "boolean",
                             "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
+                        },
+                        "add_bands_statistics":{
+                            "type": "boolean",
+                            "description": "If true, statistics (minimum, maximum, mean, stddev, valid_percent) will be calculated on the backend for each band and added to the output metadata.",
                             "default": False,
                         },
                     },
