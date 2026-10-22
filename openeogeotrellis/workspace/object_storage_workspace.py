@@ -9,7 +9,7 @@ from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.utils import remove_slash_prefix
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
-from pystac import STACObject, Collection, CatalogType, Item, Asset
+from pystac import STACObject, Catalog, Collection, CatalogType, Extent, Item, Asset, SpatialExtent, TemporalExtent
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
 from .custom_stac_io import CustomStacIO
@@ -86,6 +86,9 @@ class ObjectStorageWorkspace(Workspace):
             raise ValueError("merge argument requires a file extension")
 
         stac_resource = stac_resource.full_copy()
+
+        if isinstance(stac_resource, Catalog) and not isinstance(stac_resource, Collection):
+            stac_resource = self._catalog_to_collection(stac_resource)
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
         def href_layout_strategy() -> HrefLayoutStrategy:
@@ -176,6 +179,25 @@ class ObjectStorageWorkspace(Workspace):
             return new_collection
         else:
             raise NotImplementedError(stac_resource)
+
+    @staticmethod
+    def _catalog_to_collection(catalog: Catalog) -> Collection:
+        # a plain Catalog (e.g. from a StacSaveResult) is merged as a Collection holding all its items
+        items = list(catalog.get_items(recursive=True))
+        collection = Collection(
+            id=catalog.id,
+            description=catalog.description or catalog.id,
+            extent=(
+                Extent.from_items(items)
+                if items
+                else Extent(SpatialExtent([[-180, -90, 180, 90]]), TemporalExtent([[None, None]]))
+            ),
+            title=catalog.title,
+        )
+        collection.set_self_href(catalog.get_self_href())
+        for item in items:
+            collection.add_item(item)
+        return collection
 
     def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool, collection_base_dir: Path) -> str:
         source_uri_parts = urlparse(asset_uri)
