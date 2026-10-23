@@ -105,7 +105,7 @@ setup(
         # Precompiled wheels (built by .github/workflows/build_jep_wheels.yml) are published at
         # https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels
         # and must be made available through e.g. `--find-links`/`UV_FIND_LINKS`.
-        "jep==4.2.0; python_version >= '3.14'",
+        "jep==4.1.1; python_version >= '3.14'",
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",
