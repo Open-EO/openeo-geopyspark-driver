@@ -62,6 +62,7 @@ from openeogeotrellis.utils import (
     log_memory,
     ensure_executor_logging,
     get_jvm,
+    map_optional,
     temp_csv_dir,
     reproject_cellsize,
     normalize_temporal_extent,
@@ -2127,7 +2128,9 @@ class GeopysparkDataCube(DriverDataCube):
         overview_resample = format_opts.overview_resample
         colormap = format_opts.colormap
         description = format_opts.description
-        filename_prefix = get_jvm().scala.Option.apply(format_opts.filename_prefix)
+        filename_prefix = get_jvm().scala.Option.apply(
+            format_opts.filename_prefix or map_optional(lambda h: h.node_id, save_result_hints)
+        )
         separate_asset_per_band = format_opts.separate_asset_per_band
         bands_metadata = format_opts.bands_metadata  # band_name -> (tag -> value)
         file_metadata = format_opts.file_metadata  # tag -> value
@@ -2520,7 +2523,14 @@ class GeopysparkDataCube(DriverDataCube):
                 return netcdf_items(java_items)
             else:
                 originalName = pathlib.Path(filename)
-                filename_tmp = format_options.get("filename_prefix", "openEO") + ".nc" if originalName.name == "out" else originalName.name
+                filename_tmp = (
+                    format_options.get(
+                        "filename_prefix", map_optional(lambda h: h.node_id, save_result_hints) or "openEO"
+                    )
+                    + ".nc"
+                    if originalName.name == "out"
+                    else originalName.name
+                )
                 if not stitch:
                     filename = save_directory + "/" + filename_tmp
                     netcdf_options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
