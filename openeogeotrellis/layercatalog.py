@@ -120,6 +120,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         + " ".join(issues)
                     )
 
+        # Resolve the effective (possibly per-source, e.g. mask-specific) global extent into
+        # the plain (white-listed) GLOBAL_EXTENT env key before the caching boundary:
+        # `source_id` is excluded from the `load_params` cache key, so the per-source
+        # resolution must happen here, and the resolved extent correctly participates
+        # in the cache key through the env.
+        env = post_dry_run.resolve_global_extent_in_env(load_params=load_params, env=env)
+
         return self._load_collection_cached(
             collection_id, load_params, WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
         )
