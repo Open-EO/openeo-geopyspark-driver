@@ -32,7 +32,7 @@ from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.stac.extents import SpatioTemporalExtent
 from openeogeotrellis.stac.item_collection import ItemCollection
-from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize
+from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property
 from openeogeotrellis.util.datastructures import NoveltyTracker
 from openeogeotrellis.util.projection import is_utm_epsg_code
 
@@ -165,23 +165,10 @@ def _get_pixel_value_scale_and_offset(
     return pixel_value_scale, pixel_value_offset
 
 
-def _get_data_type_and_no_data(asset: pystac.Asset) -> Tuple[Optional[str], Optional[float]]:
-    def get_asset_property(key: str):
-        # pre-STAC 1.1 has them across "raster:bands", 1.1 has them across "bands"
-        bands = asset.extra_fields.get("raster:bands", asset.extra_fields.get("bands", []))
-        band_values = {band[key] for band in bands}
-
-        if len(band_values) == 1:
-            (value,) = band_values
-            return value
-        else:
-            # 1.1 also allows them on the asset itself
-            return asset.extra_fields.get(key)
-
-    nodata = get_asset_property("nodata")
-    data_type = get_asset_property("data_type")
-
-    return data_type, nodata
+def _get_datatype_and_no_data(asset: pystac.Asset) -> Tuple[Optional[str], Optional[float]]:
+    nodata = get_asset_property(asset, "nodata")
+    datatype = get_asset_property(asset, "data_type")
+    return datatype, nodata
 
 
 def get_best_url(
@@ -430,7 +417,7 @@ def build_asset_table(
             )
 
             opensearch_stats["links"] += 1
-            data_type, nodata = _get_data_type_and_no_data(asset=asset)
+            data_type, nodata = _get_datatype_and_no_data(asset=asset)
             if data_type is not None and data_type == "uint32":
                 data_type = "float64"
 
