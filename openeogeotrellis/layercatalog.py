@@ -1260,9 +1260,14 @@ class _LoadCollectionPixelParams(NamedTuple):
 
 @typechecked
 def _get_load_collection_pixel_params(
-    collection_id: str, load_params: LoadParameters, env: EvalEnv
+    collection_id: str, load_params: LoadParameters, env: EvalEnv, strict: bool = False
 ) -> Union[_LoadCollectionPixelParams, dict]:
-    """Derive pixel estimation inputs for a load_collection, or return an error dict when that is not possible."""
+    """
+    Derive pixel estimation inputs for a load_collection, or return an error dict when that is not possible.
+
+    :param strict: when True, return an error dict if no GSD was found,
+        instead of falling back to a permissive default GSD.
+    """
     if "backend_implementation" not in env:
         return {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
     catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
@@ -1344,10 +1349,14 @@ def _get_load_collection_pixel_params(
             gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
             gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
             if not gsd_in_meter_list:
+                if strict:
+                    return {"code": "InternalError", "message": "Could not find GSD for any of the requested bands."}
                 gsd_in_meter_list = [default_gsd] * nr_bands
         elif isinstance(gsd_object, tuple):
             gsd_in_meter_list = [gsd_object] * nr_bands
         else:
+            if strict:
+                return {"code": "InternalError", "message": "Could not find GSD."}
             gsd_in_meter_list = [default_gsd] * nr_bands
 
         # We need to convert GSD to resolution in order to take an average:
@@ -1373,16 +1382,17 @@ def _get_load_collection_pixel_params(
 
 
 def estimate_load_collection_pixels(
-    collection_id: str, load_params: LoadParameters, env: EvalEnv
+    collection_id: str, load_params: LoadParameters, env: EvalEnv, strict: bool = False
 ) -> Tuple[Optional[float], Optional[dict]]:
     """
     Estimate the number of pixels a load_collection will load.
 
+    :param strict: fail (return an error) when no GSD was found, instead of assuming a default.
     :return: tuple (estimated_pixels, error). Exactly one of them is None.
     """
     if collection_id == "TestCollection-LonLat4x4":
         return 0, None
-    params = _get_load_collection_pixel_params(collection_id, load_params, env)
+    params = _get_load_collection_pixel_params(collection_id, load_params, env, strict=strict)
     if isinstance(params, dict):
         return None, params
     estimated_pixels, message = estimate_datacube_pixels(

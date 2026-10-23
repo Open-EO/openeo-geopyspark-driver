@@ -122,6 +122,9 @@ from openeogeotrellis.integrations.kubernetes import (
     ensure_kubernetes_config,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
+from openeogeotrellis.integrations.s3proxy.exceptions import ProxyException, S3ProxyUnsupportedBucketType
+from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
+from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -605,6 +608,11 @@ Example usage:
                             "description": "If true, tiles that contain only nodata values will be retained in the output.",
                             "default": False,
                         },
+                        "add_bands_statistics":{
+                            "type": "boolean",
+                            "description": "If true, statistics (minimum, maximum, mean, stddev, valid_percent) will be calculated on the backend for each band and added to the output metadata.",
+                            "default": False,
+                        },
                     },
                 },
                 "PNG": {
@@ -658,6 +666,11 @@ Example usage:
                         "retain_nodata_tiles": {
                             "type": "boolean",
                             "description": "If true, tiles that contain only nodata values will be retained in the output.",
+                            "default": False,
+                        },
+                        "add_bands_statistics":{
+                            "type": "boolean",
+                            "description": "If true, statistics (minimum, maximum, mean, stddev, valid_percent) will be calculated on the backend for each band and added to the output metadata.",
                             "default": False,
                         },
                     },
@@ -1595,11 +1608,13 @@ class GpsProcessing(ConcreteProcessing):
 
     @typechecked
     def calculate_estimated_input_pixel(
-        self, env: EvalEnv, source_constraints: List[SourceConstraint]
+        self, env: EvalEnv, source_constraints: List[SourceConstraint], strict: bool = False
     ) -> Optional[float]:
         """
         Estimate the total input pixels (pixels x temporal observations x bands)
         loaded by all `load_collection` source constraints.
+
+        :param strict: fail (return None) when no GSD was found for a collection, instead of assuming a default.
 
         :return: estimated input pixels, or None if any `load_collection` could not be estimated.
         """
@@ -1611,7 +1626,9 @@ class GpsProcessing(ConcreteProcessing):
                 continue
             cid = source_id.arguments[0]
             load_params = _extract_load_parameters(env, source_id=source_id)
-            pixels, error = estimate_load_collection_pixels(collection_id=cid, load_params=load_params, env=env)
+            pixels, error = estimate_load_collection_pixels(
+                collection_id=cid, load_params=load_params, env=env, strict=strict
+            )
             if error:
                 logger.warning(f"calculate_estimated_input_pixel: failed to estimate {cid!r}: {error}")
                 return None
@@ -2052,6 +2069,12 @@ class GpsBatchJobs(backend.BatchJobs):
             max_result_size = '5g'
             if _parse_memory(max_result_size) < _parse_memory(options.driver_memory):
                 max_result_size = options.driver_memory
+            py_files = self._resolve_udf_dependencies_for_k8s(
+                options.udf_dependency_files, job_id=job_id, user_id=user_id
+            )
+            archives = self._resolve_udf_dependencies_for_k8s(
+                options.udf_dependency_archives, job_id=job_id, user_id=user_id
+            )
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
@@ -2098,8 +2121,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
-                archives=",".join(options.udf_dependency_archives),
-                py_files = options.udf_dependency_files,
+                archives=",".join(archives),
+                py_files=py_files,
                 logging_threshold=options.log_level,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
@@ -2249,6 +2272,22 @@ class GpsBatchJobs(backend.BatchJobs):
                         f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
                     )
 
+    def _resolve_udf_dependencies_for_k8s(self, uris: List[str], *, job_id: str, user_id: str) -> List[str]:
+        """Resolve UDF dependency URIs (files or archives), replacing S3 URIs with presigned URLs."""
+        try:
+            return presign_s3_urls_for_internal_usage(
+                uris,
+                job_id=job_id,
+                user_id=user_id,
+                expiration=get_backend_config().udf_dependency_presigned_url_expiration,
+            )
+        except (ValueError, S3ProxyUnsupportedBucketType) as e:
+            # UDF dependency URIs are user provided, so invalid ones are a bad request.
+            raise OpenEOApiException(status_code=400, message=f"Invalid UDF dependency: {e}") from e
+        except ProxyException as e:
+            # Remaining proxy errors (e.g. no proxy configured, credentials issues) are deployment problems.
+            raise OpenEOApiException(status_code=500, message=f"Failed to resolve UDF dependency: {e}") from e
+
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
     ) -> Union[str, None]:
@@ -2373,7 +2412,7 @@ class GpsBatchJobs(backend.BatchJobs):
             for source_id, _ in source_constraints
         ):
             return False
-        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints)
+        estimated_input_pixel = GpsProcessing().calculate_estimated_input_pixel(env, source_constraints, strict=True)
         # Unknown size (some estimate failed) could be large, so don't consider it small.
         # An estimate of 0 (e.g. no sources found, or a point extent) is suspicious, so don't consider that small either.
         return (
@@ -2659,7 +2698,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if uri_parts.scheme == "file":
                 return try_get_results_metadata_from_disk(uri_parts.path)
             elif uri_parts.scheme == "s3":
-                bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+                bucket, key = get_bucket_key_from_uri(results_metadata_uri)
                 return try_get_results_metadata_from_object_storage(key, bucket)
             else:
                 raise NotImplementedError(results_metadata_uri)
