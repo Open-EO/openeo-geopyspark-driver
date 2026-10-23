@@ -167,12 +167,13 @@ def _get_pixel_value_scale_and_offset(
 
 def _get_data_type_and_no_data(asset: pystac.Asset) -> Tuple[Optional[str], Optional[float]]:
     def get_asset_property(key: str):
+        _MISSING = object()
+
         # pre-STAC 1.1 has them across "raster:bands", 1.1 has them across "bands"
         bands = asset.extra_fields.get("raster:bands", asset.extra_fields.get("bands", []))
-        band_values = {band[key] for band in bands}
+        band_values = {band.get(key, _MISSING) for band in bands}
 
-        if len(band_values) == 1:
-            (value,) = band_values
+        if len(band_values) == 1 and (value := band_values.pop()) is not _MISSING:
             return value
         else:
             # 1.1 also allows them on the asset itself
