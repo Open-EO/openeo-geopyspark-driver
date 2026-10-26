@@ -2243,7 +2243,7 @@ class GeopysparkDataCube(DriverDataCube):
                             )
                             for java_item in java_items
                         ]
-                        return with_gdalinfo(job_items.build_items(written, format_type="image/tiff; application=geotiff"))
+                        return with_gdalinfo(job_items.build_items(written, format_type="image/tiff; application=geotiff; profile=cloud-optimize"))
                     else:
                         _log.info("save_result save_stitched")
                         java_item = self._save_stitched(max_level, save_filename, gtiff_options, crop_bounds, zlevel=zlevel)
@@ -2257,7 +2257,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 to_written_asset(k, a) for k, a in java_item.assets().items()
                             ],
                         )
-                        return with_gdalinfo(job_items.build_items([written_item],format_type="image/tiff; application=geotiff"))
+                        return with_gdalinfo(job_items.build_items([written_item],format_type="image/tiff; application=geotiff; profile=cloud-optimize"))
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -2365,7 +2365,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, format_type="image/tiff; application=geotiff")
+                            job_items.build_items(written, format_type="image/tiff; application=geotiff; profile=cloud-optimize")
                         )
                     elif batch_mode and not is_temporal_layer and sample_by_feature:
                         format_opts.validate_sample_by_feature_with_separate_asset_per_band()
@@ -2395,7 +2395,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, format_type="image/tiff; application=geotiff")
+                            job_items.build_items(written, format_type="image/tiff; application=geotiff; profile=cloud-optimize")
                         )  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
@@ -2430,7 +2430,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for java_item in java_items
                         ]
                         return with_gdalinfo(
-                            job_items.build_items(written, format_type="image/tiff; application=geotiff")
+                            job_items.build_items(written, format_type="image/tiff; application=geotiff; profile=cloud-optimize")
                         )
             else:
                 if not save_filename.endswith(".png"):
