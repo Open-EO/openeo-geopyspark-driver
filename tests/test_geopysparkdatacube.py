@@ -237,3 +237,54 @@ class TestGeopysparkDataCube:
 
         assert result.metadata.has_temporal_dimension()
         assert result.metadata.temporal_dimension.extent == ("2020-01-01T00:00:00Z", "2020-01-02T00:00:00Z")
+
+    @pytest.mark.parametrize("spatial_left", [True, False])
+    def test_merge_cubes_mixed_wraps_inputs_with_band_names(self, spatial_left):
+        left_metadata = _build_metadata().with_new_band_names(["LEFT"])
+        right_metadata = _build_metadata().with_new_band_names(["RIGHT"])
+        if not spatial_left:
+            left_metadata = left_metadata.with_temporal_extent(
+                ("2020-01-01T00:00:00Z", "2020-01-02T00:00:00Z"), allow_adding_dimension=True
+            )
+        if spatial_left:
+            right_metadata = right_metadata.with_temporal_extent(
+                ("2020-01-01T00:00:00Z", "2020-01-02T00:00:00Z"), allow_adding_dimension=True
+            )
+        left = _mock_cube(
+            layer_type=gps.LayerType.SPATIAL if spatial_left else gps.LayerType.SPACETIME,
+            metadata=left_metadata,
+        )
+        right = _mock_cube(
+            layer_type=gps.LayerType.SPACETIME if spatial_left else gps.LayerType.SPATIAL,
+            metadata=right_metadata,
+        )
+        merged = _mock_cube(
+            layer_type=gps.LayerType.SPATIAL,
+            metadata=_build_metadata().with_new_band_names(["LEFT", "RIGHT"]),
+        )
+        spark_context = mock.Mock()
+        processes = spark_context._jvm.org.openeo.geotrellis.OpenEOProcesses.return_value
+        wrapped = [mock.Mock(), mock.Mock()]
+        processes.wrapCube.side_effect = wrapped
+
+        def apply(merge, target_type=None):
+            assert target_type == gps.LayerType.SPACETIME
+            merge(left.pyramid.levels[0].srdd.rdd(), 0)
+            return merged
+
+        left._apply_to_levels_geotrellis_rdd = mock.Mock(side_effect=apply)
+
+        with mock.patch(
+            "openeogeotrellis.geopysparkdatacube.gps.get_spark_context", return_value=spark_context
+        ):
+            left.merge_cubes(right, overlaps_resolver="subtract")
+
+        expected_band_names = ["RIGHT", "LEFT"] if spatial_left else ["LEFT", "RIGHT"]
+        assert [
+            band_name
+            for cube in wrapped
+            for band_name in cube.openEOMetadata().setBandNames.call_args.args[0]
+        ] == expected_band_names
+        processes.mergeCubes_SpaceTime_Spatial.assert_called_once_with(
+            wrapped[0], wrapped[1], "subtract", spatial_left
+        )

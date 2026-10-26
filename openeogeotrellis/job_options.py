@@ -232,8 +232,13 @@ class JobOptions:
                 message=f"Requested too much driver memory: {self.driver_memory} + {self.driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
 
-        if (self.openeo_jar_path is not None and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
-                and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") )  :
+        allowed_jar_prefixes = (
+            "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/",
+            "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/",
+            "https://repo.vito.be/",
+            "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/",
+        )
+        if self.openeo_jar_path is not None and not self.openeo_jar_path.startswith(allowed_jar_prefixes):
             raise OpenEOApiException(
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
