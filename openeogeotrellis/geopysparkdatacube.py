@@ -1110,27 +1110,38 @@ class GeopysparkDataCube(DriverDataCube):
 
             )
         elif self._is_spatial():
-            merged_data = self._apply_to_levels_geotrellis_rdd(
-                lambda rdd, level:
-                pr.mergeCubes_SpaceTime_Spatial(
-                    other.pyramid.levels[level].srdd.rdd(),
-                    rdd,
+            def merge(rdd, other, level):
+                left = pr.wrapCube(other.pyramid.levels[level].srdd.rdd())
+                left.openEOMetadata().setBandNames(rightBandNames)
+                right = pr.wrapCube(rdd)
+                right.openEOMetadata().setBandNames(leftBandNames)
+                return pr.mergeCubes_SpaceTime_Spatial(
+                    left,
+                    right,
                     overlaps_resolver,
                     True  # swapOperands
-                ),
-                target_type=gps.LayerType.SPACETIME
+                )
 
+            merged_data = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: merge(rdd, other, level),
+                target_type=gps.LayerType.SPACETIME
             )
         elif other._is_spatial():
-            merged_data = self._apply_to_levels_geotrellis_rdd(
-                lambda rdd, level:
-                pr.mergeCubes_SpaceTime_Spatial(
-                    rdd,
-                    other.pyramid.levels[level].srdd.rdd(),
+            def merge(rdd, other, level):
+                left = pr.wrapCube(rdd)
+                left.openEOMetadata().setBandNames(leftBandNames)
+                right = pr.wrapCube(other.pyramid.levels[level].srdd.rdd())
+                right.openEOMetadata().setBandNames(rightBandNames)
+                return pr.mergeCubes_SpaceTime_Spatial(
+                    left,
+                    right,
                     overlaps_resolver,
                     False  # swapOperands
-                ),
-                target_type=gps.LayerType.SPACETIME
+                )
+
+            merged_data = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: merge(rdd, other, level),
+                target_type=gps.LayerType.SPACETIME,
             )
         else:
             def merge(rdd,other,level):
