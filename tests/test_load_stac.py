@@ -431,38 +431,27 @@ def test_data_type_and_nodata_handling(
     assert [f["links"] for f in features] == [expected_links]
 
 
-@pytest.mark.parametrize(
-    ["band_names", "expected_links"],
-    [
-        (
-            ["openEO.tif"],
-            [
-                {
-                    "href": dirty_equals.IsStr(regex=".*/openEO.tif"),
-                    "title": "openEO.tif",
-                    "nodata": 255,
-                    "datatype": "uint8",
-                    "bandNames": ["openEO.tif"],
-                }
-            ],
-        ),
-    ],
-)
-def test_pre_stac_1_1_data_type_and_nodata_handling(
-    test_data,
-    band_names,
-    expected_links,
-):
+def test_pre_stac_1_1_data_type_and_nodata_handling(test_data):
     context = _prepare_context(
         url=str(test_data.get_path("stac/issue863-interpret-raster-bands-nodata/Collection.json")),
-        load_params=LoadParameters(bands=band_names),
+        load_params=LoadParameters(bands=["openEO.tif"]),
         env=EvalEnv(),
     )
 
     dumper = OpenSearchClientDumper()
     features = dumper.dump_opensearch_client_features(context.opensearch_client, add_data_type=True)
 
-    assert [f["links"] for f in features] == [expected_links]
+    assert [f["links"] for f in features] == [
+        [
+            {
+                "href": dirty_equals.IsStr(regex=".*/openEO.tif"),
+                "title": "openEO.tif",
+                "nodata": 255,
+                "datatype": "uint8",
+                "bandNames": ["openEO.tif"],
+            }
+        ]
+    ]
 
 
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):

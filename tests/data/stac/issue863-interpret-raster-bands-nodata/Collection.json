@@ -17,6 +17,8 @@
       "raster:bands": [
         {
           "name": "1",
+          "data_type": "uint8",
+          "nodata": 255,
           "statistics": {
             "maximum": 1,
             "mean": 0.96967267649803,
