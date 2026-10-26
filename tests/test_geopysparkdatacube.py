@@ -279,7 +279,7 @@ class TestGeopysparkDataCube:
         ):
             left.merge_cubes(right, overlaps_resolver="subtract")
 
-        expected_band_names = ["RIGHT", "LEFT"] if spatial_left else ["LEFT", "RIGHT"]
+        expected_band_names = [["RIGHT"], ["LEFT"]] if spatial_left else [["LEFT"], ["RIGHT"]]
         assert [
             cube.openEOMetadata().setBandNames.call_args.args[0] for cube in wrapped
         ] == expected_band_names
