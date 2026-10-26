@@ -182,7 +182,7 @@ def _get_data_type_and_no_data(asset: pystac.Asset) -> Tuple[Optional[str], Opti
     nodata = get_asset_property("nodata")
     data_type = get_asset_property("data_type")
 
-    return data_type, nodata
+    return data_type, float("nan") if nodata == "nan" else nodata
 
 
 def get_best_url(
