@@ -30,6 +30,9 @@ without compromising stable operations.
 - Expose `data_type` and `nodata` in job results metadata for GeoTIFF and NetCDF assets ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
 - Kubernetes batch jobs: support `s3://` UDF dependency files and archives (`udf-dependency-files` and `udf-dependency-archives` job options) from workspace buckets, by resolving them to presigned URLs on the internal S3 proxy ([eu-cdse/openeo-cdse-infra#1224](https://github.com/eu-cdse/openeo-cdse-infra/issues/1224))
 - Allow `openeo-jar-path` artifacts from `https://repo.vito.be/` and GitHub releases of `Open-EO/openeo-geotrellis-extensions`, in addition to the existing Artifactory locations.
+- Application metrics script: report per-collection pixel-load speeds and totals, UDF execution times, executor task runtime, lifetime and utilization, and peak memory usage, working set and limits.
+- Application metrics script: return only metrics with their units and data values, omitting identifiers and unused resource metrics.
+- Label Python UDF execution-time and RSS-delta Prometheus gauges with the process-graph `node_id` for raster callbacks; direct calls without a node ID use an empty label.
 
 
 ## 0.73.0

@@ -103,6 +103,41 @@ def test_from_dict_valid_image():
     job_options = JobOptions.from_dict(data)
     job_options.validate()
 
+
+@pytest.mark.parametrize("options_class", [JobOptions, K8SOptions])
+@pytest.mark.parametrize(
+    "jar_path",
+    [
+        None,
+        "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/1.0/test.jar",
+        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/1.0/test.jar",
+        "https://repo.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/1.0/test.jar",
+        "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/v1.0/test.jar",
+    ],
+)
+def test_valid_openeo_jar_path(options_class, jar_path):
+    options_class.from_dict({"openeo-jar-path": jar_path}).validate()
+
+
+@pytest.mark.parametrize("options_class", [JobOptions, K8SOptions])
+@pytest.mark.parametrize(
+    "jar_path",
+    [
+        "https://example.org/test.jar",
+        "http://repo.vito.be/test.jar",
+        "https://repo.vito.be.example.org/test.jar",
+        "https://repo.vito.be@example.org/test.jar",
+        "https://github.com/Open-EO/other/releases/download/v1.0/test.jar",
+        "https://github.com/Open-EO/openeo-geotrellis-extensions/releases-other/test.jar",
+        "https://github.com/Open-EO/openeo-geotrellis-extensions/main/test.jar",
+    ],
+)
+def test_invalid_openeo_jar_path(options_class, jar_path):
+    with pytest.raises(OpenEOApiException, match="Requested invalid openeo jar path") as exc:
+        options_class.from_dict({"openeo-jar-path": jar_path}).validate()
+    assert exc.value.status_code == 400
+
+
 def test_list_options():
     options = JobOptions.list_options(public_only=False)
     assert_listing_shared_options(options)

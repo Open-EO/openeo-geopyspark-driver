@@ -111,18 +111,29 @@ def test_metrics_are_initialized_lazily(monkeypatch):
     assert started_ports == [9465]
 
 
-def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
+@pytest.mark.parametrize("node_id", [None, "runudf1"])
+@pytest.mark.parametrize("fails", [False, True])
+def test_run_udf_code_records_execution_gauge_metrics(monkeypatch, node_id, fails):
     data = UdfData(structured_data_list=[StructuredData([1])])
     captured_duration_measurements = []
     captured_rss_delta_measurements = []
+    captured_labels = []
 
     class DummyGauge:
+        def labels(self, **kwargs):
+            captured_labels.append(("duration", kwargs))
+            return self
+
         def set(self, value, **kwargs):
             captured_duration_measurements.append((value, kwargs))
 
     gauge = DummyGauge()
 
     class DummyRssGauge:
+        def labels(self, **kwargs):
+            captured_labels.append(("rss", kwargs))
+            return self
+
         def set(self, value, **kwargs):
             captured_rss_delta_measurements.append((value, kwargs))
 
@@ -141,7 +152,13 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     monkeypatch.setattr(udf_module, "_start_udf_execution_gauge", fake_gauge)
     monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", DummyRssGauge())
     monkeypatch.setattr(udf_module, "_get_max_rss_bytes", lambda: next(rss_values))
-    monkeypatch.setattr(openeo.udf, "run_udf_code", lambda code, data: data)
+
+    def execute(code, data):
+        if fails:
+            raise ValueError("UDF failed")
+        return data
+
+    monkeypatch.setattr(openeo.udf, "run_udf_code", execute)
     monkeypatch.setattr(
         "openeogeotrellis.deploy.batch_job_metadata._get_tracker",
         lambda: DummyTracker(),
@@ -152,12 +169,26 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch):
     # initialization logic and clobber the mocked `_udf_max_rss_delta_bytes` with a real Gauge.
     monkeypatch.setattr(udf_module, "_metrics_initialized", True)
 
-    result = run_udf_code(code="def apply_udf_data(data): return data", data=data, require_executor_context=False)
+    def run():
+        return run_udf_code(
+            code="def apply_udf_data(data): return data",
+            data=data,
+            require_executor_context=False,
+            node_id=node_id,
+        )
 
-    assert result is data
+    if fails:
+        with pytest.raises(ValueError, match="UDF failed"):
+            run()
+    else:
+        assert run() is data
     assert captured_duration_measurements
     assert captured_duration_measurements[0][0] >= 0
     assert captured_rss_delta_measurements == [(256, {})]
+    assert captured_labels == [
+        ("duration", {"node_id": node_id or ""}),
+        ("rss", {"node_id": node_id or ""}),
+    ]
 
 
 def test_run_udf_code_exposes_prometheus_metrics_endpoint(monkeypatch):
@@ -176,13 +207,80 @@ def test_run_udf_code_exposes_prometheus_metrics_endpoint(monkeypatch):
     monkeypatch.setattr(udf_module, "_metrics_initialized", False)
 
     data = UdfData(structured_data_list=[StructuredData([1, 2, 3])])
-    run_udf_code(code=UDF_SQUARES, data=data, require_executor_context=False)
+    run_udf_code(code=UDF_SQUARES, data=data, require_executor_context=False, node_id="runudf1")
 
     response = requests.get(f"http://localhost:{udf_module._PROMETHEUS_METRICS_PORT}/metrics", timeout=5)
 
     assert response.status_code == 200
-    assert "openeo_udf_execution_time_ms" in response.text
-    assert "openeo_udf_max_rss_delta_bytes" in response.text
+    assert 'openeo_udf_execution_time_ms{node_id="runudf1"}' in response.text
+    assert 'openeo_udf_max_rss_delta_bytes{node_id="runudf1"}' in response.text
+
+
+def test_udf_metrics_keep_nodes_separate(monkeypatch):
+    from prometheus_client import CollectorRegistry, Gauge
+
+    registry = CollectorRegistry()
+    duration = Gauge("test_udf_duration", "Duration", ["node_id"], registry=registry)
+    rss = Gauge("test_udf_rss", "RSS", ["node_id"], registry=registry)
+    monkeypatch.setattr(udf_module, "_metrics_initialized", True)
+    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", rss)
+    for node_id, value in [("runudf1", 10), ("runudf2", 20), ("runudf1", 30)]:
+        udf_module._record_udf_execution_gauge_metrics(
+            duration, duration_ms=value, rss_before_bytes=100, rss_after_bytes=100 + value, node_id=node_id
+        )
+    for node_id, value in [("runudf1", 30), ("runudf2", 20)]:
+        assert registry.get_sample_value("test_udf_duration", {"node_id": node_id}) == value
+        assert registry.get_sample_value("test_udf_rss", {"node_id": node_id}) == value
+
+
+def test_udf_visitor_preserves_node_id():
+    from openeogeotrellis.processgraphvisiting import SingleNodeUDFProcessGraphVisitor
+
+    visitor = SingleNodeUDFProcessGraphVisitor().accept_process_graph(
+        {"my_udf": {"process_id": "run_udf", "arguments": {"udf": UDF_SQUARES}, "result": True}}
+    )
+    assert visitor.node_id == "my_udf"
+    assert visitor.udf_args["udf"] == UDF_SQUARES
+
+
+@pytest.mark.parametrize("operation", ["apply", "apply_dimension", "reduce_dimension"])
+@pytest.mark.parametrize("dimension", ["bands", "t"])
+def test_raster_udf_passes_node_id(imagecollection_with_two_bands_and_three_dates, monkeypatch, operation, dimension):
+    from unittest.mock import Mock
+
+    from openeo_driver.utils import EvalEnv
+
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
+    cube = imagecollection_with_two_bands_and_three_dates
+    callback = {
+        "my_udf": {
+            "process_id": "run_udf",
+            "arguments": {"udf": UDF_SQUARES, "runtime": "Python", "data": {"from_parameter": "data"}},
+            "result": True,
+        }
+    }
+    spatial = Mock(return_value=cube)
+    temporal = Mock(return_value=cube)
+    monkeypatch.setattr(GeopysparkDataCube, "apply_tiles", spatial)
+    monkeypatch.setattr(GeopysparkDataCube, "apply_tiles_spatiotemporal", temporal)
+    if operation == "apply":
+        cube.apply(process=callback, env=EvalEnv())
+    elif operation == "apply_dimension":
+        cube.apply_dimension(process=callback, dimension=dimension, env=EvalEnv())
+    else:
+        cube.reduce_dimension(reducer=callback, dimension=dimension, env=EvalEnv())
+    called = temporal if operation != "apply" and dimension == "t" else spatial
+    called.assert_called_once()
+    assert called.call_args.kwargs["node_id"] == "my_udf"
+
+
+def test_noop_udf_metrics_accept_node_id(monkeypatch):
+    monkeypatch.setattr(udf_module, "_metrics_initialized", True)
+    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", udf_module._NoOpMetric())
+    udf_module._record_udf_execution_gauge_metrics(
+        udf_module._NoOpMetric(), duration_ms=10, rss_before_bytes=0, rss_after_bytes=100, node_id="my_udf"
+    )
 
 
 class TestUdfCollection:
