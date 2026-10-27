@@ -1340,6 +1340,7 @@ def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend
         {"containerPort": 9465, "name": "prom-python", "protocol": "TCP"},
     ]
     assert "-Dotel.exporter.prometheus.port=19464" in app_dict["spec"]["executor"]["javaOptions"]
+    assert "-Dotel.metrics.exporter=prometheus" in app_dict["spec"]["executor"]["javaOptions"]
 
     # Kubernetes requires port names to be a valid IANA_SVC_NAME (at most 15 characters)
     for port in app_dict["spec"]["executor"]["ports"]:

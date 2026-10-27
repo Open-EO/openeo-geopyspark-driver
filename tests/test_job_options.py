@@ -27,7 +27,7 @@ def test_from_dict():
         "executor-memory": "8G",
         "executor-cores": "4",
         "udf-dependency-archives": ["http://example.com/archive1.zip"],
-        "log_level": "warning"
+        "log_level": "warning",
     }
     job_options = JobOptions.from_dict(data)
     assert job_options.driver_memory == "16G"
@@ -35,6 +35,11 @@ def test_from_dict():
     assert job_options.executor_cores == "4"
     assert job_options.log_level == "WARN"
     assert job_options.udf_dependency_archives == ["http://example.com/archive1.zip"]
+
+
+def test_detailed_metrics_job_option():
+    assert K8SOptions().detailed_metrics is False
+    assert K8SOptions.from_dict({"detailed-metrics": True}).detailed_metrics is True
 
 
 @pytest.mark.parametrize(

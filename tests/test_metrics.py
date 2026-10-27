@@ -9,7 +9,7 @@ from pyspark import SparkContext
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import GeoPySparkJobResultsHooks, run_job
-from openeogeotrellis.deploy.batch_job_metadata import get_execution_metadata
+from openeogeotrellis.deploy.batch_job_metadata import get_detailed_metrics, get_execution_metadata
 from openeogeotrellis.utils import get_jvm
 
 
@@ -68,13 +68,75 @@ def test_usage_metadata_merges_execution_metrics(clean_execution_metrics, log_le
         return_value={"usage": {"input_pixel": {"value": 1, "unit": "mega-pixel"}}},
     ):
         hooks = GeoPySparkJobResultsHooks.__new__(GeoPySparkJobResultsHooks)
-        hooks._job_options = mock.Mock(log_level=log_level)
+        hooks._job_options = mock.Mock(log_level=log_level, detailed_metrics=False)
         assert hooks.usage_metadata()["usage"] == {
             "input_pixel": {"value": 1, "unit": "mega-pixel"},
             "cpu_utilization_ratio": {"value": 0.5, "unit": "fraction"},
             "total_stage_failures": {"value": 2, "unit": "count"},
             **debug_metrics,
         }
+
+
+def test_get_detailed_metrics(monkeypatch):
+    monkeypatch.setattr(
+        "openeogeotrellis.config.get_backend_config",
+        lambda: mock.Mock(prometheus_api="https://prometheus.example.org/api/v1"),
+    )
+    with mock.patch("openeogeotrellis.integrations.prometheus.Prometheus") as client:
+        prometheus = client.return_value
+        prometheus.get_executor_memory_metrics.return_value = {
+            "1": {"peak_usage_bytes": 1000.0, "peak_working_set_bytes": 800.0, "peak_limit_bytes": 2000.0},
+            "2": {"peak_usage_bytes": 500.0},
+        }
+        prometheus.get_executor_wall_clock_lifetime_seconds.return_value = {"1": 10.0, "2": 0.0}
+        prometheus.get_avg_load_megapixel_per_second.return_value = {"S2": 1.5}
+        prometheus.get_min_load_megapixel_per_second.return_value = {"S2": 0.5}
+        prometheus.get_load_megapixel_total.return_value = {"S2": 15.0}
+        prometheus.get_avg_udf_execution_time_ms.return_value = 120.0
+        prometheus.get_max_udf_execution_time_ms.return_value = 200.0
+        prometheus.get_executor_run_time_ms.return_value = {"1": 5000.0, "2": 2000.0}
+
+        report = get_detailed_metrics("a-example", "j-example", at="2026-10-26T08:00:00Z")
+
+    assert client.call_args.args == ("https://prometheus.example.org/api/v1",)
+    assert report == {
+        "metrics": {
+            "executor_wall_clock_lifetime": {"unit": "s", "data": {"1": 10.0, "2": 0.0}},
+            "executor_memory_peak_usage": {"unit": "byte", "data": {"1": 1000.0, "2": 500.0}},
+            "executor_memory_peak_working_set": {"unit": "byte", "data": {"1": 800.0}},
+            "executor_memory_peak_limit": {"unit": "byte", "data": {"1": 2000.0}},
+            "load_pixel_speed_avg": {"unit": "megapixel/s", "data": {"S2": 1.5}},
+            "load_pixel_speed_min": {"unit": "megapixel/s", "data": {"S2": 0.5}},
+            "load_pixel_total": {"unit": "megapixel", "data": {"S2": 15.0}},
+            "udf_execution_time_avg": {"unit": "ms", "data": 120.0},
+            "udf_execution_time_max": {"unit": "ms", "data": 200.0},
+            "executor_run_time": {"unit": "ms", "data": {"1": 5000.0, "2": 2000.0}},
+            "executor_utilization": {"unit": "percentage", "data": {"1": 50.0}},
+        }
+    }
+
+
+def test_usage_metadata_includes_detailed_metrics(monkeypatch):
+    with mock.patch(
+        "openeogeotrellis.deploy.batch_job.batch_job_metadata.get_execution_metadata", return_value={}
+    ), mock.patch(
+        "openeogeotrellis.deploy.batch_job.batch_job_metadata.get_tracker_metadata",
+        return_value={"usage": {"input_pixel": {"value": 1, "unit": "mega-pixel"}}},
+    ), mock.patch(
+        "openeogeotrellis.deploy.batch_job.batch_job_metadata.get_detailed_metrics",
+        return_value={"metrics": {"executor_utilization": {"unit": "percentage", "data": {"1": 50.0}}}},
+    ) as get_detailed_metrics:
+        hooks = GeoPySparkJobResultsHooks.__new__(GeoPySparkJobResultsHooks)
+        hooks._job_options = mock.Mock(log_level="info", detailed_metrics=True)
+        monkeypatch.setenv("HOSTNAME", "a-example-driver")
+        monkeypatch.setenv("OPENEO_BATCH_JOB_ID", "j-example")
+        monkeypatch.setenv("OPENEO_OTEL_ENABLED", "true")
+
+        assert hooks.usage_metadata()["detailed_metrics"] == {
+            "metrics": {"executor_utilization": {"unit": "percentage", "data": {"1": 50.0}}}
+        }
+
+    get_detailed_metrics.assert_called_once_with(application_id="a-example", job_id="j-example")
 
 
 def test_execution_metrics(tmp_path, clean_execution_metrics):
