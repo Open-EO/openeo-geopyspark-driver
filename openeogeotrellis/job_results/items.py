@@ -113,7 +113,7 @@ class SaveResultFormatOptions:
             zlevel=format_options.get("ZLEVEL", 6),
             tile_size=format_options.get("tile_size"),
             bigtiff=format_options.get("bigtiff", True),
-            add_bands_statistics=format_options.get("add_bands_statistics", False),
+            add_bands_statistics=format_options.get("add_bands_statistics", True),
             to_zip=format_options.get("to_zip", True),
         )
 
