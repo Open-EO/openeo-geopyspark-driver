@@ -617,6 +617,42 @@ class TestPostDryRun:
             },
         }
 
+    def test_determine_global_extent_mixed_crs(self, dummy_catalog, extract_source_constraints):
+        # Extents in different CRSes are merged in the most common CRS instead of failing
+        pg = {
+            "lc1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 1, "south": 2, "east": 3, "north": 4}},
+            },
+            "lc2": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 1.5, "south": 2.5, "east": 3.5, "north": 4.5}},
+            },
+            "lc3": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "S2",
+                    "spatial_extent": {"west": 0, "south": 0, "east": 111319, "north": 111325, "crs": "EPSG:3857"},
+                },
+            },
+            "merge1": {
+                "process_id": "merge_cubes",
+                "arguments": {"cube1": {"from_node": "lc1"}, "cube2": {"from_node": "lc2"}},
+            },
+            "merge2": {
+                "process_id": "merge_cubes",
+                "arguments": {"cube1": {"from_node": "merge1"}, "cube2": {"from_node": "lc3"}},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+        extent = global_extent["global_extent"]
+        assert extent.crs == "EPSG:4326"
+        assert (extent.west, extent.south) == (0, 0)
+        assert extent.east == pytest.approx(3.5, abs=1e-3)
+        assert extent.north == pytest.approx(4.5, abs=1e-3)
+
     def test_determine_global_extent_load_collection_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
         dummy_catalog.define_collection_metadata(
             "S123-millidegree", cube_dimensions={"x": {"step": 0.001}, "y": {"step": 0.001}}

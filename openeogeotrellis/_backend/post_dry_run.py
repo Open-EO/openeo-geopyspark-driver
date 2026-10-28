@@ -456,10 +456,7 @@ def determine_global_extent(
     Go through all source constraints, extract the aligned extent from each (possibly with variations)
     and merge to a global extent
     """
-    # TODO: how to determine best target CRS for global extent?
-    #       e.g. add stats to AlignedExtentResult for better informed decision?
-    aligned_merger = BoundingBoxMerger()
-    variant_mergers: Dict[str, BoundingBoxMerger] = collections.defaultdict(BoundingBoxMerger)
+    extent_results: List[Tuple[object, AlignedExtentResult]] = []
     for source_id, constraint in source_constraints:
         try:
             aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
@@ -468,15 +465,29 @@ def determine_global_extent(
                 f"Failed to extract spatial extent from {source_id=} with {constraint=}: {e=}"
             ) from e
         if aligned_extent_result:
-            aligned_merger.add(aligned_extent_result.extent)
-            for name, ext in aligned_extent_result.variants.items():
-                if ext:
-                    variant_mergers[name].add(ext)
-                else:
-                    # TODO: logging this for now. Need for deeper investigation?
-                    _log.info(
-                        f"determine_global_extent: skipping {name=} from {source_id=} with {aligned_extent_result.variants=}"
-                    )
+            extent_results.append((source_id, aligned_extent_result))
+
+    # Sources can end up in different CRSes (e.g. EPSG:3857 and EPSG:4326 for STAC collections
+    # without resample constraint): merge in the most common one (first seen wins ties)
+    # instead of failing on the multi-CRS merge.
+    # TODO: add more stats to AlignedExtentResult for a better informed decision?
+    crs_counts = collections.Counter(r.extent.crs for _, r in extent_results if r.extent.crs)
+    target_crs = crs_counts.most_common(1)[0][0] if crs_counts else None
+    if len(crs_counts) > 1:
+        _log.warning(f"determine_global_extent: merging extents with multiple CRSes {dict(crs_counts)} to {target_crs}")
+
+    aligned_merger = BoundingBoxMerger(crs=target_crs)
+    variant_mergers: Dict[str, BoundingBoxMerger] = collections.defaultdict(lambda: BoundingBoxMerger(crs=target_crs))
+    for source_id, aligned_extent_result in extent_results:
+        aligned_merger.add(aligned_extent_result.extent)
+        for name, ext in aligned_extent_result.variants.items():
+            if ext:
+                variant_mergers[name].add(ext)
+            else:
+                # TODO: logging this for now. Need for deeper investigation?
+                _log.info(
+                    f"determine_global_extent: skipping {name=} from {source_id=} with {aligned_extent_result.variants=}"
+                )
 
     global_extent: BoundingBox = aligned_merger.get()
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}
