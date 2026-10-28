@@ -910,7 +910,7 @@ class TestGpsProcessing:
                 return self
 
         cube = MyCube()
-        handler = registry.get_function("fancy_cube_op")
+        handler = registry.get_function("fancy_cube_op", namespace="backend")
         args = ProcessArgs({"data": cube, "factor": 3, "label": "x"}, process_id="fancy_cube_op")
         result = handler(args, EvalEnv())
         assert result is cube

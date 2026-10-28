@@ -57,6 +57,9 @@ from .datacube_fixtures import (
 
 _BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 
+# Directory where the Spark driver JVM writes `hs_err_pid*.log` crash logs (e.g. on segfault).
+_JVM_CRASH_DIR = os.environ.get("OPENEO_TEST_JVM_CRASH_DIR", "/tmp/jvm-crash-logs")
+
 
 pytest_plugins = "pytester"
 
@@ -96,6 +99,15 @@ def pytest_configure(config):
     # TODO #285 we need a better config system, e.g. to avoid monkeypatching `os.environ` here
     os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
     os.environ["VAULT_ADDR"] = "https://vault.test"
+
+    if sys.platform.startswith("linux"):
+        # Python 3.14 switched the default multiprocessing start method on Linux from "fork" to "forkserver",
+        # which requires picklable process targets. `openeo_driver.testing.ephemeral_fileserver` uses a local
+        # closure as target, which fails with "Can't pickle local object".
+        # TODO: remove this workaround once fixed upstream in openeo_driver.testing.ephemeral_fileserver
+        import multiprocessing
+
+        multiprocessing.set_start_method("fork", force=True)
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
@@ -230,11 +242,13 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                 )
             )
     # got some options from 'sparkDriverJavaOptions'
+    os.makedirs(_JVM_CRASH_DIR, exist_ok=True)
     sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
     -Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600\
-    --add-opens=java.base/sun.net.util=ALL-UNNAMED"
+    --add-opens=java.base/sun.net.util=ALL-UNNAMED\
+    -XX:ErrorFile={_JVM_CRASH_DIR}/hs_err_pid%p.log"
     if OPENEO_LOCAL_DEBUGGING:
         for port in range(5005, 5009):
             if is_port_free(port):
@@ -279,6 +293,60 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     out.write_line("[conftest.py] " + repr((answer, dummy)))
 
     return context
+
+
+def _spark_jvm_is_dead() -> Optional[str]:
+    """
+    Check whether the py4j gateway JVM (Spark driver) is still alive.
+    Returns a description of the problem if dead, None otherwise.
+    """
+    if "pyspark" not in sys.modules:
+        return None
+    from pyspark import SparkContext
+
+    gateway = SparkContext._gateway
+    if gateway is None:
+        return None
+    proc = getattr(gateway, "proc", None)
+    if proc is not None and proc.poll() is not None:
+        return f"JVM gateway process {proc.pid} exited with code {proc.returncode}"
+    try:
+        gateway.jvm.java.lang.System.currentTimeMillis()
+    except Exception as e:
+        return f"JVM gateway unresponsive: {e!r}"
+    return None
+
+
+def _dump_jvm_crash_logs(max_lines: int = 80):
+    for path in sorted(Path(_JVM_CRASH_DIR).glob("hs_err_pid*.log")):
+        sys.stderr.write(f"\n[conftest.py] ===== JVM crash log {path} =====\n")
+        with path.open(errors="replace") as f:
+            for i, line in enumerate(f):
+                if i >= max_lines:
+                    sys.stderr.write("[conftest.py] ... (truncated)\n")
+                    break
+                sys.stderr.write(line)
+    sys.stderr.flush()
+
+
+@pytest.hookimpl(hookwrapper=True, trylast=True)
+def pytest_runtest_teardown(item, nextitem):
+    """
+    Detect a dead Spark/py4j JVM (e.g. segfault in native code like Jep) right after the test that caused it.
+    Under pytest-xdist: hard-exit the worker so xdist reports it as crashed (on this test)
+    and starts a replacement worker with a fresh JVM for the remaining tests.
+    Without xdist: abort the session, as all subsequent JVM-based tests would fail anyway.
+    """
+    yield
+    problem = _spark_jvm_is_dead()
+    if problem:
+        message = f"[conftest.py] Spark JVM died during/after {item.nodeid}: {problem}"
+        sys.stderr.write("\n" + message + "\n")
+        _dump_jvm_crash_logs()
+        if os.environ.get("PYTEST_XDIST_WORKER"):
+            os._exit(1)
+        else:
+            pytest.exit(message, returncode=3)
 
 
 @pytest.fixture(params=["1.0.0"])
