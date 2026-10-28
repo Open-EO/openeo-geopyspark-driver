@@ -30,6 +30,8 @@ without compromising stable operations.
 - Expose `data_type` and `nodata` in job results metadata for GeoTIFF and NetCDF assets ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
 - Kubernetes batch jobs: support `s3://` UDF dependency files and archives (`udf-dependency-files` and `udf-dependency-archives` job options) from workspace buckets, by resolving them to presigned URLs on the internal S3 proxy ([eu-cdse/openeo-cdse-infra#1224](https://github.com/eu-cdse/openeo-cdse-infra/issues/1224))
 - Allow `openeo-jar-path` artifacts from `https://repo.vito.be/` and GitHub releases of `Open-EO/openeo-geotrellis-extensions`, in addition to the existing Artifactory locations.
+- `load_stac`: read `data_type` and `nodata` from assets using the pre-STAC 1.1 metadata layout ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
+
 
 
 ## 0.73.0
