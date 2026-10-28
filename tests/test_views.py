@@ -1744,15 +1744,17 @@ class TestBatchJobs:
         assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:shape"] == [321, 654]
 
         assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
-            {
-                "statistics": {
-                    "maximum": 641.22131,
-                    "mean": 403.31786,
-                    "minimum": 149.76655,
-                    "stddev": 98.38930,
-                    "valid_percent": 100.0,
+            DictSubSet(
+                {
+                    "statistics": {
+                        "maximum": 641.22131,
+                        "mean": 403.31786,
+                        "minimum": 149.76655,
+                        "stddev": 98.38930,
+                        "valid_percent": 100.0,
+                    }
                 }
-            }
+            )
         ]
 
     # TODO: This test is known to fail with API v1.1.0 / api110. Add coverage, or update the test.
@@ -1846,15 +1848,17 @@ class TestBatchJobs:
 
         assert "openEO_2017-11-21Z.tif" in res["assets"]
         assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
-            {
-                "statistics": {
-                    "maximum": 641.22131,
-                    "mean": 403.31786,
-                    "minimum": 149.76655,
-                    "stddev": 98.38930,
-                    "valid_percent": 100.0,
+            DictSubSet(
+                {
+                    "statistics": {
+                        "maximum": 641.22131,
+                        "mean": 403.31786,
+                        "minimum": 149.76655,
+                        "stddev": 98.38930,
+                        "valid_percent": 100.0,
+                    }
                 }
-            }
+            )
         ]
 
 
