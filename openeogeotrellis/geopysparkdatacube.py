@@ -1533,6 +1533,44 @@ class GeopysparkDataCube(DriverDataCube):
         return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
 
     @callsite
+    def resample_cube_temporal(
+        self,
+        target: "GeopysparkDataCube",
+        dimension: Optional[str] = None,
+        valid_within: Optional[float] = None,
+    ) -> "GeopysparkDataCube":
+        """
+        Resamples the temporal dimension of this data cube to the temporal labels of a target data cube
+        (nearest neighbor, ties resolved by the earlier timestamp).
+        Implemented by `resample_cube_temporal` in openeo-geotrellis-extensions (CubeProcessRegistry).
+
+        https://processes.openeo.org/#resample_cube_temporal
+
+        :param target: data cube that defines the target temporal labels
+        :param dimension: name of the temporal dimension (validated by the process implementation of the driver)
+        :param valid_within: if set, search nearest *valid* values within this number of days around target timestamps
+        """
+        for name, cube in (("data", self), ("target", target)):
+            if cube._is_spatial():
+                raise OpenEOApiException(
+                    status_code=400,
+                    code="DimensionMismatch",
+                    message=f"resample_cube_temporal: {name!r} cube has no temporal dimension.",
+                )
+
+        # Temporal labels do not depend on the pyramid level, so always use the highest resolution layer of the target.
+        args = {"target": target.get_max_level().srdd.rdd()}
+        if dimension is not None:
+            args["dimension"] = dimension
+        if valid_within is not None:
+            args["valid_within"] = valid_within
+
+        registry = get_jvm().org.openeo.geotrelliscommon.CubeProcessRegistry
+        return self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: registry.invoke(rdd, "resample_cube_temporal", args)
+        )
+
+    @callsite
     def resample_spatial(
             self,
             resolution: Union[float, Tuple[float, float]],
