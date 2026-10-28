@@ -77,7 +77,11 @@ def test_usage_metadata_merges_execution_metrics(clean_execution_metrics, log_le
         }
 
 
-def test_get_detailed_metrics(monkeypatch):
+@pytest.mark.parametrize(
+    ["run_time_ms", "expected_utilization"],
+    [(5000.0, 50.0), (3333.33, 33.33), (10000.0, 100.0), (20000.0, 100.0)],
+)
+def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization):
     monkeypatch.setattr(
         "openeogeotrellis.config.get_backend_config",
         lambda: mock.Mock(prometheus_api="https://prometheus.example.org/api/v1"),
@@ -94,7 +98,7 @@ def test_get_detailed_metrics(monkeypatch):
         prometheus.get_load_megapixel_total.return_value = {"S2": 15.0}
         prometheus.get_avg_udf_execution_time_ms.return_value = 120.0
         prometheus.get_max_udf_execution_time_ms.return_value = 200.0
-        prometheus.get_executor_run_time_ms.return_value = {"1": 5000.0, "2": 2000.0}
+        prometheus.get_executor_run_time_ms.return_value = {"1": run_time_ms, "2": 2000.0}
 
         report = get_detailed_metrics("a-example", "j-example", at="2026-10-26T08:00:00Z")
 
@@ -110,8 +114,8 @@ def test_get_detailed_metrics(monkeypatch):
             "load_pixel_total": {"unit": "megapixel", "data": {"S2": 15.0}},
             "udf_execution_time_avg": {"unit": "ms", "data": 120.0},
             "udf_execution_time_max": {"unit": "ms", "data": 200.0},
-            "executor_run_time": {"unit": "ms", "data": {"1": 5000.0, "2": 2000.0}},
-            "executor_utilization": {"unit": "percentage", "data": {"1": 50.0}},
+            "executor_run_time": {"unit": "ms", "data": {"1": run_time_ms, "2": 2000.0}},
+            "executor_cpu_utilization": {"unit": "percentage", "data": {"1": expected_utilization}},
         }
     }
 
@@ -124,7 +128,7 @@ def test_usage_metadata_includes_detailed_metrics(monkeypatch):
         return_value={"usage": {"input_pixel": {"value": 1, "unit": "mega-pixel"}}},
     ), mock.patch(
         "openeogeotrellis.deploy.batch_job.batch_job_metadata.get_detailed_metrics",
-        return_value={"metrics": {"executor_utilization": {"unit": "percentage", "data": {"1": 50.0}}}},
+        return_value={"metrics": {"executor_cpu_utilization": {"unit": "percentage", "data": {"1": 50.0}}}},
     ) as get_detailed_metrics:
         hooks = GeoPySparkJobResultsHooks.__new__(GeoPySparkJobResultsHooks)
         hooks._job_options = mock.Mock(log_level="info", detailed_metrics=True)
@@ -133,7 +137,7 @@ def test_usage_metadata_includes_detailed_metrics(monkeypatch):
         monkeypatch.setenv("OPENEO_OTEL_ENABLED", "true")
 
         assert hooks.usage_metadata()["detailed_metrics"] == {
-            "metrics": {"executor_utilization": {"unit": "percentage", "data": {"1": 50.0}}}
+            "metrics": {"executor_cpu_utilization": {"unit": "percentage", "data": {"1": 50.0}}}
         }
 
     get_detailed_metrics.assert_called_once_with(application_id="a-example", job_id="j-example")

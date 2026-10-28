@@ -35,6 +35,7 @@ without compromising stable operations.
 - Application metrics script: report per-collection pixel-load speeds and totals, UDF execution times, executor task runtime, lifetime and utilization, and peak memory usage, working set and limits.
 - Application metrics script: return only metrics with their units and data values, omitting identifiers and unused resource metrics.
 - Label Python UDF execution-time and RSS-delta Prometheus gauges with the process-graph `node_id` for raster callbacks; direct calls without a node ID use an empty label.
+- Detailed metrics: rename `executor_utilization` to `executor_cpu_utilization` and cap the percentage at 100.
 
 
 ## 0.73.0

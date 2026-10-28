@@ -147,9 +147,9 @@ def get_detailed_metrics(application_id: str, job_id: str, *, at: Optional[str] 
     )
     executor_run_times = prometheus.get_executor_run_time_ms(job_id, at=at)
     metrics["executor_run_time"] = metric(executor_run_times, "ms")
-    metrics["executor_utilization"] = metric(
+    metrics["executor_cpu_utilization"] = metric(
         {
-            executor_id: round(100 * run_time_ms / (executor_lifetimes[executor_id] * 1000), 2)
+            executor_id: min(100.0, round(100 * run_time_ms / (executor_lifetimes[executor_id] * 1000), 2))
             for executor_id, run_time_ms in executor_run_times.items()
             if executor_id in executor_lifetimes and executor_lifetimes[executor_id] > 0
         },
