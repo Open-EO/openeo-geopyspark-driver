@@ -4,8 +4,8 @@ Utilities, helpers, adapters for integration with Kubernetes (K8s)
 import base64
 import logging
 import os
-import pkg_resources
 import time
+from importlib.resources import files
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -93,16 +93,13 @@ def k8s_state_to_openeo_job_status(state: str) -> str:
 
 
 def k8s_render_manifest_template(template, **kwargs) -> dict:
-    import yaml
     """ Load and render a provided kubernetes manifest jinja template with the passed kwargs """
-    # TODO: move away from pkg_resources https://github.com/Open-EO/openeo-geopyspark-driver/issues/954
-    jinja_path = pkg_resources.resource_filename(
-        "openeogeotrellis.deploy", template
-    )
+    import yaml
+
+    template_resource = files("openeogeotrellis.deploy").joinpath(template)
+    jinja_path = str(template_resource)
     jinja_dir = os.path.dirname(jinja_path)
-    jinja_env = Environment(
-        loader=FileSystemLoader(jinja_dir)
-    )
+    jinja_env = Environment(loader=FileSystemLoader(jinja_dir))
 
     def base64encode(input_str: str) -> str:
         if not isinstance(input_str, str):
@@ -112,10 +109,9 @@ def k8s_render_manifest_template(template, **kwargs) -> dict:
     jinja_env.filters["b64encode"] = base64encode
     jinja_env.globals["utcnow_epoch"] = time.time  # TODO: remove this deprecated/unused utility
     jinja_env.globals["unix_time"] = time.time
-    jinja_template = jinja_env.from_string(open(jinja_path).read())
+    jinja_template = jinja_env.from_string(template_resource.read_text(encoding="utf-8"))
 
     rendered = jinja_template.render(**kwargs)
-
     return yaml.safe_load(rendered)
 
 

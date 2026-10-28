@@ -1,0 +1,45 @@
+#!/usr/bin/env groovy
+
+/*
+    This Jenkinsfile is used to run tests with Python 3.11 using the VITO CI system.
+    No artifacts are built or published - this is for testing compatibility only.
+    This Jenkinsfile uses the internal "biggeo/jenkinslib.git" library.
+    Information about the pythonPipeline method can be found in pythonPipeline.groovy
+*/
+
+@Library('lib')_
+
+pythonPipeline {
+  package_name = 'openeo-geopyspark'
+  wipeout_workspace = true
+  hadoop = false
+  pre_test_script = 'pre_test.sh'
+  extra_env_variables = [
+    /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
+    "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
+    "PYTHON_VERSION=3.14",
+    "OPENEO_JARS_VARIANT=spark4-scala213",
+  ]
+  python_version = ["3.14"]
+  downstream_job = 'openEO/trigger-python311-build'
+  wheel_repo = 'python-openeo'
+  wheel_repo_dev = 'python-openeo'
+  test_module_name = 'openeogeotrellis'
+  /* Note: extra "spark40x" to align with "almalinux9-spark4-py311-openeo" which is hardcoded for spark 4.0.1 at the moment #1755 */
+  extras_require = 'dev,spark40x'
+  upload_dev_wheels = false
+  build_wheel = true
+  pep440 = true
+  venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
+  custom_test_image = 'openeo-docker.repo.vito.be/almalinux9-spark4-py314-openeo:latest'
+  extra_container_volumes = [
+    '/data/MTDA:/data/MTDA:ro'
+  ]
+  enable_caching = true
+  enable_uv = true
+  test_coverage = false
+  artifactory_server = ['rss', 'sas']
+  wheel_repo_sas = 'openeo-pypi-local'
+  wheel_repo_dev_sas = 'openeo-pypi-local'
+  promotion_artifactory_server = 'rss'
+}
