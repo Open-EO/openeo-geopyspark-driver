@@ -144,7 +144,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if any(d.name == name for d in self._dimensions):
             raise DimensionAlreadyExistsException(f"Dimension with name {name!r} already exists")
 
-        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name, extent)])
+        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name, extent=extent)])
 
     @property
     def opensearch_link_titles(self) -> List[str]:
