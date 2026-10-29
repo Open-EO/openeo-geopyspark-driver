@@ -1082,7 +1082,7 @@ Example usage:
         pyramid: Pyramid = Pyramid({0: raster_layer})
 
         # Create metadata.
-        dimensions: List[Dimension] = target.metadata.spatial_dimensions
+        dimensions: List[Dimension] = list(target.metadata.spatial_dimensions)
         if bands_dim:
             dimensions.append(bands_dim)
         if time_dim:
