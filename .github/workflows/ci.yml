@@ -18,8 +18,11 @@ env:
   PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
   UV_INDEX_STRATEGY: "unsafe-best-match"
   UV_EXTRA_INDEX_URL: "https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple"
-  # Precompiled jep wheels (see build_jep_wheels.yml)
-  UV_FIND_LINKS: "https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels https://github.com/Open-EO/geopyspark/releases/expanded_assets/build-geotrellis_3.5-4"
+  # Precompiled jep wheels (see build_jep_wheels.yml).
+  # Note: `UV_FIND_LINKS` takes a single URL (a space separated list is treated as one URL), so additional
+  # find-links are passed explicitly with `--find-links` where needed.
+  UV_FIND_LINKS: "https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels"
+  GEOPYSPARK_FIND_LINKS: "https://github.com/Open-EO/geopyspark/releases/expanded_assets/build-geotrellis_3.5-4"
 
 jobs:
   tests:
@@ -87,7 +90,7 @@ jobs:
 
       - name: Install project and test dependencies
         run: |
-          uv pip install  -e ".[dev,spark40x]"
+          uv pip install --find-links "${GEOPYSPARK_FIND_LINKS}" -e ".[dev,spark40x]"
           python -c "import netCDF4, pyspark"
 
       - name: Download JARs
