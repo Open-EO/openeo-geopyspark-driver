@@ -19,7 +19,7 @@ env:
   UV_INDEX_STRATEGY: "unsafe-best-match"
   UV_EXTRA_INDEX_URL: "https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple"
   # Precompiled jep wheels (see build_jep_wheels.yml)
-  UV_FIND_LINKS: "https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels"
+  UV_FIND_LINKS: "https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels https://github.com/Open-EO/geopyspark/releases/expanded_assets/build-geotrellis_3.5-4"
 
 jobs:
   tests:
