@@ -103,7 +103,7 @@ def export_result_to_workspaces(
 
         if enable_merge or workspace.merges_by_default:
             imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
-            assert isinstance(imported_collection, pystac.Collection)
+            assert isinstance(imported_collection, pystac.Catalog)  # includes Collection
 
             for item in imported_collection.get_items(recursive=True):
                 item_key = item.id if stac11_mode else None

@@ -36,7 +36,7 @@ kubectl cluster-info
 
 NAMESPACE_NAME=calrissian-demo-project
 kubectl create namespace "$NAMESPACE_NAME" --dry-run=client -o yaml | kubectl apply -f -
-helm install csi-s3 yandex-s3/csi-s3 -n calrissian-demo-project
+helm upgrade --install csi-s3 yandex-s3/csi-s3 -n calrissian-demo-project
 kubectl apply -f "$SCRIPT_DIR/calrissian-local-minio.yaml"
 kubectl wait -n calrissian-demo-project --for=condition=available --timeout=300s deployment/minio
 AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url "http://${NODE_IP}:30000" s3 mb s3://calrissian
