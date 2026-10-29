@@ -75,7 +75,7 @@ setup(
         "opentelemetry-api>=1.0.0",
         "prometheus-client>=0.20.0",
         "pyspark>=4.0.0",
-        'geopyspark_openeo==0.4.10+openeo',
+        'geopyspark_openeo==0.4.10',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
         "rasterio~=1.3.10; python_version == '3.11'",
