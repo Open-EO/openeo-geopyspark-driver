@@ -108,7 +108,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def with_temporal_extent(self, temporal_extent: Tuple[str, str], allow_adding_dimension: bool = False):
         if self.has_temporal_dimension():
             dimensions = [
-                TemporalDimension(d.name, temporal_extent) if isinstance(d, TemporalDimension) else d
+                TemporalDimension(name=d.name, extent=temporal_extent) if isinstance(d, TemporalDimension) else d
                 for d in self._dimensions
             ]
         else:
