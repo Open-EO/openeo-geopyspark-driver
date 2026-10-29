@@ -360,6 +360,7 @@ def run_job(
         settings=settings,
         hooks=hooks,
         workspace_repository=backend_config_workspace_repository,
+        omit_derived_from_links=omit_derived_from_links,
     )
 
 

@@ -47,6 +47,7 @@ def finalize_job(
     settings: JobResultsSettings,
     hooks: JobResultsHooks,
     workspace_repository: WorkspaceRepository,
+    omit_derived_from_links: bool = False,
 ) -> None:
     result_metadata: dict = {}
     tracker_metadata: dict = {}
@@ -201,7 +202,7 @@ def finalize_job(
         # Flatten all STAC items across all results for use in metadata assembly.
         all_result_items = [item for result_items_ in results_items for item in result_items_.values()]
 
-        if settings.stac11_mode:
+        if settings.stac11_mode and not omit_derived_from_links:
             for stac_item_collection_path in Path(job_dir).glob(settings.item_collection_glob):
                 extra_links.append(
                     AnnotatedDict(
