@@ -107,7 +107,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import DUMMY_STAC_URL, JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.credit_check import ExecutionDetails
+from openeogeotrellis.integrations.credit_check import ExecutionDetails, get_etl_organization_id_str
 from openeogeotrellis.integrations.credit_check_registry import get_batch_execution_details
 from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -1896,7 +1896,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         # Job-options are validated at this point
         execution_details: ExecutionDetails = get_batch_execution_details(job_info)
-        etl_organization_id_str: str = str(job_options.get("etl_organization_id", ""))
+        etl_organization_id_str: str = get_etl_organization_id_str(execution_details, job_options)
 
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 

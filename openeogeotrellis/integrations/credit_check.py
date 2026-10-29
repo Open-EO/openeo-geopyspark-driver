@@ -14,6 +14,17 @@ class ExecutionDetails:
     plan: str
     # Optional another backend url in case the job should run elsewhere: TODO implement in the future
     backend_url: Optional[str] = None
+    # Optional organization id as returned by the credit check service
+    organization_id: Optional[str] = None
+
+
+def get_etl_organization_id_str(execution_details: ExecutionDetails, job_options: dict) -> str:
+    """
+    Organization id from the credit check, falling back to the `etl_organization_id` job option.
+    The `etl_organization_id` is fed into the credit check but the fallback is for credit services
+    that do not handle it.
+    """
+    return execution_details.organization_id or str(job_options.get("etl_organization_id", ""))
 
 
 class CreditCheck(ABC):
