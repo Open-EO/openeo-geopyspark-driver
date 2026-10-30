@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 from openeo_driver.util.logging import ExtraLoggingFilter
@@ -27,6 +29,10 @@ if TYPE_CHECKING:
     class T_PromQueryRespSingleTimeSeries(TypedDict):
         metric: Dict[str, str]
         values: T_PromDatapoints
+
+    class T_PromQueryRespInstantSample(TypedDict):
+        metric: Dict[str, str]
+        value: T_PromDatapoint
 
     T_PromQueryRespTimeSeries = List[T_PromQueryRespSingleTimeSeries]
 
@@ -162,7 +168,7 @@ class Prometheus:
         """Point this to e.g. http://example.org:9090/api/v1."""
         self.endpoint = endpoint
 
-    def _query_for_float(self, query: str, time: str = None) -> Optional[float]:
+    def _query(self, query: str, time: str = None) -> List[T_PromQueryRespInstantSample]:
         params = {
             'query': query
         }
@@ -178,8 +184,10 @@ class Prometheus:
         if status == "error":
             raise Exception(f"query {query} at {time} returned status {status}: {entity['error']}")
 
-        results = entity['data']['result']
+        return entity["data"]["result"]
 
+    def _query_for_float(self, query: str, time: str = None) -> Optional[float]:
+        results = self._query(query, time)
         return float(results[0]['value'][1]) if len(results) > 0 else None
 
     def _query_for_range(self, query: str, start: float, end: float, step: int = 30) -> T_PromQueryRespTimeSeries:
@@ -210,6 +218,98 @@ class Prometheus:
         """Returns CPU usage in cpu-seconds."""
 
         query = f'sum(last_over_time(container_cpu_usage_seconds_total{{pod=~"{application_id}.+",image=""}}[5d]))'
+        return self._query_for_float(query, at)
+
+    def get_avg_load_megapixel_per_second(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Average each series over the preceding 24 hours, then average per collection."""
+        query = (
+            "avg by (collection_ref) ("
+            f"avg_over_time(openeo_load_megapixel_per_second{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["collection_ref"]: float(result["value"][1]) for result in self._query(query, at)}
+
+    def get_min_load_megapixel_per_second(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Return the minimum load speed per collection over the preceding 24 hours."""
+        query = (
+            "min by (collection_ref) ("
+            f"min_over_time(openeo_load_megapixel_per_second{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["collection_ref"]: float(result["value"][1]) for result in self._query(query, at)}
+
+    def get_load_megapixel_total(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Sum the latest counter values found within 24 hours per collection."""
+        query = (
+            "sum by (collection_ref) ("
+            f"last_over_time(openeo_load_megapixel_total{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["collection_ref"]: float(result["value"][1]) for result in self._query(query, at)}
+
+    def get_executor_run_time_ms(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Return cumulative task execution time in milliseconds per executor, using a 24-hour lookup."""
+        query = (
+            "max by (executor_id) ("
+            f"last_over_time(spark_executor_runtime_count{{job_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["executor_id"]: float(result["value"][1]) for result in self._query(query, at)}
+
+    def get_executor_wall_clock_lifetime_seconds(self, application_id: str, at: str = None) -> Dict[str, float]:
+        """Estimate executor container lifetimes from start to last seen within a 24-hour lookup.
+
+        Sum container lifetimes if an executor restarted, excluding gaps between containers.
+        These are scrape-based observations, not exact process termination times.
+        """
+        pod_pattern = json.dumps(re.escape(application_id) + r"-.+-exec-[0-9]+")
+        selector = f'{{pod=~{pod_pattern},container="spark-kubernetes-executor"}}'
+        query = (
+            "sum by (executor_id) (label_replace(max by (namespace, pod, id) ("
+            f"last_over_time(container_last_seen{selector}[24h]) - "
+            f"last_over_time(container_start_time_seconds{selector}[24h])"
+            '), "executor_id", "$1", "pod", ".*-exec-([0-9]+)"))'
+        )
+        return {result["metric"]["executor_id"]: float(result["value"][1]) for result in self._query(query, at)}
+
+    def get_executor_memory_metrics(self, application_id: str, at: str = None) -> Dict[str, Dict[str, float]]:
+        """Return 24-hour peak usage, working set and limits per executor in bytes.
+
+        Missing metrics are omitted. Each peak is independent, including across restarts.
+        """
+        pod_pattern = json.dumps(re.escape(application_id) + r"-.+-exec-[0-9]+")
+        metrics = (
+            ("peak_usage_bytes", "container_memory_usage_bytes", ""),
+            ("peak_working_set_bytes", "container_memory_working_set_bytes", ""),
+            ("peak_limit_bytes", "kube_pod_container_resource_limits", ',resource="memory",unit="byte"'),
+        )
+        report: Dict[str, Dict[str, float]] = {}
+        for name, metric, extra_labels in metrics:
+            selector = f'{{pod=~{pod_pattern},container="spark-kubernetes-executor"{extra_labels}}}'
+            query = (
+                "max by (executor_id) (label_replace("
+                f"max_over_time({metric}{selector}[24h]), "
+                '"executor_id", "$1", "pod", ".*-exec-([0-9]+)"))'
+            )
+            for result in self._query(query, at):
+                executor_id = result["metric"]["executor_id"]
+                report.setdefault(executor_id, {})[name] = float(result["value"][1])
+        return report
+
+    def get_avg_udf_execution_time_ms(self, job_id: str, at: str = None) -> Optional[float]:
+        """Average each UDF duration gauge over 24 hours, then average across series."""
+        query = "avg(" f"avg_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        return self._query_for_float(query, at)
+
+    def get_max_udf_execution_time_ms(self, job_id: str, at: str = None) -> Optional[float]:
+        """Return the maximum sampled UDF execution duration over the preceding 24 hours."""
+        query = "max(" f"max_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        return self._query_for_float(query, at)
+
+    def get_avg_udf_max_rss_delta_bytes(self, job_id: str, at: str = None) -> Optional[float]:
+        """Average each UDF high-water RSS delta gauge over 24 hours, then average across series."""
+        query = "avg(" f"avg_over_time(openeo_udf_max_rss_delta_bytes{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        return self._query_for_float(query, at)
+
+    def get_max_udf_max_rss_delta_bytes(self, job_id: str, at: str = None) -> Optional[float]:
+        """Return the maximum sampled UDF high-water RSS delta over the preceding 24 hours."""
+        query = "max(" f"max_over_time(openeo_udf_max_rss_delta_bytes{{correlation_id={json.dumps(job_id)}}}[24h]))"
         return self._query_for_float(query, at)
 
     def get_network_received_usage(self, application_id: str, at: str = None) -> Optional[float]:

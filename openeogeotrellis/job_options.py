@@ -141,6 +141,14 @@ class JobOptions:
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
     )
 
+    detailed_metrics: bool = field(
+        default=False,
+        metadata={
+            "description": "[Experimental] Enable detailed OpenTelemetry metrics",
+            "public": False,
+        },
+    )
+
     stac_version : str = field(
         default="1.0",
         metadata={"description": "The STAC version to use for the metadata of outputs.", "public": False,  "enum": ["1.0", "1.1"]},
@@ -453,13 +461,6 @@ class K8SOptions(JobOptions):
              "description": "Deprecated, use spark pvcs or not",
              "public": False
          })
-    open_telemetry_metrics_exporter: str = field(default=None,
-         metadata={
-            "description": "[Experimental] Configure and enable the OpenTelemetry Java SDK exporter",
-            "public": False,
-            "enum": ["console", "prometheus"]
-        })
-
     force_s3proxy: bool = field(
         default=False,
         metadata={

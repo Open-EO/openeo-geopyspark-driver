@@ -12,7 +12,7 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Optional, Union, List
 
-import pkg_resources
+from importlib.resources import files
 from openeo.util import deep_get, ensure_dir
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.errors import InternalException, OpenEOApiException
@@ -429,7 +429,7 @@ class YARNBatchJobRunner:
         sentinel_hub_client_alias = deep_get(job_options, "sentinel-hub", "client-alias", default="default")
 
         submit_script = "submit_batch_job_spark3.sh"
-        script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
+        script_location = str(files("openeogeotrellis.deploy").joinpath(submit_script))
 
         image_name = self._udf_runtime_image_repository.resolve_image_alias(
             options.image_name or get_backend_config().processing_container_image or self._current_container_image()

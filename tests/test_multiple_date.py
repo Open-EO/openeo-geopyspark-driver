@@ -383,7 +383,7 @@ class TestMultipleDates(TestCase):
         stitched = min_time.pyramid.levels[0].stitch()
         print(stitched)
 
-        self.assertEquals(2.0,stitched.cells[0][0][0])
+        self.assertEqual(2.0,stitched.cells[0][0][0])
 
         for p in self.points[1:3]:
             # TODO #421 drop old unsued "point timeseries" feature
@@ -433,7 +433,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         result = imagecollection.apply_tiles_spatiotemporal(udf_code=udf_code)
         local_tiles = result.pyramid.levels[0].to_numpy_rdd().collect()
         print(local_tiles)
-        self.assertEquals(len(TestMultipleDates.layer),len(local_tiles))
+        self.assertEqual(len(TestMultipleDates.layer),len(local_tiles))
         ref_dict = {e[0]:e[1] for e in imagecollection.pyramid.levels[0].convert_data_type(CellType.FLOAT64).to_numpy_rdd().collect()}
         result_dict = {e[0]: e[1] for e in local_tiles}
         for k,v in ref_dict.items():

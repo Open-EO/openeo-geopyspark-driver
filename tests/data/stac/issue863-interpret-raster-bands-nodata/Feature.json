@@ -1,0 +1,110 @@
+{
+  "assets": {
+    "openEO.tif": {
+      "href": "https://s3.stag.waw4-1.openeo.v1.dataspace.copernicus.eu/openeo-data-dev-waw4-1/batch_jobs/j-2610230730114c16a9a6f9c83c61a7a9/openEO.tif",
+      "proj:bbox": [
+        264090.0,
+        137140.0,
+        273020.0,
+        146010.0
+      ],
+      "proj:code": "EPSG:32636",
+      "proj:epsg": 32636,
+      "proj:shape": [
+        887,
+        893
+      ],
+      "raster:bands": [
+        {
+          "name": "1",
+          "data_type": "uint8",
+          "nodata": 255,
+          "statistics": {
+            "maximum": 1.0,
+            "mean": 0.96967267649803,
+            "minimum": 0.0,
+            "stddev": 0.17148637540976,
+            "valid_percent": 100.0
+          }
+        }
+      ],
+      "roles": [
+        "data"
+      ],
+      "title": "openEO.tif",
+      "type": "image/tiff; application=geotiff"
+    }
+  },
+  "bbox": [
+    30.879864073266127,
+    1.2398919014963778,
+    30.96014703927039,
+    1.3201534267115205
+  ],
+  "collection": "j-2610230730114c16a9a6f9c83c61a7a9",
+  "epsg": 32636,
+  "geometry": {
+    "coordinates": [
+      [
+        [
+          30.96014703927039,
+          1.239955353702033
+        ],
+        [
+          30.960083638189484,
+          1.3201534267115205
+        ],
+        [
+          30.879864073266127,
+          1.3200858691797235
+        ],
+        [
+          30.879929963123278,
+          1.2398919014963778
+        ],
+        [
+          30.96014703927039,
+          1.239955353702033
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  },
+  "id": "openEO.tif",
+  "links": [
+    {
+      "href": "https://openeo.dev.waw3-1.openeo-int.v1.dataspace.copernicus.eu/openeo/1.2/jobs/j-2610230730114c16a9a6f9c83c61a7a9/results/items/openEO.tif",
+      "rel": "self",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "https://openeo.dev.waw3-1.openeo-int.v1.dataspace.copernicus.eu/openeo/1.2/jobs/j-2610230730114c16a9a6f9c83c61a7a9/results",
+      "rel": "collection",
+      "type": "application/json"
+    }
+  ],
+  "properties": {
+    "datetime": null,
+    "end_datetime": "2020-02-01T00:00:00Z",
+    "proj:bbox": [
+      264090.0,
+      137140.0,
+      273020.0,
+      146010.0
+    ],
+    "proj:code": "EPSG:32636",
+    "proj:epsg": 32636,
+    "proj:shape": [
+      887,
+      893
+    ],
+    "start_datetime": "2020-01-01T00:00:00Z"
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/projection/v1.2.0/schema.json"
+  ],
+  "stac_version": "1.0.0",
+  "type": "Feature"
+}
