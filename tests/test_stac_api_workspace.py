@@ -65,7 +65,7 @@ def test_merge_new(requests_mock, tmp_path, merge_derived_from_links: bool):
             [
                 {
                     "rel": "derived_from",
-                    "href": "https://src.test/asset1.tif",
+                    "href": "https://src.test/collection1/asset1.tif",
                 },
             ]
             if merge_derived_from_links
@@ -143,18 +143,18 @@ def test_merge_into_existing(requests_mock, tmp_path, merge_derived_from_links: 
             [
                 {
                     "rel": "derived_from",
-                    "href": "https://src.test/asset1.tif",
+                    "href": "https://src.test/existing_collection/asset1.tif",
                 },
                 {
                     "rel": "derived_from",
-                    "href": "https://src.test/asset2.tif",
+                    "href": "https://src.test/collection2/asset2.tif",
                 },
             ]
             if merge_derived_from_links
             else [
                 {
                     "rel": "derived_from",
-                    "href": "https://src.test/asset1.tif",
+                    "href": "https://src.test/existing_collection/asset1.tif",
                 }
             ]
         ),
@@ -542,7 +542,7 @@ def _collection(
 
         collection.add_item(item)
 
-        collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{asset_filename}"))
+        collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{collection_id}/{asset_filename}"))
 
     collection.normalize_and_save(root_href=str(root_path))
     assert collection.validate_all() == len(asset_hrefs)
