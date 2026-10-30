@@ -9,6 +9,7 @@ from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.utils import remove_slash_prefix
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
+import pystac
 from pystac import STACObject, Collection, CatalogType, Item, Asset, Catalog
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
@@ -124,7 +125,7 @@ class ObjectStorageWorkspace(Workspace):
 
             existing_collection = None
             try:
-                existing_collection = Collection.from_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
+                existing_collection = pystac.read_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
             except botocore.exceptions.ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "AccessDenied":
