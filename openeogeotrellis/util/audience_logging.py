@@ -1,5 +1,7 @@
 """Tag log records with an `audience` ("user" or "developer"), to allow retrieving user-facing logs only."""
 
+import contextlib
+import contextvars
 import logging
 from typing import Optional
 
@@ -8,6 +10,7 @@ from openeo_driver.util.logging import get_logging_config as _get_logging_config
 AUDIENCE_USER = "user"
 AUDIENCE_DEVELOPER = "developer"
 AUDIENCE_ATTR = "audience"
+_audience_context = contextvars.ContextVar("openeo_log_audience", default=None)
 
 
 class AudienceLoggingFilter(logging.Filter):
@@ -15,8 +18,17 @@ class AudienceLoggingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if not getattr(record, AUDIENCE_ATTR, None):
-            setattr(record, AUDIENCE_ATTR, AUDIENCE_DEVELOPER)
+            setattr(record, AUDIENCE_ATTR, _audience_context.get() or AUDIENCE_DEVELOPER)
         return True
+
+
+@contextlib.contextmanager
+def user_facing_log_context():
+    token = _audience_context.set(AUDIENCE_USER)
+    try:
+        yield
+    finally:
+        _audience_context.reset(token)
 
 
 class UserFacingLogger(logging.LoggerAdapter):
