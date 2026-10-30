@@ -34,7 +34,7 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     GlobalExtraLoggingFilter,
 )
-from openeogeotrellis.util.audience_logging import get_logging_config
+from openeogeotrellis.util.audience_logging import AUDIENCE_USER, get_logging_config
 import openeo_driver.utils
 
 from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
@@ -323,10 +323,13 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 if "driver" in msg and "OOMKilled" in msg:
                     _log.error(
                         "Your batch job main application went out of memory, consider increasing driver-memoryOverhead.",
-                        extra={"job_id": job_id, "user_id": user_id}
+                        extra={"job_id": job_id, "user_id": user_id, "audience": AUDIENCE_USER}
                     )
                 else:
-                    _log.error(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
+                    _log.error(
+                        f"Final application error message: {msg}",
+                        extra={"job_id": job_id, "user_id": user_id, "audience": AUDIENCE_USER},
+                    )
 
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
