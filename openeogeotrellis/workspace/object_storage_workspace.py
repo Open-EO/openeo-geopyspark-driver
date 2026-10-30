@@ -8,7 +8,7 @@ import botocore.exceptions
 from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.utils import remove_slash_prefix
-from openeo_driver.workspace import Workspace, _merge_collection_metadata
+from openeo_driver.workspace import Workspace, _merge_collection_metadata, MergeCollectionMetadataOptions
 from pystac import STACObject, Collection, CatalogType, Item, Asset, Catalog
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
@@ -80,7 +80,13 @@ class ObjectStorageWorkspace(Workspace):
         _log.debug(f"{'moved' if remove_original else 'copied'} s3://{source_bucket}/{source_key} to {workspace_uri}")
         return workspace_uri
 
-    def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+    def merge(
+        self,
+        stac_resource: STACObject,
+        target: PurePath,
+        remove_original: bool = False,
+        merge_collection_metadata_options: MergeCollectionMetadataOptions = MergeCollectionMetadataOptions(),
+    ) -> STACObject:
         if not target.suffix:
             # limitation of recent pystac
             raise ValueError("merge argument requires a file extension")

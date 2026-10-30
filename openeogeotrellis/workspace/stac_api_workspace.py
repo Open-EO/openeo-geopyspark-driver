@@ -6,7 +6,7 @@ from typing import Union, Callable, Optional
 
 from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.workspace import Workspace, _merge_collection_metadata
+from openeo_driver.workspace import Workspace, _merge_collection_metadata, MergeCollectionMetadataOptions
 from pystac import STACObject, Collection, Item, Asset, Link
 import pystac_client
 from pystac_client import ConformanceClasses
@@ -71,7 +71,13 @@ class StacApiWorkspace(Workspace):
     def merges_by_default(self) -> bool:
         return True
 
-    def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+    def merge(
+        self,
+        stac_resource: STACObject,
+        target: PurePath,
+        remove_original: bool = False,
+        merge_collection_metadata_options: MergeCollectionMetadataOptions = MergeCollectionMetadataOptions(),
+    ) -> STACObject:
         self._assert_catalog_supports_necessary_api()
 
         if isinstance(stac_resource, Collection):
