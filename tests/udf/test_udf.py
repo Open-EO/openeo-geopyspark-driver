@@ -79,7 +79,10 @@ def test_run_udf_code_marks_udf_logs_as_user_facing(caplog):
     caplog.handler.addFilter(audience_filter)
     try:
         run_udf_code(
-            code="import logging\nlogging.warning('user-authored UDF log')\ndef apply_udf_data(data): return data",
+            code=(
+                "import logging\nfrom openeo.udf import UdfData\n"
+                "logging.warning('user-authored UDF log')\ndef apply_udf_data(data: UdfData): return data"
+            ),
             data=UdfData(structured_data_list=[StructuredData([1])]),
             require_executor_context=False,
         )
