@@ -40,6 +40,7 @@ without compromising stable operations.
 - Label Python UDF execution-time and RSS-delta Prometheus gauges with the process-graph `node_id` for raster callbacks; direct calls without a node ID use an empty label.
 - Detailed metrics: rename `executor_utilization` to `executor_cpu_utilization` and cap the percentage at 100.
 - `load_stac`: read `data_type` and `nodata` from assets using the pre-STAC 1.1 metadata layout ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
+- Job tracker: collect detailed application metrics for Kubernetes jobs with `detailed-metrics` enabled and persist them alongside usage in the job registry.
 
 
 ## 0.73.0

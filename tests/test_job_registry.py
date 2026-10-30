@@ -374,12 +374,18 @@ class TestDoubleJobRegistry:
                 "links": [],
             }
 
-    def test_set_results_metadata(self, double_jr, memory_jr, time_machine):
+    @pytest.mark.parametrize("metrics", [None, {}, {"executor_run_time": {"unit": "ms", "data": {"1": 123.0}}}])
+    def test_set_results_metadata(self, double_jr, memory_jr, time_machine, metrics):
         with double_jr:
             double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
-            double_jr.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
-                                           usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
-                                           results_metadata={"epsg": 4326})
+            double_jr.set_results_metadata(
+                job_id="j-123",
+                user_id="john",
+                costs=1.23,
+                usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                results_metadata={"epsg": 4326},
+                metrics=metrics,
+            )
 
         assert memory_jr.db["j-123"] == DictSubSet(
             {
@@ -390,6 +396,10 @@ class TestDoubleJobRegistry:
                 },
             }
         )
+        if metrics is not None:
+            assert memory_jr.db["j-123"]["metrics"] == metrics
+        else:
+            assert "metrics" not in memory_jr.db["j-123"]
 
     def test_get_results_metadata(self, double_jr, memory_jr):
         with double_jr:
@@ -499,6 +509,33 @@ class TestDoubleJobRegistryWithEjr:
 
     def _build_url(self, params: dict):
         return "https://oeo.test/jobs?" + urllib.parse.urlencode(query=params)
+
+    @pytest.mark.parametrize("metrics", [None, {"executor_run_time": {"unit": "ms", "data": {"1": 123.0}}}])
+    def test_set_results_metadata(self, double_jr, requests_mock, metrics):
+        patches = []
+
+        def patch_job(request, context):
+            patches.append(request.json())
+            return {}
+
+        requests_mock.patch(f"{self.EJR_API_URL}/jobs/j-123", json=patch_job)
+        double_jr.set_results_metadata(
+            job_id="j-123",
+            user_id="john",
+            costs=1.23,
+            usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+            results_metadata={"epsg": 4326},
+            metrics=metrics,
+        )
+        assert patches == [
+            {
+                "costs": 1.23,
+                "usage": {"cpu": {"unit": "cpu-seconds", "value": 32}},
+                "input_pixel": 0.0,
+                "results_metadata": {"epsg": 4326},
+            },
+            *([{"metrics": metrics}] if metrics is not None else []),
+        ]
 
     def test_get_user_jobs_legacy(self, double_jr, requests_mock):
         def post_jobs_search(request, context):
