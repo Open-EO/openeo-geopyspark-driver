@@ -23,6 +23,7 @@ class JobResultsSettings:
     concurrent_save_results: int  # job option, default 1
     remove_exported_assets: bool
     export_workspace_enable_merge: bool
+    export_workspace_merge_derived_from_links: bool
     max_soft_errors_ratio: float
     institution: str  # "<processing_facility> - <backend_version>"
     processing_facility: str
