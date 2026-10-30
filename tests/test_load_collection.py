@@ -397,7 +397,10 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
     )
 
     run_job(
-        {"process_graph": data_cube.flat_graph()},
+        {
+            "process_graph": data_cube.flat_graph(),
+            "job_options": {"detailed_asset_metadata": True},
+        },
         output_file=tmp_path / "out",  # just like in backend.py
         metadata_file=tmp_path / JOB_METADATA_FILENAME,
         api_version="2.0.0",
