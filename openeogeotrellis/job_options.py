@@ -141,6 +141,14 @@ class JobOptions:
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
     )
 
+    detailed_metrics: bool = field(
+        default=False,
+        metadata={
+            "description": "[Experimental] Enable detailed OpenTelemetry metrics",
+            "public": False,
+        },
+    )
+
     stac_version : str = field(
         default="1.0",
         metadata={"description": "The STAC version to use for the metadata of outputs.", "public": False,  "enum": ["1.0", "1.1"]},
@@ -232,8 +240,13 @@ class JobOptions:
                 message=f"Requested too much driver memory: {self.driver_memory} + {self.driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
 
-        if (self.openeo_jar_path is not None and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
-                and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") )  :
+        allowed_jar_prefixes = (
+            "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/",
+            "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/",
+            "https://repo.vito.be/",
+            "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/",
+        )
+        if self.openeo_jar_path is not None and not self.openeo_jar_path.startswith(allowed_jar_prefixes):
             raise OpenEOApiException(
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
@@ -448,13 +461,6 @@ class K8SOptions(JobOptions):
              "description": "Deprecated, use spark pvcs or not",
              "public": False
          })
-    open_telemetry_metrics_exporter: str = field(default=None,
-         metadata={
-            "description": "[Experimental] Configure and enable the OpenTelemetry Java SDK exporter",
-            "public": False,
-            "enum": ["console", "prometheus"]
-        })
-
     force_s3proxy: bool = field(
         default=False,
         metadata={

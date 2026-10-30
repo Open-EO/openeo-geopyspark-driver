@@ -910,7 +910,7 @@ class TestGpsProcessing:
                 return self
 
         cube = MyCube()
-        handler = registry.get_function("fancy_cube_op")
+        handler = registry.get_function("fancy_cube_op", namespace="backend")
         args = ProcessArgs({"data": cube, "factor": 3, "label": "x"}, process_id="fancy_cube_op")
         result = handler(args, EvalEnv())
         assert result is cube
@@ -928,6 +928,37 @@ class TestGpsProcessing:
                 ProcessArgs({"data": CubeWithoutMethod()}, process_id="no_desc_op"),
                 EvalEnv(),
             )
+
+    def test_resample_cube_temporal_invokes_cube_process_registry(self):
+        """`resample_cube_temporal` is an explicit cube method (not skipped by the dynamic registry extension)."""
+        data_layer = MagicMock(spec=TiledRasterLayer)
+        data_layer.layer_type = LayerType.SPACETIME
+        target_layer = MagicMock(spec=TiledRasterLayer)
+        target_layer.layer_type = LayerType.SPACETIME
+        cube = GeopysparkDataCube(Pyramid({0: data_layer}))
+        target = GeopysparkDataCube(Pyramid({0: target_layer}))
+
+        jvm = get_jvm()
+        with mock.patch.object(jvm, "org", new=mock.MagicMock()) as m:
+            with mock.patch.object(jvm, "geopyspark", new=mock.MagicMock()):
+                with mock.patch.object(cube, "_create_tilelayer", return_value=data_layer):
+                    cube.resample_cube_temporal(target=target, dimension="t", valid_within=5)
+                    invoke = m.openeo.geotrelliscommon.CubeProcessRegistry.invoke
+                    invoke.assert_called_once()
+                    _, pid, invoke_args = invoke.call_args.args
+                    assert pid == "resample_cube_temporal"
+                    assert invoke_args == {
+                        "target": target_layer.srdd.rdd.return_value,
+                        "dimension": "t",
+                        "valid_within": 5,
+                    }
+
+    def test_resample_cube_temporal_requires_temporal_dimension(self):
+        spatial_layer = MagicMock(spec=TiledRasterLayer)
+        spatial_layer.layer_type = LayerType.SPATIAL
+        spatial_cube = GeopysparkDataCube(Pyramid({0: spatial_layer}))
+        with pytest.raises(OpenEOApiException, match="no temporal dimension"):
+            spatial_cube.resample_cube_temporal(target=spatial_cube)
 
     def test_dynamic_processes_jvm_unavailable(self, caplog):
         """When the JVM/CubeProcessRegistry is not available, init must not raise."""
@@ -1340,6 +1371,7 @@ def test_k8s_sparkapplication_dict_custom_open_telemetry_prometheus_port(backend
         {"containerPort": 9465, "name": "prom-python", "protocol": "TCP"},
     ]
     assert "-Dotel.exporter.prometheus.port=19464" in app_dict["spec"]["executor"]["javaOptions"]
+    assert "-Dotel.metrics.exporter=prometheus" in app_dict["spec"]["executor"]["javaOptions"]
 
     # Kubernetes requires port names to be a valid IANA_SVC_NAME (at most 15 characters)
     for port in app_dict["spec"]["executor"]["ports"]:

@@ -75,17 +75,18 @@ setup(
         "opentelemetry-api>=1.0.0",
         "prometheus-client>=0.20.0",
         "pyspark>=4.0.0",
-        'geopyspark_openeo==0.4.10+openeo',
+        'geopyspark_openeo==0.4.10',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        "rasterio~=1.3.10",
+        "rasterio~=1.3.10; python_version == '3.11'",
+        "rasterio; python_version >= '3.12'",
         'py4j',
         "numpy>=2.3.3,<2.5",
         "pandas",
         "pyproj~=3.7.2",
         'protobuf~=3.9.2',
         "kazoo~=2.11.0",
-        "h5py~=3.11.0",
+        "h5py>=3.11.0,<3.16.0",
         'h5netcdf',
         'requests>=2.26.0,<3.0',
         'python_dateutil',
@@ -98,7 +99,11 @@ setup(
         'epsel~=1.0.0',
         "Bottleneck~=1.4.0",
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
-        "jep_openeo_numpy==4.1.2",  # Required because Jep needs to compile against numpy 2.x
+        "jep_openeo_numpy==4.1.2; python_version == '3.11'", # Required because Jep needs to compile against numpy 2.x
+        # Precompiled wheels (built by .github/workflows/build_jep_wheels.yml) are published at
+        # https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels
+        # and must be made available through e.g. `--find-links`/`UV_FIND_LINKS`.
+        "jep==4.1.1; python_version >= '3.14'",
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",

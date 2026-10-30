@@ -98,6 +98,66 @@ def get_execution_metadata(*, log_level: str) -> dict:
         logger.warning("Failed to fetch Scala execution metrics: %s", e)
     return execution_metrics
 
+
+def get_detailed_metrics(application_id: str, job_id: str, *, at: Optional[str] = None) -> dict:
+    """Fetch detailed Prometheus metrics in the same shape as the diagnostics CLI."""
+    import datetime
+
+    from openeogeotrellis.config import get_backend_config
+    from openeogeotrellis.integrations.prometheus import Prometheus
+
+    endpoint = get_backend_config().prometheus_api
+    if not endpoint:
+        raise RuntimeError("Prometheus API endpoint is not configured")
+    if at is None:
+        at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    prometheus = Prometheus(endpoint)
+    executor_memory_metrics = prometheus.get_executor_memory_metrics(application_id, at=at)
+    executor_lifetimes = prometheus.get_executor_wall_clock_lifetime_seconds(application_id, at=at)
+
+    def metric(data, unit: str) -> dict:
+        return {"unit": unit, "data": data}
+
+    metrics = {
+        "executor_wall_clock_lifetime": metric(executor_lifetimes, "s"),
+    }
+    for metric_name, output_name in (
+        ("peak_usage_bytes", "executor_memory_peak_usage"),
+        ("peak_working_set_bytes", "executor_memory_peak_working_set"),
+        ("peak_limit_bytes", "executor_memory_peak_limit"),
+    ):
+        metrics[output_name] = metric(
+            {
+                executor_id: executor_metrics[metric_name]
+                for executor_id, executor_metrics in executor_memory_metrics.items()
+                if metric_name in executor_metrics
+            },
+            "byte",
+        )
+
+    metrics.update(
+        {
+            "load_pixel_speed_avg": metric(prometheus.get_avg_load_megapixel_per_second(job_id, at=at), "megapixel/s"),
+            "load_pixel_speed_min": metric(prometheus.get_min_load_megapixel_per_second(job_id, at=at), "megapixel/s"),
+            "load_pixel_total": metric(prometheus.get_load_megapixel_total(job_id, at=at), "megapixel"),
+            "udf_execution_time_avg": metric(prometheus.get_avg_udf_execution_time_ms(job_id, at=at), "ms"),
+            "udf_execution_time_max": metric(prometheus.get_max_udf_execution_time_ms(job_id, at=at), "ms"),
+        }
+    )
+    executor_run_times = prometheus.get_executor_run_time_ms(job_id, at=at)
+    metrics["executor_run_time"] = metric(executor_run_times, "ms")
+    metrics["executor_cpu_utilization"] = metric(
+        {
+            executor_id: min(100.0, round(100 * run_time_ms / (executor_lifetimes[executor_id] * 1000), 2))
+            for executor_id, run_time_ms in executor_run_times.items()
+            if executor_id in executor_lifetimes and executor_lifetimes[executor_id] > 0
+        },
+        "percentage",
+    )
+    return {"metrics": metrics}
+
+
 def get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
     tracker = _get_tracker(tracker_id)
     usage = {}

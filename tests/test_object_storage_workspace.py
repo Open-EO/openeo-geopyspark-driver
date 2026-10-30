@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import botocore.exceptions
 import mock
-from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
+from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
 from openeo_driver.util.date_math import now_utc
@@ -259,6 +259,63 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, merge, re
     assert all(item.collection_id == exported_collection.id for item in items)
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
+
+
+@pytest.mark.parametrize(
+    "merge",
+    [
+        PurePath("some/target/my_catalog.json"),
+        PurePath("my_catalog.json"),
+    ],
+)
+def test_merge_catalog_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath):
+    test_region = "eu-nl"
+
+    source_directory = tmp_path / "src"
+    source_directory.mkdir()
+    disk_asset_path = source_directory / "disk_asset.tif"
+    with open(disk_asset_path, "w") as f:
+        f.write("disk_asset.tif\n")
+
+    new_catalog = Catalog(id="new_catalog", description="new_catalog")
+    item = Item(id="disk_asset.tif", geometry=None, bbox=None, datetime=now_utc(), properties={})
+    item.add_asset(key="disk_asset.tif", asset=Asset(href=str(disk_asset_path)))
+    new_catalog.add_item(item)
+    new_catalog.normalize_and_save(
+        root_href=str(source_directory / "new_catalog"), catalog_type=CatalogType.SELF_CONTAINED
+    )
+
+    workspace = ObjectStorageWorkspace(bucket=mock_s3_bucket.name, region=test_region)
+    assert not _workspace_keys(mock_s3_client, workspace.bucket)
+
+    imported_catalog = workspace.merge(new_catalog, merge)
+
+    assert isinstance(imported_catalog, Catalog)
+    assert not isinstance(imported_catalog, Collection)
+
+    asset_workspace_uris = {
+        asset_key: asset.extra_fields["alternate"]["s3"]
+        for item in imported_catalog.get_items()
+        for asset_key, asset in item.get_assets().items()
+    }
+    assert asset_workspace_uris == {"disk_asset.tif": f"s3://{workspace.bucket}/{merge}_items/disk_asset.tif"}
+
+    assert _workspace_keys(mock_s3_client, workspace.bucket) == {
+        f"{merge}",
+        f"{merge}_items/disk_asset.tif.json",
+        f"{merge}_items/disk_asset.tif",
+    }
+
+    exported_catalog = Catalog.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO(test_region))
+    assert not Collection.matches_object_type(exported_catalog.to_dict())
+    assert exported_catalog.validate_all() == 1
+
+    (exported_item,) = exported_catalog.get_items()
+    assert exported_item.get_self_href() == f"s3://{workspace.bucket}/{merge}_items/disk_asset.tif.json"
+    exported_asset = exported_item.get_assets().pop("disk_asset.tif")
+    assert exported_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}_items/disk_asset.tif"
+
+    assert _downloadable_assets(exported_catalog, mock_s3_client) == 1
 
 
 def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
