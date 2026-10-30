@@ -5,7 +5,8 @@ from urllib.parse import urlparse
 
 import botocore.exceptions
 import mock
-from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
+from openeo_driver.workspace import MergeCollectionMetadataOptions
+from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset, Link, RelType
 import pytest
 
 from openeo_driver.util.date_math import now_utc
@@ -86,7 +87,10 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
         PurePath("collection.json"),
     ],
 )
-def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, remove_original: bool):
+@pytest.mark.parametrize("merge_derived_from_links", [True, False])
+def test_merge_new(
+    mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, remove_original: bool, merge_derived_from_links: bool
+):
     test_region = "eu-nl"
 
     source_directory = tmp_path / "src"
@@ -115,7 +119,10 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, re
     )
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket, region=test_region)
-    imported_collection = workspace.merge(new_collection, merge, remove_original)
+    merge_collection_metadata_options = MergeCollectionMetadataOptions(
+        merge_derived_from_links=merge_derived_from_links
+    )
+    imported_collection = workspace.merge(new_collection, merge, remove_original, merge_collection_metadata_options)
 
     assert isinstance(imported_collection, Collection)
 
@@ -170,6 +177,21 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, re
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
 
+    assert [link.to_dict() for link in exported_collection.get_links(rel=RelType.DERIVED_FROM)] == (
+        [
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/new_collection/disk_asset.tif",
+            },
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/new_collection/object_asset.tif",
+            },
+        ]
+        if merge_derived_from_links
+        else []
+    )
+
 
 @pytest.mark.parametrize("remove_original", [False, True])
 @pytest.mark.parametrize(
@@ -179,7 +201,10 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, re
         PurePath("collection.json"),
     ],
 )
-def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, merge, remove_original):
+@pytest.mark.parametrize("merge_derived_from_links", [True, False])
+def test_merge_into_existing(
+    tmp_path, mock_s3_client, mock_s3_bucket, merge, remove_original, merge_derived_from_links
+):
     test_region = "waw3-1"
 
     source_directory = tmp_path / "src"
@@ -218,8 +243,22 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, merge, re
     )
 
     workspace = ObjectStorageWorkspace(target_bucket, region=test_region)
-    workspace.merge(existing_collection, target=merge, remove_original=remove_original)
-    imported_collection = workspace.merge(new_collection, target=merge, remove_original=remove_original)
+    merge_collection_metadata_options = MergeCollectionMetadataOptions(
+        merge_derived_from_links=merge_derived_from_links
+    )
+
+    workspace.merge(
+        existing_collection,
+        target=merge,
+        remove_original=remove_original,
+        merge_collection_metadata_options=merge_collection_metadata_options,
+    )
+    imported_collection = workspace.merge(
+        new_collection,
+        target=merge,
+        remove_original=remove_original,
+        merge_collection_metadata_options=merge_collection_metadata_options,
+    )
 
     assert isinstance(imported_collection, Collection)
 
@@ -259,6 +298,21 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, merge, re
     assert all(item.collection_id == exported_collection.id for item in items)
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
+
+    assert [link.to_dict() for link in exported_collection.get_links(rel=RelType.DERIVED_FROM)] == (
+        [
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/existing_collection/disk_asset.tif",
+            },
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/new_collection/object_asset.tif",
+            },
+        ]
+        if merge_collection_metadata_options.merge_derived_from_links
+        else []
+    )
 
 
 @pytest.mark.parametrize(
@@ -392,6 +446,8 @@ def _collection(
 
         item.add_asset(key=asset_filename, asset=asset)
         collection.add_item(item)
+
+        collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{collection_id}/{asset_filename}"))
 
     collection.normalize_and_save(root_href=str(root_path), catalog_type=CatalogType.SELF_CONTAINED)
 

@@ -9,7 +9,7 @@ from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.utils import remove_slash_prefix
 from openeo_driver.workspace import Workspace, _merge_collection_metadata, MergeCollectionMetadataOptions
-from pystac import STACObject, Collection, CatalogType, Item, Asset, Catalog
+from pystac import STACObject, Collection, CatalogType, Item, Asset, Catalog, RelType
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
 from .custom_stac_io import CustomStacIO
@@ -58,7 +58,9 @@ class ObjectStorageWorkspace(Workspace):
         _log.debug(f"{'moved' if remove_original else 'uploaded'} {file_absolute} to {workspace_uri}")
         return workspace_uri
 
-    def import_object(self, common_path: str, s3_uri: str, merge: str, remove_original: bool = False) -> str:
+    def import_object(
+        self, common_path: Union[str, Path], s3_uri: str, merge: str, remove_original: bool = False
+    ) -> str:
         uri_parts = urlparse(s3_uri)
 
         if not uri_parts.scheme or uri_parts.scheme.lower() != "s3":
@@ -127,6 +129,9 @@ class ObjectStorageWorkspace(Workspace):
         if isinstance(stac_resource, Catalog):  # includes Collection
             new_collection = stac_resource
             new_collection.make_all_asset_hrefs_absolute()
+
+            if not merge_collection_metadata_options.merge_derived_from_links:
+                new_collection.clear_links(rel=RelType.DERIVED_FROM)
 
             existing_collection = None
             try:

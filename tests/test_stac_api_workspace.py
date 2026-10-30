@@ -8,6 +8,7 @@ import responses
 from mock import ANY, MagicMock
 from openeo_driver.testing import DictSubSet
 from openeo_driver.constants import ITEM_LINK_PROPERTY
+from openeo_driver.workspace import MergeCollectionMetadataOptions
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -15,7 +16,8 @@ from openeogeotrellis.workspace import vito_stac_api_workspace
 from openeogeotrellis.workspace.stac_api_workspace import StacApiResponseError
 
 
-def test_merge_new(requests_mock, tmp_path):
+@pytest.mark.parametrize("merge_derived_from_links", [True, False])
+def test_merge_new(requests_mock, tmp_path, merge_derived_from_links: bool):
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
         export_asset=_export_asset,
@@ -34,7 +36,13 @@ def test_merge_new(requests_mock, tmp_path):
     collection1 = _collection(
         root_path=tmp_path / "collection1", collection_id="collection1", asset_hrefs=[str(asset_path)]
     )
-    imported_collection = stac_api_workspace.merge(stac_resource=collection1, target=target)
+
+    merge_collection_metadata_options = MergeCollectionMetadataOptions(
+        merge_derived_from_links=merge_derived_from_links
+    )
+    imported_collection = stac_api_workspace.merge(
+        stac_resource=collection1, target=target, merge_collection_metadata_options=merge_collection_metadata_options
+    )
 
     assert isinstance(imported_collection, Collection)
 
@@ -53,12 +61,16 @@ def test_merge_new(requests_mock, tmp_path):
     assert create_collection_mock.last_request.json() == dict(
         collection1.to_dict(),
         id=str(target),
-        links=[
-            {
-                "rel": "derived_from",
-                "href": "https://src.test/asset1.tif",
-            }
-        ],
+        links=(
+            [
+                {
+                    "rel": "derived_from",
+                    "href": "https://src.test/asset1.tif",
+                },
+            ]
+            if merge_derived_from_links
+            else []
+        ),
     )
 
     assert create_item_mock.called_once
@@ -68,7 +80,8 @@ def test_merge_new(requests_mock, tmp_path):
     )
 
 
-def test_merge_into_existing(requests_mock, tmp_path):
+@pytest.mark.parametrize("merge_derived_from_links", [True, False])
+def test_merge_into_existing(requests_mock, tmp_path, merge_derived_from_links: bool):
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
         export_asset=_export_asset,
@@ -108,7 +121,12 @@ def test_merge_into_existing(requests_mock, tmp_path):
         ]]),
     )
 
-    imported_collection = stac_api_workspace.merge(new_collection, target=target)
+    merge_collection_metadata_options = MergeCollectionMetadataOptions(
+        merge_derived_from_links=merge_derived_from_links
+    )
+    imported_collection = stac_api_workspace.merge(
+        new_collection, target=target, merge_collection_metadata_options=merge_collection_metadata_options
+    )
     assert isinstance(imported_collection, Collection)
 
     assert _asset_workspace_uris(imported_collection, alternate_key="file") == {
@@ -121,16 +139,25 @@ def test_merge_into_existing(requests_mock, tmp_path):
         new_collection.to_dict(),
         id=str(target),
         description=str(target),
-        links=[
-            {
-                "rel": "derived_from",
-                "href": "https://src.test/asset1.tif",
-            },
-            {
-                "rel": "derived_from",
-                "href": "https://src.test/asset2.tif",
-            },
-        ],
+        links=(
+            [
+                {
+                    "rel": "derived_from",
+                    "href": "https://src.test/asset1.tif",
+                },
+                {
+                    "rel": "derived_from",
+                    "href": "https://src.test/asset2.tif",
+                },
+            ]
+            if merge_derived_from_links
+            else [
+                {
+                    "rel": "derived_from",
+                    "href": "https://src.test/asset1.tif",
+                }
+            ]
+        ),
         extent=Extent(
             SpatialExtent([[0, 50, 3, 53]]),
             TemporalExtent([[
