@@ -24,6 +24,7 @@ from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
+    CliApp,
     JobCostsCalculator,
     JobTracker,
     K8sStatusGetter,
@@ -1721,7 +1722,57 @@ class TestCliApp:
         assert "JobTracker" in run_result.stdout.str()
         assert "--app-cluster" in run_result.stdout.str()
         assert "--run-id" in run_result.stdout.str()
+        assert "--daemon" in run_result.stdout.str()
         assert run_result.errlines == []
+
+    def test_one_shot_by_default(self):
+        with mock.patch("openeogeotrellis.job_tracker_v2.kube_client"), mock.patch(
+            "openeogeotrellis.job_tracker_v2.JobTracker"
+        ) as JobTrackerMock, mock.patch("openeogeotrellis.job_tracker_daemon.JobTrackerDaemon") as DaemonMock:
+            CliApp().main(args=["--app-cluster", "k8s", "--basic-logging"])
+        JobTrackerMock.return_value.update_statuses.assert_called_once_with(fail_fast=False)
+        DaemonMock.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ["extra_args", "expect_watcher"],
+        [
+            ([], True),
+            (["--no-daemon-watch-k8s"], False),
+        ],
+    )
+    def test_daemon_mode(self, extra_args, expect_watcher, tmp_path):
+        with mock.patch("openeogeotrellis.job_tracker_v2.kube_client"), mock.patch(
+            "openeogeotrellis.job_tracker_v2.JobTracker"
+        ) as JobTrackerMock, mock.patch(
+            "openeogeotrellis.job_tracker_daemon.JobTrackerDaemon"
+        ) as DaemonMock, mock.patch(
+            "openeogeotrellis.job_tracker_daemon.SparkApplicationWatcher"
+        ) as WatcherMock:
+            CliApp().main(
+                args=[
+                    "--app-cluster",
+                    "k8s",
+                    "--basic-logging",
+                    "--daemon",
+                    "--daemon-scan-interval",
+                    "30",
+                    "--heartbeat-file",
+                    str(tmp_path / "hb"),
+                    "--metrics-port",
+                    "9123",
+                ]
+                + extra_args
+            )
+        JobTrackerMock.return_value.update_statuses.assert_not_called()
+        DaemonMock.assert_called_once_with(
+            job_tracker=JobTrackerMock.return_value,
+            watcher=WatcherMock.return_value if expect_watcher else None,
+            scan_interval=30,
+            heartbeat_file=str(tmp_path / "hb"),
+            metrics_port=9123,
+            fail_fast=False,
+        )
+        DaemonMock.return_value.run.assert_called_once_with()
 
     def test_run_basic_fail(self, pytester):
         command = [sys.executable, "-m", "openeogeotrellis.job_tracker_v2", "--foobar"]
