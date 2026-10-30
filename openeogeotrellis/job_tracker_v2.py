@@ -10,7 +10,7 @@ import datetime as dt
 import logging
 import os
 from pathlib import Path
-from typing import Any, List, NamedTuple, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Union
 
 import requests
 
@@ -84,6 +84,16 @@ class _Usage(NamedTuple):
         return result
 
 
+class _Metrics:
+    """Container for detailed performance metrics in the diagnostics CLI format."""
+
+    def __init__(self, metrics: Dict[str, Any]):
+        self._metrics = metrics
+
+    def to_dict(self) -> dict:
+        return self._metrics
+
+
 class _JobMetadata(NamedTuple):
     """Simple container for openEO batch job oriented metadata"""
 
@@ -105,6 +115,9 @@ class _JobMetadata(NamedTuple):
     # allows overriding the ETL source ID for this job (i.e. when set as a label on the K8s application)
     etl_source_id_override: Optional[str] = None
 
+    # Detailed performance metrics, in the diagnostics CLI's unit/data format.
+    metrics: Optional[_Metrics] = None
+
 
 class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     """
@@ -115,7 +128,9 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     """
 
     @abc.abstractmethod
-    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+    def get_job_metadata(
+        self, job_id: str, user_id: str, app_id: str, *, detailed_metrics: bool = False
+    ) -> _JobMetadata:
         raise NotImplementedError
 
     def cleanup_app(self, job_id: str, user_id: str, app_id: str) -> None:
@@ -184,7 +199,9 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             f"/ws/v1/cluster/apps/{application_id}",
         )
 
-    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+    def get_job_metadata(
+        self, job_id: str, user_id: str, app_id: str, *, detailed_metrics: bool = False
+    ) -> _JobMetadata:
         url = self.get_application_url(application_id=app_id)
         response = requests.get(url, auth=self.auth)
         if response.status_code == 404:
@@ -295,7 +312,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         self._kubernetes_api = kubernetes_api
         self._prometheus_api = prometheus_api
 
-    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+    def get_job_metadata(
+        self, job_id: str, user_id: str, app_id: str, *, detailed_metrics: bool = False
+    ) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
@@ -362,7 +381,35 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             start_time=start_time,
             finish_time=finish_time,
             etl_source_id_override=etl_source_id_override,
+            metrics=self._get_metrics(app_id, start_time, finish_time, job_id, user_id) if detailed_metrics else None,
         )
+
+    def _get_metrics(
+        self,
+        application_id: str,
+        start_time: Optional[dt.datetime],
+        finish_time: Optional[dt.datetime],
+        job_id: str,
+        user_id: str,
+    ) -> Optional[_Metrics]:
+        from openeogeotrellis.deploy.batch_job_metadata import get_detailed_metrics
+
+        duration = (finish_time - start_time).total_seconds() if start_time and finish_time else None
+        try:
+            metrics = get_detailed_metrics(
+                application_id=application_id,
+                job_id=job_id,
+                application_duration_s=duration,
+                prometheus=self._prometheus_api,
+            )["metrics"]
+            return _Metrics(metrics)
+        except Exception:
+            _log.exception(
+                "Failed to retrieve detailed metrics from %s",
+                self._prometheus_api.endpoint,
+                extra={"job_id": job_id, "user_id": user_id},
+            )
+            return None
 
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
@@ -594,7 +641,10 @@ class JobTracker:
         try:
             stats["get metadata attempt"] += 1
             job_metadata: _JobMetadata = self._app_state_getter.get_job_metadata(
-                job_id=job_id, user_id=user_id, app_id=application_id
+                job_id=job_id,
+                user_id=user_id,
+                app_id=application_id,
+                detailed_metrics=smart_bool((job_info.get("job_options") or {}).get("detailed-metrics", False)),
             )
             stats["new metadata"] += 1
         except AppNotFound:
@@ -701,6 +751,11 @@ class JobTracker:
                     user_id=user_id,
                     costs=job_costs,
                     usage=to_jsonable(dict(total_usage)),
+                    metrics=(
+                        to_jsonable(job_metadata.metrics.to_dict())
+                        if job_metadata.metrics is not None
+                        else None
+                    ),
                     results_metadata=to_jsonable(results_metadata) if include_all_results_metadata else None,
                 )
 
