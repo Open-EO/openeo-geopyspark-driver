@@ -2,7 +2,7 @@ import dataclasses
 import logging
 import re
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
@@ -31,6 +31,7 @@ class JobOptions:
     driver_memory: str = field(
         default=get_backend_config().default_driver_memory,
         metadata={
+            "performance": True,
             "description": "Memory allocated to the Spark ‘driver’ JVM, which manages the execution and metadata of the batch job."
         },
     )
@@ -38,6 +39,7 @@ class JobOptions:
     driver_memory_overhead: str = field(
         default=get_backend_config().default_driver_memoryOverhead,
         metadata={
+            "performance": True,
             "name": "driver-memoryOverhead",
             "description": "Memory assigned to the Spark ‘driver’ on top of JVM memory for Python processes."
         })
@@ -45,6 +47,7 @@ class JobOptions:
     driver_cores: int = field(
         default=5,
         metadata={
+            "performance": True,
             "description": "Number of CPUs per driver, normally not needed.",
             "public": False
         })
@@ -52,11 +55,13 @@ class JobOptions:
     executor_memory: str = field(
         default=get_backend_config().default_executor_memory,
         metadata={
+            "performance": True,
             "description": "Memory allocated to the workers for the JVM that executes most predefined processes."
         })
     executor_memory_overhead: str = field(
         default=get_backend_config().default_executor_memoryOverhead,
         metadata={
+            "performance": True,
             "name": "executor-memoryOverhead",
             "description": "Memory allocated to the workers in addition to the JVM, for example, to run UDFs. "
             "The total available memory of an executor is equal to executor-memory + executor-memoryOverhead [+ python-memory].",
@@ -71,32 +76,39 @@ class JobOptions:
     executor_cores: int = field(
         default=get_backend_config().default_executor_cores,
         metadata={
+            "performance": True,
             "description": "Number of CPUs per worker (executor). The number of parallel tasks is calculated as executor-cores / task-cpus. Setting this value equal to task-cpus is recommended to avoid potential GDAL reading errors."
         })
     task_cpus: int = field(
         default=1,
         metadata={
+            "performance": True,
             "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."
         },
     )  # TODO add description on how this increases requested memory
 
-    soft_errors: str = field(
+    soft_errors: float = field(
         default=get_backend_config().default_soft_errors,
         metadata={
-            "description": "Ratio of soft-errors to allow in load_collection/load_stac and sar_backscatter. Reading errors can occur due to corrupted files or intermittent cloud issues."
+            "description": "Ratio of soft-errors to allow in load_collection/load_stac and sar_backscatter. Reading errors can occur due to corrupted files or intermittent cloud issues.",
+            "minimum": 0,
+            "maximum": 1,
         },
     )
     max_executors: int = field(
         default=get_backend_config().default_max_executors,
         metadata={
+            "performance": True,
             "description": "The maximum number of workers assigned to the job. The maximum number of parallel tasks is max-executors*executor-cores/task-cpus. "
             "Increasing this can inflate costs, while not necessarily improving performance! "
-            "Decreasing this can increase cost efficiency but will make your job slower."
+            "Decreasing this can increase cost efficiency but will make your job slower. "
+            "When not specified, the backend may determine the most appropriate value automatically.",
         },
     )
     executor_threads_jvm: int = field(
         default=get_backend_config().default_executor_threads_jvm,
         metadata={
+            "performance": True,
             "description": "Number of threads to allocate for the default jvm worker. Certain openEO processes can benefit of additional local parallelism on top of the distributed processing performed by Spark."
         },
     )
@@ -127,6 +139,14 @@ class JobOptions:
     log_level:str = field(
         default=DEFAULT_LOG_LEVEL_PROCESSING,
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
+    )
+
+    detailed_metrics: bool = field(
+        default=False,
+        metadata={
+            "description": "[Experimental] Enable detailed OpenTelemetry metrics",
+            "public": False,
+        },
     )
 
     stac_version : str = field(
@@ -220,8 +240,13 @@ class JobOptions:
                 message=f"Requested too much driver memory: {self.driver_memory} + {self.driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
 
-        if (self.openeo_jar_path is not None and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
-                and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") )  :
+        allowed_jar_prefixes = (
+            "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/",
+            "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/",
+            "https://repo.vito.be/",
+            "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/",
+        )
+        if self.openeo_jar_path is not None and not self.openeo_jar_path.startswith(allowed_jar_prefixes):
             raise OpenEOApiException(
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
@@ -319,6 +344,15 @@ class JobOptions:
 
 
     @classmethod
+    def performance_options(cls) -> Set[str]:
+        """Names of the job options that tune the resources (memory, cores, executors) of a job."""
+        return {
+            field.metadata.get("name", field.name.replace("_", "-"))
+            for field in fields(cls)
+            if field.metadata.get("performance", False)
+        }
+
+    @classmethod
     def list_options(cls, public_only=True):
         """
         List all available options and their descriptions, following the schema defined by openEO parameters extension
@@ -339,8 +373,9 @@ class JobOptions:
                 continue
             default = get_default(field)
             schema = cls.python_type_to_json_schema(field.type)
-            if "enum" in field.metadata:
-                schema["enum"] = field.metadata["enum"]
+            for key in ("enum", "minimum", "maximum"):
+                if key in field.metadata:
+                    schema[key] = field.metadata[key]
 
             options.append({
                 "name": field.metadata.get("name", field.name.replace("_","-")),
@@ -390,6 +425,7 @@ class K8SOptions(JobOptions):
     driver_cores: int = field(
         default=1,
         metadata={
+            "performance": True,
             "description": "Number of CPUs per driver, normally not needed.",
             "public": False
         })
@@ -397,6 +433,7 @@ class K8SOptions(JobOptions):
     driver_request_cores: str = field(
         default="NONE",
         metadata={
+            "performance": True,
             "description": "CPU request for the driver, expressed as 'milli-cpus', for instance '500m' for 0.5 of 1 cpu unit. Allows partial CPU allocation for the driver.",
             "public": False
         })
@@ -405,6 +442,7 @@ class K8SOptions(JobOptions):
 
         default="NONE",
         metadata={
+            "performance": True,
             "description": "Fraction of CPUs to actually request, expressed as 'milli-cpus', for instance '600m' for 0.6 of 1 cpu unit.",
             "public": True
         })
@@ -423,13 +461,6 @@ class K8SOptions(JobOptions):
              "description": "Deprecated, use spark pvcs or not",
              "public": False
          })
-    open_telemetry_metrics_exporter: str = field(default=None,
-         metadata={
-            "description": "[Experimental] Configure and enable the OpenTelemetry Java SDK exporter",
-            "public": False,
-            "enum": ["console", "prometheus"]
-        })
-
     force_s3proxy: bool = field(
         default=False,
         metadata={

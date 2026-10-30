@@ -1141,7 +1141,8 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
     # We still want the test data to be cleaned up though, so we need to use
     # tempfile instead of pytest's tmp_path.
     with tempfile.TemporaryDirectory(dir=".", suffix="job-test-proj-metadata") as job_dir:
-        job_dir = Path(job_dir)
+        # Since Python 3.12, `TemporaryDirectory` returns an absolute path, even if `dir` is relative.
+        job_dir = Path(job_dir).absolute().relative_to(Path.cwd())
         # Emile 2024-10-29: Not sure what the use-case of a relative path is here.
         # STAC metadata uses relative paths internally, but the job_dir is better absolute IMHO
         assert not job_dir.is_absolute()

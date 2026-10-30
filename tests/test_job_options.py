@@ -27,7 +27,7 @@ def test_from_dict():
         "executor-memory": "8G",
         "executor-cores": "4",
         "udf-dependency-archives": ["http://example.com/archive1.zip"],
-        "log_level": "warning"
+        "log_level": "warning",
     }
     job_options = JobOptions.from_dict(data)
     assert job_options.driver_memory == "16G"
@@ -35,6 +35,11 @@ def test_from_dict():
     assert job_options.executor_cores == "4"
     assert job_options.log_level == "WARN"
     assert job_options.udf_dependency_archives == ["http://example.com/archive1.zip"]
+
+
+def test_detailed_metrics_job_option():
+    assert K8SOptions().detailed_metrics is False
+    assert K8SOptions.from_dict({"detailed-metrics": True}).detailed_metrics is True
 
 
 @pytest.mark.parametrize(
@@ -103,6 +108,41 @@ def test_from_dict_valid_image():
     job_options = JobOptions.from_dict(data)
     job_options.validate()
 
+
+@pytest.mark.parametrize("options_class", [JobOptions, K8SOptions])
+@pytest.mark.parametrize(
+    "jar_path",
+    [
+        None,
+        "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/1.0/test.jar",
+        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/1.0/test.jar",
+        "https://repo.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/1.0/test.jar",
+        "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/v1.0/test.jar",
+    ],
+)
+def test_valid_openeo_jar_path(options_class, jar_path):
+    options_class.from_dict({"openeo-jar-path": jar_path}).validate()
+
+
+@pytest.mark.parametrize("options_class", [JobOptions, K8SOptions])
+@pytest.mark.parametrize(
+    "jar_path",
+    [
+        "https://example.org/test.jar",
+        "http://repo.vito.be/test.jar",
+        "https://repo.vito.be.example.org/test.jar",
+        "https://repo.vito.be@example.org/test.jar",
+        "https://github.com/Open-EO/other/releases/download/v1.0/test.jar",
+        "https://github.com/Open-EO/openeo-geotrellis-extensions/releases-other/test.jar",
+        "https://github.com/Open-EO/openeo-geotrellis-extensions/main/test.jar",
+    ],
+)
+def test_invalid_openeo_jar_path(options_class, jar_path):
+    with pytest.raises(OpenEOApiException, match="Requested invalid openeo jar path") as exc:
+        options_class.from_dict({"openeo-jar-path": jar_path}).validate()
+    assert exc.value.status_code == 400
+
+
 def test_list_options():
     options = JobOptions.list_options(public_only=False)
     assert_listing_shared_options(options)
@@ -124,6 +164,32 @@ def assert_listing_shared_options(options):
         assert "default" in opt
         if "udf-dependency-archives" == opt["name"]:
             assert opt["schema"] == {"type": "array", "items": {"type": "string"}}
+
+
+def test_soft_errors_schema():
+    option = next(option for option in JobOptions.list_options() if option["name"] == "soft-errors")
+    assert option["default"] == 0.1
+    assert option["schema"] == {"type": "number", "minimum": 0, "maximum": 1}
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (0.4, "0.4"),
+        (True, "1.0"),
+        (False, "0.0"),
+        ("true", "1.0"),
+        ("false", "0.0"),
+    ],
+)
+def test_soft_errors_arg(value, expected):
+    assert JobOptions.from_dict({"soft-errors": value}).soft_errors_arg() == expected
+
+
+@pytest.mark.parametrize("value", [-0.1, 1.1])
+def test_soft_errors_arg_out_of_range(value):
+    with pytest.raises(OpenEOApiException):
+        JobOptions.from_dict({"soft-errors": value}).soft_errors_arg()
 
 
 def test_list_options_k8s():
@@ -185,3 +251,8 @@ class TestCreditPlansJobOption:
     def test_credit_plans_multiple_plans_accepted(self):
         job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a", "plan-b"]})
         assert job_options.credit_plans == ["plan-a", "plan-b"]
+
+
+def test_performance_options():
+    assert "max-executors" in JobOptions.performance_options()
+    assert "executor-request-cores" in K8SOptions.performance_options()

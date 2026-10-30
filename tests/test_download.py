@@ -212,6 +212,7 @@ class TestDownload:
                 "datetime": "2017-09-25T11:37:00Z",
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                 "href": str(tmp_path / name),
+                "data_type": "int32",
                 "nodata": -1,
                 "roles": ["data"],
                 "type": "image/tiff; application=geotiff",
@@ -300,8 +301,10 @@ class TestDownload:
                                              tile_grid, filename_prefix,bands_metadata,add_bands_statistics):
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
+            expected_data_type = "int32"
         else:
             imagecollection = imagecollection_with_two_bands_spatial_only
+            expected_data_type = "float64"
 
         if bands_metadata == "s":
             bands_metadata = {"red":{"SCALE":1.23}}
@@ -347,6 +350,7 @@ class TestDownload:
                         "bbox": dirty_equals.IsListOrTuple(length=4),
                         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                         "href": str(tmp_path / name),
+                        "data_type": expected_data_type,
                         "nodata": -1,
                         "proj:epsg" : 4326,
                         "proj:bbox": dirty_equals.IsListOrTuple(length=4),

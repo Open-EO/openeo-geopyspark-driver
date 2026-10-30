@@ -1260,6 +1260,43 @@ class TestBatchJobs:
             assert batch_job_args[23] == '0.0'
             assert batch_job_args[27] == 'https://host.com/my.jar'
 
+    @pytest.mark.parametrize(
+        ["spatial_extent", "job_options", "expected_max_executors"],
+        [
+            # Small spatial extent: small job
+            ({"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}, {}, "5"),
+            # Explicit max-executors always wins
+            ({"west": 5.0, "south": 51.0, "east": 5.01, "north": 51.01}, {"max-executors": 7}, "7"),
+            # Large spatial extent: not a small job
+            ({"west": 5.0, "south": 51.0, "east": 6.0, "north": 52.0}, {}, "100"),
+        ],
+    )
+    def test_yarn_mode_start_job_small_job_options(
+        self,
+        api,
+        batch_job_output_root,
+        mock_yarn_backend_config,
+        spatial_extent,
+        job_options,
+        expected_max_executors,
+    ):
+        # Should work on Kubernetes too, but easier to test with YARN
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "COPERNICUS_30",
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": ["2020-01-01", "2020-01-02"],
+                },
+                "result": True,
+            }
+        }
+        data = api.get_process_graph_dict(process_graph, title="Dummy")
+        data["job_options"] = job_options
+        batch_job_args, job_id, env = self._create_and_start_job_yarn_mode(data, api)
+        assert batch_job_args[20] == expected_max_executors
+
     def _create_and_start_job_yarn_mode(self, job_data, api):
         res = api.post('/jobs', json=job_data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
         job_id = res.headers['OpenEO-Identifier']
@@ -1707,15 +1744,17 @@ class TestBatchJobs:
         assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:shape"] == [321, 654]
 
         assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
-            {
-                "statistics": {
-                    "maximum": 641.22131,
-                    "mean": 403.31786,
-                    "minimum": 149.76655,
-                    "stddev": 98.38930,
-                    "valid_percent": 100.0,
+            DictSubSet(
+                {
+                    "statistics": {
+                        "maximum": 641.22131,
+                        "mean": 403.31786,
+                        "minimum": 149.76655,
+                        "stddev": 98.38930,
+                        "valid_percent": 100.0,
+                    }
                 }
-            }
+            )
         ]
 
     # TODO: This test is known to fail with API v1.1.0 / api110. Add coverage, or update the test.
@@ -1809,15 +1848,17 @@ class TestBatchJobs:
 
         assert "openEO_2017-11-21Z.tif" in res["assets"]
         assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
-            {
-                "statistics": {
-                    "maximum": 641.22131,
-                    "mean": 403.31786,
-                    "minimum": 149.76655,
-                    "stddev": 98.38930,
-                    "valid_percent": 100.0,
+            DictSubSet(
+                {
+                    "statistics": {
+                        "maximum": 641.22131,
+                        "mean": 403.31786,
+                        "minimum": 149.76655,
+                        "stddev": 98.38930,
+                        "valid_percent": 100.0,
+                    }
                 }
-            }
+            )
         ]
 
 

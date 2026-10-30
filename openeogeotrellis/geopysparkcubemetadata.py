@@ -108,7 +108,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def with_temporal_extent(self, temporal_extent: Tuple[str, str], allow_adding_dimension: bool = False):
         if self.has_temporal_dimension():
             dimensions = [
-                TemporalDimension(d.name, temporal_extent) if isinstance(d, TemporalDimension) else d
+                TemporalDimension(name=d.name, extent=temporal_extent) if isinstance(d, TemporalDimension) else d
                 for d in self._dimensions
             ]
         else:
@@ -144,7 +144,8 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if any(d.name == name for d in self._dimensions):
             raise DimensionAlreadyExistsException(f"Dimension with name {name!r} already exists")
 
-        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name, extent)])
+        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name, extent=extent)])
+        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name=name, extent=extent)])
 
     @property
     def opensearch_link_titles(self) -> List[str]:
@@ -245,6 +246,18 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             band_gsd = clean_number_pair(band_gsd)
             if band_gsd:
                 band_to_gsd[band_name] = band_gsd
+                for alias in band_metadata.get("aliases") or []:
+                    band_to_gsd.setdefault(alias, band_gsd)
+
+        if band_to_gsd and self.has_band_dimension():
+            # Band names (and their aliases) in the band dimension can differ from the ones in the summaries.
+            bands = self.band_dimension.bands
+            for band in bands:
+                names = [band.name, *(band.aliases or [])]
+                known = next((n for n in names if n in band_to_gsd), None)
+                if known is not None:
+                    for n in names:
+                        band_to_gsd.setdefault(n, band_to_gsd[known])
 
         if len(band_to_gsd) > 0:
             return band_to_gsd
@@ -275,6 +288,16 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                     resolution_meters = reproject_cellsize(spatial_extent, dimensions_step, crs, "Auto42001")
                     return resolution_meters
         return None
+
+    def get_max_GSD_in_meters(self) -> Optional[float]:
+        gsd = self.get_GSD_in_meters()
+        if isinstance(gsd, dict):
+            return max([max(v) for v in gsd.values()])
+        elif isinstance(gsd, tuple):
+            return max(gsd)
+        else:
+            return gsd
+
 
 class Band(NamedTuple):
     """

@@ -17,6 +17,7 @@ Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
 from __future__ import annotations
+
 import argparse
 import collections
 import copy
@@ -25,6 +26,7 @@ import difflib
 import functools
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
 
@@ -819,10 +821,10 @@ class CollectionMetadataBuilderRegistry:
             openeo_collections = registry.decorator_multiple
 
             @openeo_collections(
-                {
-                    "SENTINEL_FOO": {"biopar": "FOO"},
-                    "SENTINEL_BAR": {"biopar": "BAR"},
-                }
+                [
+                    ("SENTINEL_FOO", {"biopar": "FOO"}),
+                    ("SENTINEL_BAR", {"biopar": "BAR"}),
+                ]
             )
             def build_biopar(collection_id: str, biopar: str) -> dict:
                 ....
@@ -1026,3 +1028,14 @@ class LayerCatalogManagerCliApp:
                 print(item.collection_id, f"labels={sorted(item.labels)}", f"kwargs={item.kwargs}")
             else:
                 print(item.collection_id)
+
+
+def normalize_openeo_collection_id(collection_id: str) -> str:
+    """
+    Normalize a generic name or id (e.g. STAC collection id)
+    to the openEO collection id format settled on in openeo-geopyspark-driver deployments
+    (uppercase with underscores).
+    """
+    normalized = collection_id.strip().upper().replace("-", "_")
+    normalized = re.sub(r"[^A-Z0-9_]+", "_", normalized)
+    return normalized

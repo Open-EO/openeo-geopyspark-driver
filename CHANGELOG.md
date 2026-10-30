@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ## In progress: 0.74.0
 
+- Add support for the `resample_cube_temporal` process, backed by the implementation in openeo-geotrellis-extensions (`CubeProcessRegistry`)
 - Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
 - Batch job metadata: report Spark execution metrics (`total_stage_runtime`, `total_executor_allocation_time`, `cpu_utilization_ratio`, `total_stage_failures`, `total_task_failures` and `peak_execution_memory`)
 - Kubernetes batch jobs: also enable OpenTelemetry metrics export on the Spark driver (previously only the executors emitted these metrics), including the `prom-scala` container port used for scraping
@@ -23,9 +24,21 @@ without compromising stable operations.
 - `load_collection` of "geotiff" collections and of Sentinel Hub batch process results: use the file-based pyramid factory instead of the obsolete `org.openeo.geotrellis.geotiff.PyramidFactory`; the end of the temporal extent is now exclusive
 - `EtlApi.log_added_value`: report added value for multiple process ids in bulk (`POST /addedvalue/bulk`) instead of one request per process id
 - Extent validation (`ExtentTooLarge`): include the spatial extent warning in the error message instead of logging it separately, and reject extents touching the poles or exceeding the bounds of a UTM zone when reprojecting to UTM/`Auto42001` ([#1795](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1795))
+- Conservative batch job parameter auto-tuning. Instead of using a fixed default for max-executors, an appropriate value may be selected automatically based on process graph analysis. ([#1104](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1104))
 - Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
 - Kubernetes batch jobs: remove obsolete Python 3.8 specific `PYTHONPATH` from driver and executor env ([#1899](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1899))
 - Logging: tag log records with an `audience` field (`developer` by default, `user` through `UserFacingLogger`) and only return `audience: user` records from `GET /jobs/{id}/logs` ([#872](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/872))
+- Job tracker: when `infra_id` is configured, only list active jobs of that infra, and on `AppNotFound` log an error and set the job status to `error`
+- Expose `data_type` and `nodata` in job results metadata for GeoTIFF and NetCDF assets ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
+- Kubernetes batch jobs: support `s3://` UDF dependency files and archives (`udf-dependency-files` and `udf-dependency-archives` job options) from workspace buckets, by resolving them to presigned URLs on the internal S3 proxy ([eu-cdse/openeo-cdse-infra#1224](https://github.com/eu-cdse/openeo-cdse-infra/issues/1224))
+- Replace `open_telemetry_metrics_exporter` with the boolean `detailed_metrics` job option.
+- Batch job results: when `detailed_metrics` is enabled, include detailed Prometheus metrics in result metadata.
+- Allow `openeo-jar-path` artifacts from `https://repo.vito.be/` and GitHub releases of `Open-EO/openeo-geotrellis-extensions`, in addition to the existing Artifactory locations.
+- Application metrics script: report per-collection pixel-load speeds and totals, UDF execution times, executor task runtime, lifetime and utilization, and peak memory usage, working set and limits.
+- Application metrics script: return only metrics with their units and data values, omitting identifiers and unused resource metrics.
+- Label Python UDF execution-time and RSS-delta Prometheus gauges with the process-graph `node_id` for raster callbacks; direct calls without a node ID use an empty label.
+- Detailed metrics: rename `executor_utilization` to `executor_cpu_utilization` and cap the percentage at 100.
+- `load_stac`: read `data_type` and `nodata` from assets using the pre-STAC 1.1 metadata layout ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
 
 
 ## 0.73.0
@@ -44,6 +57,7 @@ without compromising stable operations.
 - Kubernetes batch jobs: support mounting batch job results from a single shared PersistentVolumeClaim (each job using its own `subPath`) instead of creating a PersistentVolume and PersistentVolumeClaim per job, through the new `shared_results_pvc` config.
 - Produce BigTiff GeoTiffs by default ([Open-EO/openeo-geotrellis-extensions#678](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/678), [Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 - Make `export_workspace` merge by default; its `merge` argument points to the STAC resource itself ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
+- Advertise the `soft-errors` job option as a ratio between 0 and 1 instead of a string ([#1327](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1327)).
 
 
 ## 0.72.0

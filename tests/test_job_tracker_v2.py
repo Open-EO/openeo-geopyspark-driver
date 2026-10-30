@@ -710,6 +710,35 @@ class TestYarnJobTracker:
             "status same 'running'": 2,
         }
 
+    def test_yarn_app_not_found_with_infra_id(
+        self,
+        elastic_job_registry,
+        yarn_mock,
+        job_tracker,
+        caplog,
+    ):
+        """With `infra_id`: only list own jobs, and set status to error (with error log) when app is not found."""
+        caplog.set_level(logging.INFO)
+        for job_id, infra_id in [("job-1", "infra-a"), ("job-2", "infra-b")]:
+            elastic_job_registry.create_job(
+                job_id=job_id, user_id="john", process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
+            )
+            elastic_job_registry.set_application_id(job_id=job_id, application_id=f"app-{job_id}")
+            elastic_job_registry.set_status(job_id=job_id, status="running", infra_id=infra_id)
+
+        with gps_config_overrides(infra_id="infra-a"):
+            job_tracker.update_statuses()
+
+        assert elastic_job_registry.db["job-1"]["status"] == "error"
+        assert elastic_job_registry.db["job-1"]["finished"]
+        # Other infra's job is untouched
+        assert elastic_job_registry.db["job-2"]["status"] == "running"
+        [stats] = _extract_update_statuses_stats(caplog)
+        assert stats["collected jobs"] == 1
+        assert stats["app not found: set error"] == 1
+        assert any(r.levelname == "ERROR" and "App not found" in r.getMessage() for r in caplog.records)
+        assert not any(r.levelname == "WARNING" and "App not found" in r.getMessage() for r in caplog.records)
+
     @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     @pytest.mark.parametrize(
         ["yarn_state", "yarn_final_state", "expected_etl_state", "expected_job_status"],

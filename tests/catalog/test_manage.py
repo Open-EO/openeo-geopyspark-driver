@@ -25,6 +25,7 @@ from openeogeotrellis.catalog.manage import (
     _BuildItem,
     BandMetadataList,
     _find_common_prefix,
+    normalize_openeo_collection_id,
 )
 
 
@@ -1215,3 +1216,9 @@ class TestLayerCatalogManagerCliApp:
             ],
             [],
         )
+
+
+def test_normalize_collection_id():
+    assert normalize_openeo_collection_id("s2-toc-v2") == "S2_TOC_V2"
+    assert normalize_openeo_collection_id("s2% toc +V2") == "S2_TOC_V2"
+    assert normalize_openeo_collection_id("  s2% toc +V2 ") == "S2_TOC_V2"

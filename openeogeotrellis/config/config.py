@@ -239,6 +239,16 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_max_executors: int = 100
 
+    # More small_job_* info here: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1104
+    # Empty dict disables (default). E.g. `{"max-executors": 5}`.
+    # On Kubernetes, keep max-executors >= minExecutors (2) of the SparkApplication.
+    small_job_options: dict = attrs.Factory(dict)
+    small_job_max_nodes: int = 5
+    small_job_max_estimated_input_pixel: float = 1_000_000
+    # Only collections that are very reliable can get the small_job_options.
+    # E.g. `["SENTINEL2_L2A", "COPERNICUS_30"]`.
+    small_job_included_collections: List[str] = attrs.Factory(list)
+
     default_driver_memory: str = "8G"
 
     default_driver_memoryOverhead: str = "2G"
@@ -383,6 +393,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     A mapping of region names to proxy endpoints
     """
     s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)
+
+    """
+    Expiration time in seconds for presigned URLs used for internal UDF dependency access.
+    Effectively capped by the lifetime of the STS credentials the URLs are signed with (12 hours).
+    """
+    udf_dependency_presigned_url_expiration: int = 12 * 3600
 
     # FreeIPA server to use (for user lookup/creation)
     freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)

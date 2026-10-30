@@ -2145,7 +2145,6 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    # TODO: avoid tests that assume mounted production data
                     "id": "TERRASCOPE_S2_TOC_V2",
                     "spatial_extent": {
                         "west": 3962799.4509550678,
@@ -2155,6 +2154,10 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
                         "crs": 3035,
                     },
                     "temporal_extent": ["2024-01-05", "2024-01-06"],
+                    "bands": ["B03"],
+                    "featureflags": {
+                        "synthetic_data_override_celltype": "int16"
+                    }
                 },
             },
             "saveresult1": {
@@ -3855,8 +3858,7 @@ def test_export_workspace_derived_from(
         assert len(copy_derived_from_document_logs) == 2
 
 
-def test_webapp_derived_from(tmp_path, metadata_tracker):
-    # TODO: what has this to do with "webapp"?
+def test_derived_from_metadata(tmp_path, metadata_tracker):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -3870,6 +3872,9 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
                     "north": 50.05,
                 },
                 "bands": ["B04", "B03", "B02"],
+                "featureflags": {
+                    "synthetic_data_override_celltype": "int16"
+                }
             },
         },
         "saveresult1": {
@@ -4344,6 +4349,9 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
                         "crs": "EPSG:32631",
                     },
                     "temporal_extent": ["2023-09-01", "2023-09-10"],
+                    "featureflags": {
+                        "synthetic_data_override_celltype": "int16"
+                    }
                 },
                 "result": True,
             }
