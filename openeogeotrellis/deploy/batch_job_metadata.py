@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
 from openeo_driver.constants import ITEM_LINK_PROPERTY
@@ -15,6 +15,9 @@ from openeogeotrellis.job_results.settings import ResultCubeMetadata
 from openeogeotrellis.utils import get_jvm, map_optional
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from openeogeotrellis.integrations.prometheus import Prometheus
 
 
 def result_cube_metadata(result: SaveResult) -> ResultCubeMetadata:
@@ -99,20 +102,28 @@ def get_execution_metadata(*, log_level: str) -> dict:
     return execution_metrics
 
 
-def get_detailed_metrics(application_id: str, job_id: str, *, at: Optional[str] = None) -> dict:
+def get_detailed_metrics(
+    application_id: str,
+    job_id: str,
+    *,
+    at: Optional[str] = None,
+    application_duration_s: Optional[float] = None,
+    prometheus: Optional["Prometheus"] = None,
+) -> dict:
     """Fetch detailed Prometheus metrics in the same shape as the diagnostics CLI."""
     import datetime
 
     from openeogeotrellis.config import get_backend_config
     from openeogeotrellis.integrations.prometheus import Prometheus
 
-    endpoint = get_backend_config().prometheus_api
-    if not endpoint:
-        raise RuntimeError("Prometheus API endpoint is not configured")
+    if prometheus is None:
+        endpoint = get_backend_config().prometheus_api
+        if not endpoint:
+            raise RuntimeError("Prometheus API endpoint is not configured")
+        prometheus = Prometheus(endpoint)
     if at is None:
         at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    prometheus = Prometheus(endpoint)
     executor_memory_metrics = prometheus.get_executor_memory_metrics(application_id, at=at)
     executor_lifetimes = prometheus.get_executor_wall_clock_lifetime_seconds(application_id, at=at)
 
@@ -155,6 +166,11 @@ def get_detailed_metrics(application_id: str, job_id: str, *, at: Optional[str] 
         },
         "percentage",
     )
+    if application_duration_s is not None:
+        metrics["memory_usage_byte_seconds"] = metric(
+            prometheus.get_memory_usage(application_id, application_duration_s=application_duration_s, at=at),
+            "byte*s",
+        )
     return {"metrics": metrics}
 
 
