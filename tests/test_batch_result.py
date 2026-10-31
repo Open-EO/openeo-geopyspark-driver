@@ -484,7 +484,16 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, st
     # Check asset contents
     asset_minima = {}
     for asset_metadata in assets:
-        assert asset_metadata["bands"] == [{"name": "Longitude"}]
+        assert asset_metadata["bands"] == [{
+            "name": "Longitude",
+            "statistics": {
+                "minimum": dirty_equals.IsNumber,
+                "maximum": dirty_equals.IsNumber,
+                "mean": dirty_equals.IsNumber,
+                "stddev": dirty_equals.IsNumber,
+                "valid_percent": dirty_equals.IsNumber,
+            }
+        }]
         ds = xarray.open_dataset(asset_metadata["href"])
         asset_minima[Path(asset_metadata["href"]).name] = ds["Longitude"].min().item()
 
@@ -1491,7 +1500,7 @@ def test_filepath_per_band(
                         "maximum": 0.75,
                         "mean": 0.375,
                         "minimum": 0.0,
-                        "stddev": 0.27950849718747,
+                        "stddev": approxify(0.27950849718747),
                         "valid_percent": 100.0,
                     },
                 }
@@ -2849,7 +2858,26 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     assert "roles" in asset
     assert asset["roles"] == ["data"]
     assert "bands" in asset
-    assert asset["bands"] == [{"name":"Longitude"},{"name":"Latitude"}]
+    assert asset["bands"] == [
+        {
+            'name': 'Longitude',
+            'statistics': {
+                'maximum': 0.9375,
+                'mean': 0.46875,
+                'minimum': 0.0,
+                'stddev': approxify(0.2881107642904027),
+                'valid_percent': 100.0}},
+        {
+            'name': 'Latitude',
+            'statistics': {
+                'maximum': 1.9375,
+                'mean': 0.96875,
+                'minimum': 0.0,
+                'stddev': approxify(0.5770682910193559),
+                'valid_percent': 100.0
+            }
+        }
+    ]
     assert "href" in asset
     assert asset["href"] == str(tmp_path) + "/openEO.tif"
     assert "type" in asset

@@ -595,6 +595,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
     run_job(
         job_specification={
             "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": {"detailed_asset_metadata": True},
         },
         output_file=output_file,
         metadata_file=metadata_file,
@@ -737,6 +738,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     run_job(
         job_specification={
             "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": {"detailed_asset_metadata": True},
         },
         output_file=output_file,
         metadata_file=metadata_file,
@@ -903,7 +905,10 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
     run_job(
-        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": {"detailed_asset_metadata": True},
+        },
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
@@ -1032,6 +1037,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(ev
     run_job(
         job_specification={
             "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": {"detailed_asset_metadata": True},
         },
         output_file=output_file,
         metadata_file=metadata_file,
@@ -1194,7 +1200,10 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
         t.add(PU_COUNTER, 0.4)
 
         run_job(
-            job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+            job_specification={
+                "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+                "job_options": {"detailed_asset_metadata": True},
+            },
             output_file=output_file,
             metadata_file=metadata_file,
             api_version="1.0.0",
@@ -1331,7 +1340,10 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     assert files_before == {"j-123/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"}
 
     run_job(
-        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": {"detailed_asset_metadata": True},
+        },
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
@@ -1436,7 +1448,10 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
     assert len(list(job_dir.iterdir())) == 0
 
     run_job(
-        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": {"detailed_asset_metadata": True},
+        },
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
