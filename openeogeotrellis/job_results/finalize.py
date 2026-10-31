@@ -327,10 +327,12 @@ def _write_metadata_file(
                 for item_key, item in items_by_id.items()
                 for asset_key, asset in item.get("assets").items()
             }
-            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+            if len(asset_hrefs) > 0:
+                logger.info(f"save_result: {context} asset hrefs: {asset_hrefs!r}")
         else:
             asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
-            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+            if len(asset_hrefs) > 0:
+                logger.info(f"save_result: {context} asset hrefs: {asset_hrefs!r}")
 
     log_asset_hrefs("input")
     out_metadata = convert_asset_outputs_to_s3_urls(metadata, output_href=hooks.output_href)
