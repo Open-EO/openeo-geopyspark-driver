@@ -41,6 +41,8 @@ without compromising stable operations.
 - Job tracker: collect detailed application metrics for Kubernetes jobs with `detailed-metrics` enabled and persist them alongside usage in the job registry.
 
 
+- Include Python memory in executor-memory limit errors ([#1286](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1286)).
+
 ## 0.73.0
 
 - `merge_cubes`: preserve temporal metadata when merging a spatial cube with a spacetime cube ([#1830](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1830))
