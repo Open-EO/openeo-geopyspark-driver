@@ -1676,6 +1676,37 @@ class TestK8sStatusGetter:
         assert "Failed to retrieve detailed metrics" in caplog.text
         assert "query failed" in caplog.text
 
+    @pytest.mark.parametrize(
+        ["error_message", "expected_diagnostic"],
+        [
+            ("driver OOMKilled", "went out of memory"),
+            ("Application failed due to invalid input", "Final application error message"),
+        ],
+    )
+    def test_application_failure_diagnostics_are_user_facing(self, caplog, error_message, expected_diagnostic):
+        caplog.set_level(logging.ERROR)
+
+        prometheus_mock = mock.Mock(Prometheus)
+        prometheus_mock.endpoint = "https://prometheus.test/api/v1"
+        k8s_mock = mock.Mock()
+        k8s_mock.get_namespaced_custom_object.return_value = {
+            "status": {
+                "applicationState": {
+                    "state": K8S_SPARK_APP_STATE.FAILED,
+                    "errorMessage": error_message,
+                },
+                "lastSubmissionAttemptTime": rfc3339.now_utc(),
+                "terminationTime": rfc3339.now_utc(),
+            }
+        }
+
+        K8sStatusGetter(k8s_mock, prometheus_mock).get_job_metadata(
+            job_id="job-123", user_id="john", app_id=k8s_job_name()
+        )
+
+        [record] = [r for r in caplog.records if expected_diagnostic in r.getMessage()]
+        assert record.audience == "user"
+
     def test_cpu_and_memory_usage_not_in_prometheus(self, caplog):
         caplog.set_level(logging.WARNING)
 

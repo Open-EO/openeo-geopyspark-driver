@@ -24,6 +24,7 @@ from openeo_driver.util.http import is_http_url
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.util.audience_logging import user_facing_log_context
 from openeogeotrellis.utils import ensure_executor_logging
 
 _log = logging.getLogger(__name__)
@@ -170,7 +171,8 @@ def run_udf_code(
             rss_before_bytes = _get_max_rss_bytes()
             t0 = time.perf_counter()
             try:
-                return openeo.udf.run_udf_code(code=code, data=data)
+                with user_facing_log_context():
+                    return openeo.udf.run_udf_code(code=code, data=data)
             finally:
                 _record_udf_execution_gauge_metrics(
                     gauge=gauge,
