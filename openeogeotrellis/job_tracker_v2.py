@@ -59,6 +59,9 @@ from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
 _log = logging.getLogger("openeogeotrellis.job_tracker_v2")
 
+#: openEO job statuses that are considered final (no further tracking necessary)
+FINAL_JOB_STATUSES = frozenset({JOB_STATUS.FINISHED, JOB_STATUS.ERROR, JOB_STATUS.CANCELED})
+
 
 class _Usage(NamedTuple):
     cpu_seconds: Optional[float] = None
@@ -559,64 +562,104 @@ class JobTracker:
             elastic_job_registry=elastic_job_registry,
         )
 
+    #: Job registry fields needed to sync a job's status
+    JOB_INFO_FIELDS = [
+        "job_id",
+        "user_id",
+        "application_id",
+        "status",
+        "created",
+        "title",
+        "job_options",
+        "dependencies",
+        "dependency_usage",
+        "results_metadata_uri",
+    ]
+
+    def get_job_info(self, job_id: str, user_id: str) -> dict:
+        """Get the current job registry info of a single job."""
+        return self._double_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+    def list_jobs_to_track(self) -> List[dict]:
+        """List all known (ongoing) jobs that should be tracked."""
+        return self._double_job_registry.list_active_jobs(
+            fields=self.JOB_INFO_FIELDS,
+            max_age=3 * 30,
+            max_updated_ago=14,
+            require_application_id=True,
+            infra_id=get_backend_config().infra_id or None,
+        )
+
+    def sync_job(self, job_info: dict, *, stats: Optional[collections.Counter] = None, fail_fast: bool = False) -> bool:
+        """
+        Sync the status of a single job (given its job registry info).
+
+        :return: True if the sync was attempted and succeeded, False if it was skipped or failed.
+        """
+        if stats is None:
+            stats = collections.Counter()
+        stats["collected jobs"] += 1
+        if not (isinstance(job_info, dict) and job_info.get("job_id") and job_info.get("user_id")):
+            _log.error(f"Invalid job info: {repr_truncate(job_info, width=200)}")
+            stats["invalid job_info"] += 1
+            return False
+
+        job_id = job_info["job_id"]
+        user_id = job_info["user_id"]
+        application_id = job_info.get("application_id")
+
+        if not application_id:
+            _log.warning(f"Skipping {job_id=}: no application_id", extra={"job_id": job_id, "user_id": user_id})
+            stats["skip: no application_id"] += 1
+            return False
+
+        if job_info.get("status") in FINAL_JOB_STATUSES:
+            # Nothing to do anymore (e.g. already handled by another tracker run).
+            # Important to avoid double cost reporting when a job gets queued twice.
+            _log.debug(f"Skipping {job_id=}: already final", extra={"job_id": job_id, "user_id": user_id})
+            stats["skip: already final"] += 1
+            return False
+
+        try:
+            self._sync_job_status(
+                job_id=job_id,
+                user_id=user_id,
+                application_id=application_id,
+                job_info=job_info,
+                double_job_registry=self._double_job_registry,
+                stats=stats,
+            )
+            return True
+        except Exception as e:
+            _log.exception(
+                f"Failed status sync for {job_id=}: unexpected {type(e).__name__}: {e}",
+                extra={"job_id": job_id, "user_id": user_id},
+            )
+            stats["failed sync"] += 1
+            if fail_fast:
+                raise
+            return False
+
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        with self._double_job_registry as double_job_registry, StatsReporter(
+        with self._double_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
-            jobs_to_track = double_job_registry.list_active_jobs(
-                fields=[
-                    "job_id",
-                    "user_id",
-                    "application_id",
-                    "status",
-                    "created",
-                    "title",
-                    "job_options",
-                    "dependencies",
-                    "dependency_usage",
-                    "results_metadata_uri",
-                ],
-                max_age=3 * 30,
-                max_updated_ago=14,
-                require_application_id=True,
-                infra_id=get_backend_config().infra_id or None,
+            for job_info in self.list_jobs_to_track():
+                self.sync_job(job_info, stats=stats, fail_fast=fail_fast)
+
+    @staticmethod
+    def _is_already_final(job_id: str, user_id: str, double_job_registry: DoubleJobRegistry) -> bool:
+        """Re-fetch the current job status from the registry and check if it is final already."""
+        try:
+            current = double_job_registry.get_job(job_id=job_id, user_id=user_id)
+        except Exception as e:
+            _log.warning(
+                f"Failed to refresh job status for {job_id=}: {type(e).__name__}: {e}",
+                extra={"job_id": job_id, "user_id": user_id},
             )
-
-            for job_info in jobs_to_track:
-                stats["collected jobs"] += 1
-                if not (
-                    isinstance(job_info, dict)
-                    and job_info.get("job_id")
-                    and job_info.get("user_id")
-                ):
-                    _log.error(
-                        f"Invalid job info: {repr_truncate(job_info, width=200)}"
-                    )
-                    stats["invalid job_info"] += 1
-                    continue
-
-                job_id = job_info["job_id"]
-                user_id = job_info["user_id"]
-                application_id = job_info["application_id"]
-
-                try:
-                    self._sync_job_status(
-                        job_id=job_id,
-                        user_id=user_id,
-                        application_id=application_id,
-                        job_info=job_info,
-                        double_job_registry=double_job_registry,
-                        stats=stats,
-                    )
-                except Exception as e:
-                    _log.exception(
-                        f"Failed status sync for {job_id=}: unexpected {type(e).__name__}: {e}",
-                        extra={"job_id": job_id, "user_id": user_id},
-                    )
-                    stats["failed sync"] += 1
-                    if fail_fast:
-                        raise
+            return False
+        return current.get("status") in FINAL_JOB_STATUSES
 
     def _sync_job_status(
         self,
@@ -650,6 +693,11 @@ class JobTracker:
         except AppNotFound:
             infra_id = get_backend_config().infra_id
             if infra_id:
+                if self._is_already_final(job_id=job_id, user_id=user_id, double_job_registry=double_job_registry):
+                    # E.g. another tracker instance finalized (and cleaned up) the job in the meantime.
+                    log.info(f"App not found: {job_id=} {application_id=}, but job is already final in registry")
+                    stats["skip: already final (refreshed)"] += 1
+                    return
                 # Jobs are listed per `infra_id`, so this job belongs to this infra: a missing app is a real problem.
                 log.error(f"App not found: {job_id=} {application_id=} {infra_id=}; setting job status to error")
                 # Deliberately no cost calculation/reporting, usage reporting or cleanup here:
@@ -683,12 +731,14 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-        reached_final_status = job_metadata.status in {
-            JOB_STATUS.FINISHED,
-            JOB_STATUS.ERROR,
-            JOB_STATUS.CANCELED,
-        }
+        reached_final_status = job_metadata.status in FINAL_JOB_STATUSES
         if reached_final_status:
+            if self._is_already_final(job_id=job_id, user_id=user_id, double_job_registry=double_job_registry):
+                # `job_info` can be a stale snapshot (e.g. queued for a while, or a concurrent tracker instance):
+                # never report costs twice.
+                log.info(f"job {job_id} is already final in registry, skipping")
+                stats["skip: already final (refreshed)"] += 1
+                return
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
@@ -864,7 +914,27 @@ class CliApp:
                     elastic_job_registry=elastic_job_registry,
                     job_costs_calculator=job_costs_calculator
                 )
-                job_tracker.update_statuses(fail_fast=args.fail_fast)
+                if args.daemon:
+                    # Local import: daemon mode pulls in extra (optional) dependencies
+                    from openeogeotrellis.job_tracker_daemon import JobTrackerDaemon, SparkApplicationWatcher
+
+                    watcher = None
+                    if app_cluster == "k8s" and args.daemon_watch_k8s:
+                        watcher = SparkApplicationWatcher(
+                            kubernetes_api=kube_client(api_type="CustomObject"),
+                            namespace=ConfigParams().pod_namespace,
+                        )
+                    daemon = JobTrackerDaemon(
+                        job_tracker=job_tracker,
+                        watcher=watcher,
+                        scan_interval=args.daemon_scan_interval,
+                        heartbeat_file=args.heartbeat_file,
+                        metrics_port=args.metrics_port,
+                        fail_fast=args.fail_fast,
+                    )
+                    daemon.run()
+                else:
+                    job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
                 _log.exception(f"Failed job tracker run: {type(e).__name__}: {e}")
                 raise
@@ -918,6 +988,40 @@ class CliApp:
             "--run-id",
             default=None,
             help='Correlation ID to track logs of a particular run. This appears as "run_id" in log entries.'
+        )
+        daemon_group = parser.add_argument_group(
+            "daemon mode",
+            "Run as long-lived process (e.g. K8s Deployment) instead of one-shot run (e.g. K8s CronJob).",
+        )
+        daemon_group.add_argument(
+            "--daemon",
+            action="store_true",
+            default=False,
+            help="Run as a daemon: keep tracking jobs until SIGTERM/SIGINT.",
+        )
+        daemon_group.add_argument(
+            "--daemon-scan-interval",
+            type=float,
+            default=60,
+            metavar="SECONDS",
+            help="Interval (in seconds) to list active jobs from the job registry.",
+        )
+        daemon_group.add_argument(
+            "--daemon-watch-k8s",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Watch SparkApplication changes to sync finished jobs with high priority (K8s only).",
+        )
+        daemon_group.add_argument(
+            "--heartbeat-file",
+            default="/tmp/openeo-job-tracker-heartbeat",
+            help="File to touch on each iteration of the daemon loop (for liveness probes).",
+        )
+        daemon_group.add_argument(
+            "--metrics-port",
+            type=int,
+            default=0,
+            help="Port to expose Prometheus metrics on (0 to disable).",
         )
         # TODO: also allow setting zk_root_path through "env" setting (prod, dev, integration tests, ...)?
 
