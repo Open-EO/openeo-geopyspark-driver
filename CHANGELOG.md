@@ -27,10 +27,12 @@ without compromising stable operations.
 - Conservative batch job parameter auto-tuning. Instead of using a fixed default for max-executors, an appropriate value may be selected automatically based on process graph analysis. ([#1104](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1104))
 - Update the pyproj dependency to `~=3.7.2` ([#1897](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1897))
 - Kubernetes batch jobs: remove obsolete Python 3.8 specific `PYTHONPATH` from driver and executor env ([#1899](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1899))
+- Logging: tag log records with an `audience` field (`developer` by default, `user` through `UserFacingLogger`) and only return `audience: user` records from `GET /jobs/{id}/logs` ([#872](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/872))
 - Job tracker: when `infra_id` is configured, only list active jobs of that infra, and on `AppNotFound` log an error and set the job status to `error`
 - Expose `data_type` and `nodata` in job results metadata for GeoTIFF and NetCDF assets ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
 - Kubernetes batch jobs: support `s3://` UDF dependency files and archives (`udf-dependency-files` and `udf-dependency-archives` job options) from workspace buckets, by resolving them to presigned URLs on the internal S3 proxy ([eu-cdse/openeo-cdse-infra#1224](https://github.com/eu-cdse/openeo-cdse-infra/issues/1224))
 - Replace `open_telemetry_metrics_exporter` with the boolean `detailed_metrics` job option.
+- Logging: keep batch job failure diagnostics visible in user-facing job logs.
 - Batch job results: when `detailed_metrics` is enabled, include detailed Prometheus metrics in result metadata.
 - Allow `openeo-jar-path` artifacts from `https://repo.vito.be/` and GitHub releases of `Open-EO/openeo-geotrellis-extensions`, in addition to the existing Artifactory locations.
 - Application metrics script: report per-collection pixel-load speeds and totals, UDF execution times, executor task runtime, lifetime and utilization, and peak memory usage, working set and limits.

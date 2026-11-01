@@ -18,9 +18,9 @@ import flask
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
-    get_logging_config,
     setup_logging,
 )
+from openeogeotrellis.util.audience_logging import get_logging_config
 from openeo_driver.views import build_app
 
 from openeogeotrellis import deploy
