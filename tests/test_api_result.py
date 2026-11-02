@@ -3011,7 +3011,7 @@ class TestLoadResult:
                     {
                         "t": {
                             "dims": ["t"],
-                            "attrs": {"dtype": "datetime64[ns]", "shape": [3]},
+                            "attrs": {"dtype": RegexMatcher(r"datetime64\[(ns|us)\]"), "shape": [3]},
                             "data": [
                                 "2022-09-07 00:00:00",
                                 "2022-09-12 00:00:00",
@@ -3229,7 +3229,7 @@ class TestLoadResult:
                     {
                         "t": {
                             "dims": ["t"],
-                            "attrs": {"dtype": "datetime64[ns]", "shape": [3]},
+                            "attrs": {"dtype": RegexMatcher(r"datetime64\[(ns|us)\]"), "shape": [3]},
                             "data": [
                                 "2022-09-07 00:00:00",
                                 "2022-09-12 00:00:00",

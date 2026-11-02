@@ -131,3 +131,27 @@ def test_circuit_breaker_raises_openeoapiexception(mock_search):
         + "and report this error if it persists. (ref: no-request)"
     )
     assert raise_context.value.message == expected_message
+
+
+@pytest.mark.parametrize(
+    ["audience", "expected_filter"],
+    [
+        (None, True),  # default: user-facing only
+        ("developer", True),
+    ],
+)
+@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+def test_elasticsearch_logs_audience_filter(mock_search, audience, expected_filter):
+    mock_search.return_value = {"hits": {"hits": []}}
+    kwargs = {} if audience is None else {"audience": audience}
+    list(elasticsearch_logs("job-foo", **kwargs))
+    query = mock_search.call_args.kwargs["query"]
+    assert {"term": {"audience": audience or "user"}} in query["bool"]["filter"]
+
+
+@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+def test_elasticsearch_logs_audience_none_disables_filter(mock_search):
+    mock_search.return_value = {"hits": {"hits": []}}
+    list(elasticsearch_logs("job-foo", audience=None))
+    query = mock_search.call_args.kwargs["query"]
+    assert not any("audience" in str(f) for f in query["bool"]["filter"])
