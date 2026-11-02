@@ -387,6 +387,9 @@ class TestCalrissianJobLauncher:
         )
         with pytest.raises(RuntimeError, match=re.compile(r"CWL Job.*")) as e_info:
             launcher.launch_job_and_wait(manifest=job_manifest)
+        [record] = [r for r in caplog.records if "CWL Job cal-123-instant-fail failed" in r.getMessage()]
+        assert record.levelname == "ERROR"
+        assert record.audience == "user"
 
     def test_run_cwl_workflow_basic(
         self,

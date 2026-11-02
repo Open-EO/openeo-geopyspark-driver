@@ -42,6 +42,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
+from openeogeotrellis.util.audience_logging import AUDIENCE_USER
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import S3ClientBuilder
@@ -773,6 +774,10 @@ class CalrissianJobLauncher:
             messages = ""
             if job.status.conditions:
                 messages = f" Messages: {set(c.message for c in job.status.conditions)}."
+            _log.error(
+                f"CWL Job {job_name} failed with {final_status} after {timer.elapsed():.2f}s.{messages}",
+                extra={"audience": AUDIENCE_USER},
+            )
             raise RuntimeError(
                 f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s.{messages}"
             )
