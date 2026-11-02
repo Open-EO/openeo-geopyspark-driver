@@ -279,6 +279,7 @@ def finalize_job(
                 attach_derived_from_document=settings.stac11_mode,
                 usage_metadata=tracker_metadata,
                 copy_auxiliary_links=partial(_copy_auxiliary_links, hooks=hooks, cache=auxiliary_links_cache),
+                merge_derived_from_links=settings.export_workspace_merge_derived_from_links,
             )
     finally:
         if len(tracker_metadata) == 0:

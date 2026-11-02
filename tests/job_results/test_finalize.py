@@ -29,6 +29,7 @@ def _settings(**overrides) -> JobResultsSettings:
         gdalinfo_from_file=True,
         gdalinfo_use_subprocess=False,
         item_collection_glob="items_*.json",
+        export_workspace_merge_derived_from_links=True,
     )
     values.update(overrides)
     return JobResultsSettings(**values)

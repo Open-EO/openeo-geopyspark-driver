@@ -386,6 +386,8 @@ def _build_job_results_settings(
         gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
         item_collection_glob=get_stac_item_collection_filename(pg_node_id="*"),
         spark_context_cleanup=job_options.get("spark-context-cleanup", "none"),
+        # TODO: reuse "omit-derived-from-links"?
+        export_workspace_merge_derived_from_links=job_options.get("export-workspace-merge-derived-from-links", True),
     )
 
 
