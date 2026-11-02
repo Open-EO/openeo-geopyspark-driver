@@ -169,6 +169,7 @@ from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
 )
 from openeogeotrellis.job_results.util import BadlyHashable
+from openeogeotrellis.util.audience_logging import AUDIENCE_ALL, AUDIENCE_DEVELOPER, AUDIENCE_USER
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -2723,14 +2724,26 @@ class GpsBatchJobs(backend.BatchJobs):
         offset: Union[str, None] = None,
         limit: Union[str, None] = None,
         level: str = DEFAULT_LOG_LEVEL_RETRIEVAL,
+        audience: Optional[str] = None,
     ) -> Iterable[dict]:
+        supported_audiences = [AUDIENCE_USER, AUDIENCE_DEVELOPER, AUDIENCE_ALL]
+        if audience and audience not in supported_audiences:
+            raise OpenEOApiException(
+                status_code=400,
+                code="InvalidAudience",
+                message=f"Invalid audience {audience!r}, should be one of {supported_audiences}.",
+            )
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
         return elasticsearch_logs(
-            job_id=job_id, create_time=job_info.created, offset=offset, level=level
+            job_id=job_id,
+            create_time=job_info.created,
+            offset=offset,
+            level=level,
+            audience=audience or AUDIENCE_USER,
         )
 
     def cancel_job(self, job_id: str, user_id: str):

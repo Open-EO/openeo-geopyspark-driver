@@ -15,6 +15,7 @@ from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.util.audience_logging import AUDIENCE_ALL
 
 import logging
 
@@ -52,7 +53,7 @@ def elasticsearch_logs(
 
     :param audience:
         Return only logs with this `audience` ("user" by default, so developer-only logs are hidden);
-        use None to disable this filtering.
+        use None or "all" to disable this filtering.
 
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON
@@ -140,7 +141,7 @@ def _elasticsearch_logs(
         )
     if level_filter:
         query["bool"]["filter"].append(level_filter)
-    if audience:
+    if audience and audience != AUDIENCE_ALL:
         query["bool"]["filter"].append({"term": {"audience": audience}})
 
     config = get_backend_config()
