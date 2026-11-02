@@ -149,9 +149,42 @@ def test_elasticsearch_logs_audience_filter(mock_search, audience, expected_filt
     assert {"term": {"audience": audience or "user"}} in query["bool"]["filter"]
 
 
+@pytest.mark.parametrize("audience", [None, "all"])
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-def test_elasticsearch_logs_audience_none_disables_filter(mock_search):
+def test_elasticsearch_logs_audience_none_disables_filter(mock_search, audience):
     mock_search.return_value = {"hits": {"hits": []}}
-    list(elasticsearch_logs("job-foo", audience=None))
+    list(elasticsearch_logs("job-foo", audience=audience))
     query = mock_search.call_args.kwargs["query"]
     assert not any("audience" in str(f) for f in query["bool"]["filter"])
+
+
+@pytest.mark.parametrize(
+    ["audience", "expected_audience"],
+    [
+        (None, "user"),
+        ("user", "user"),
+        ("developer", "developer"),
+        ("all", "all"),
+    ],
+)
+def test_get_log_entries_audience(audience, expected_audience):
+    from openeogeotrellis.backend import GpsBatchJobs
+
+    batch_jobs = GpsBatchJobs(catalog=None, jvm=None)
+    job_info = mock.Mock(status="finished", created=None)
+    kwargs = {} if audience is None else {"audience": audience}
+    with mock.patch.object(batch_jobs, "get_job_info", return_value=job_info), mock.patch(
+        "openeogeotrellis.backend.elasticsearch_logs", return_value=iter(())
+    ) as es_logs:
+        list(batch_jobs.get_log_entries("j-123", user_id="john", **kwargs))
+    assert es_logs.call_args.kwargs["audience"] == expected_audience
+
+
+def test_get_log_entries_invalid_audience():
+    from openeogeotrellis.backend import GpsBatchJobs
+
+    batch_jobs = GpsBatchJobs(catalog=None, jvm=None)
+    with pytest.raises(OpenEOApiException) as exc_info:
+        batch_jobs.get_log_entries("j-123", user_id="john", audience="dev")
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "InvalidAudience"

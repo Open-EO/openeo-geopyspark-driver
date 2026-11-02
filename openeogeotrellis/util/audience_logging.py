@@ -9,6 +9,8 @@ from openeo_driver.util.logging import get_logging_config as _get_logging_config
 
 AUDIENCE_USER = "user"
 AUDIENCE_DEVELOPER = "developer"
+# Pseudo-audience for log retrieval: don't filter on audience
+AUDIENCE_ALL = "all"
 AUDIENCE_ATTR = "audience"
 _audience_context = contextvars.ContextVar("openeo_log_audience", default=None)
 
