@@ -211,7 +211,7 @@ def test_load_collection_old_and_new_band_names(jvm_mock, catalog):
         assert collection.metadata.temporal_dimension.extent == ('2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00')
 
 
-def test_load_file_oscars_no_data_available(catalog):
+def test_load_file_oscars_no_data_available(catalog, oscars_server):
     load_params = LoadParameters(
         temporal_extent=("1980-01-01T10:36:00Z", "1980-01-11T10:36:00Z"),
         spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
@@ -221,6 +221,11 @@ def test_load_file_oscars_no_data_available(catalog):
 
     assert exc_info.value.code == "NoDataAvailable"
     assert "no data available for the given extents" in exc_info.value.message
+    _, queries = oscars_server
+    assert queries
+    assert all(query["collection"] == "urn:eop:VITO:TERRASCOPE_S2_TOC_V2" for query in queries)
+    assert all(query["start"] == "1980-01-01T00:00:00Z" for query in queries)
+    assert all(query["end"] == "1980-01-11T00:00:00Z" for query in queries)
 
 
 def test_create_params():
@@ -465,7 +470,7 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
         )
 
 
-def test_property_filter_from_parameter(catalog):
+def test_property_filter_from_parameter(catalog, oscars_server):
     properties = {
         "eo:cloud_cover": {
             "process_graph": {
@@ -492,3 +497,7 @@ def test_property_filter_from_parameter(catalog):
 
     with pytest.raises(OpenEOApiException, match=r"There is no data available"):  # expected, not a problem
         catalog.load_collection("TERRASCOPE_S2_TOC_V2", load_params=load_params, env=env)
+
+    _, queries = oscars_server
+    assert queries
+    assert all(query["cloudCover"] == "[0,24]" for query in queries)

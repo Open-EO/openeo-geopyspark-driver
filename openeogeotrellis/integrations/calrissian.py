@@ -25,6 +25,7 @@ from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, to_save_result
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import EvalEnv, generate_unique_id, smart_bool
 
 from openeogeotrellis.config import get_backend_config, s3_config
@@ -318,7 +319,8 @@ class CwLSource:
 
     @classmethod
     def from_url(cls, url: str) -> CwLSource:
-        resp = requests.get(url.replace(keep_as_url_prefix, "", 1))
+        with requests_with_retry(total=3, backoff_factor=2) as session:
+            resp = session.get(url.replace(keep_as_url_prefix, "", 1), timeout=30)
         resp.raise_for_status()
         return cls(content=resp.text, source=url)
 
