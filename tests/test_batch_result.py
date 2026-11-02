@@ -54,6 +54,35 @@ def job_dir(tmp_path) -> Path:
     return job_dir
 
 
+@pytest.fixture
+def synthetic_oscars(oscars_server):
+    features, queries = oscars_server
+    collection_id = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2"
+    for date in ["2023-09-05", "2024-01-05", "2024-07-10"]:
+        features.append(
+            {
+                "type": "Feature",
+                "id": f"{collection_id}:{date}",
+                "bbox": [3, 49, 7, 53],
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[3, 49], [7, 49], [7, 53], [3, 53], [3, 49]]],
+                },
+                "properties": {
+                    "date": f"{date}T00:00:00Z",
+                    "links": {
+                        "data": [
+                            {"href": f"file:///synthetic/{band}.tif", "title": band}
+                            for band in ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M", "TOC-B11_20M"]
+                        ]
+                    },
+                },
+            }
+        )
+    yield
+    assert queries
+
+
 def test_png_export(tmp_path):
 
     job_spec = {
@@ -2121,7 +2150,7 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "B11.tif": lambda dataset: (dataset.descriptions[0] or dataset.tags(1)["DESCRIPTION"]) == "B11",
     }),
 ])
-def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
+def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates, synthetic_oscars):
     with open(get_test_data_file(f"multiple_save_results/{process_graph_file}")) as f:
         process = json.load(f)
 
@@ -2139,7 +2168,7 @@ def test_multiple_save_results(tmp_path, process_graph_file, output_file_predica
             assert predicate(dataset)
 
 
-def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
+def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path, synthetic_oscars):
     process = {
         "process_graph": {
             "loadcollection1": {
@@ -3956,7 +3985,7 @@ def test_export_workspace_merge_derived_from_links(job_dir, requests_mock, mock_
     )
 
 
-def test_derived_from_metadata(tmp_path, metadata_tracker):
+def test_derived_from_metadata(tmp_path, metadata_tracker, synthetic_oscars):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -4044,7 +4073,7 @@ def test_derived_from_metadata(tmp_path, metadata_tracker):
         feature_id = link["title"]
         assert feature_id.startswith(f"{collection_id}:")
         assert link["href"] == (
-            f"https://services.terrascope.be/catalogue/products"
+            f"{get_backend_config().default_opensearch_endpoint}/products"
             f"?collection={collection_id.replace(':', '%3A')}"
             f"&uid={feature_id.replace(':', '%3A')}"
         )
@@ -4428,7 +4457,7 @@ def test_load_collection_with_stac_serialize_item_collection(
     )
 
 
-def test_item_geometry_matches_asset_geometry(tmp_path):
+def test_item_geometry_matches_asset_geometry(tmp_path, synthetic_oscars):
     """Item geometry (in 4326) should match that of the underlying assets (in UTM)."""
     job_dir = tmp_path
 
