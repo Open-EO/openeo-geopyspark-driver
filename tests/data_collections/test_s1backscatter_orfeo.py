@@ -26,6 +26,23 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
 from openeogeotrellis.stac.item_collection import StacSource
 
 
+def _is_orfeo_toolbox_available() -> bool:
+    try:
+        from openeogeotrellis.collections.s1backscatter_orfeo import _import_orfeo_toolbox
+
+        _import_orfeo_toolbox()
+        return True
+    except Exception:
+        return False
+
+on_jenkins = "JENKINS_URL" in os.environ
+
+requires_orfeo_toolbox = pytest.mark.skipif(
+    not on_jenkins and not _is_orfeo_toolbox_available(),
+    reason="Orfeo Toolbox (otbApplication) is not available",
+)
+
+
 class TestBuildFilterProperties:
     """Tests for S1BackscatterOrfeo._build_filter_properties"""
 
@@ -599,6 +616,7 @@ class TestOrfeoPipeline:
                 else:
                     zip_file.extract(member, target_location)
 
+    @requires_orfeo_toolbox
     @pytest.mark.parametrize("target_resolution", [(10.0, 10.0), (20.0, 20.0)])
     def test_orfeo_no_soft_errors_success(self, target_resolution):
         import geopyspark
@@ -606,6 +624,7 @@ class TestOrfeoPipeline:
         max_soft_errors_ratio = 0.0
         self.orfeo_success_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio, target_resolution)
 
+    @requires_orfeo_toolbox
     def test_orfeo_no_soft_errors_fail(self):
         import geopyspark
         pysc = geopyspark.get_spark_context()
@@ -613,6 +632,7 @@ class TestOrfeoPipeline:
         with pytest.raises(RuntimeError):
             self.orfeo_failed_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio, (10.0, 10.0))
 
+    @requires_orfeo_toolbox
     @pytest.mark.parametrize("success", [True, False], ids=["success", "failure"])
     def test_orfeo_soft_errors(self, success, caplog):
         import geopyspark

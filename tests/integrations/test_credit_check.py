@@ -9,6 +9,7 @@ from openeogeotrellis.integrations.credit_check import (
     CreditCheck,
     ExecutionDetails,
     JOB_OPTION_CREDIT_PLANS,
+    get_etl_organization_id_str,
 )
 from openeogeotrellis.integrations.credit_check_registry import (
     register_credit_check,
@@ -42,6 +43,27 @@ class TestAlwaysAllowCreditCheckGetBatchExecutionDetails:
     def test_single_plan_used(self):
         result = self.credit_check.get_batch_execution_details({"job_options": {JOB_OPTION_CREDIT_PLANS: ["premium"]}})
         assert result == ExecutionDetails(plan="premium")
+
+
+class TestExecutionDetails:
+    def test_organization_id_defaults_to_none(self):
+        assert ExecutionDetails(plan="free").organization_id is None
+
+    def test_organization_id_can_be_set(self):
+        assert ExecutionDetails(plan="free", organization_id="1234").organization_id == "1234"
+
+
+class TestGetEtlOrganizationIdStr:
+    def test_uses_organization_id_from_execution_details(self):
+        details = ExecutionDetails(plan="free", organization_id="1234")
+        assert get_etl_organization_id_str(details, {"etl_organization_id": 5678}) == "1234"
+
+    def test_falls_back_to_job_option(self):
+        details = ExecutionDetails(plan="free")
+        assert get_etl_organization_id_str(details, {"etl_organization_id": 5678}) == "5678"
+
+    def test_empty_string_when_nothing_available(self):
+        assert get_etl_organization_id_str(ExecutionDetails(plan="free"), {}) == ""
 
 
 class TestCreditCheckFormatValidation:

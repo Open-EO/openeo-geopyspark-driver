@@ -144,6 +144,8 @@ class WrittenAsset:
     proj_shape: Optional[Tuple[int, ...]] = None
     proj_epsg: Optional[int] = None
     bands: Optional[List[dict]] = None
+    nodata: Optional[float] = None
+    data_type: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -162,7 +164,7 @@ def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: 
     return reproject_geometry(box(xmin, ymin, xmax, ymax), src_crs=crs, dst_crs="EPSG:4326")
 
 
-def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
+def build_item(item: WrittenItem, format_type: str) -> dict:
     geometry = _to_latlng_geometry(item.bbox, item.crs)
     bbox = geometry.bounds if geometry is not None else None
     datetime = item.datetime
@@ -174,7 +176,8 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
                 "type": format_type,
                 "roles": ["data"],
                 "datetime": datetime,
-                "nodata": nodata,
+                "nodata": a.nodata,
+                "data_type": a.data_type,
                 "geometry": mapping(geometry) if geometry is not None else None,
                 "bbox": bbox,
                 "bands": a.bands,
@@ -194,8 +197,8 @@ def build_item(item: WrittenItem, format_type:str, nodata:Any) -> dict:
     })
 
 
-def build_items(written: Sequence[WrittenItem], *, format_type: str, nodata: Any = None) -> Dict[str, dict]:
-    return {item.id: build_item(item, format_type, nodata) for item in written}
+def build_items(written: Sequence[WrittenItem], *, format_type: str) -> Dict[str, dict]:
+    return {item.id: build_item(item, format_type) for item in written}
 
 
 def single_asset_item(*, asset_key: str, asset: dict, item_extra: Optional[dict] = None) -> Dict[str, dict]:

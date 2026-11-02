@@ -1111,7 +1111,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
                     'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 100.0}
                 }],
                 'roles': ['data'],
-                'type': 'image/tiff; application=geotiff'
+                'type': 'image/tiff; application=geotiff; profile=cloud-optimize'
             }
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
@@ -1163,7 +1163,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         geotiff_asset = item.get_assets()[asset_names[1]]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href.endswith("/openEO_2021-01-05Z.tif")
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         if stac_version == "1.0":
             assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
             assert geotiff_asset.extra_fields["raster:bands"] == [
@@ -1322,7 +1322,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
         geotiff_asset = assets[0][asset_name[0]]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href.endswith("/openEO_2021-01-05Z_Latitude.tif")
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         assert bands_name in geotiff_asset.extra_fields
         assert geotiff_asset.extra_fields[bands_name] == [
             {
@@ -1481,7 +1481,7 @@ def test_filepath_per_band(
         geotiff_asset = item.get_assets()["folder1/lon.tif"]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href == "./lon.tif"  # relative to the json file
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
         if not use_s3:
             assert geotiff_asset.extra_fields["raster:bands"] == [
@@ -2145,7 +2145,6 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    # TODO: avoid tests that assume mounted production data
                     "id": "TERRASCOPE_S2_TOC_V2",
                     "spatial_extent": {
                         "west": 3962799.4509550678,
@@ -2155,6 +2154,10 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
                         "crs": 3035,
                     },
                     "temporal_extent": ["2024-01-05", "2024-01-06"],
+                    "bands": ["B03"],
+                    "featureflags": {
+                        "synthetic_data_override_celltype": "int16"
+                    }
                 },
             },
             "saveresult1": {
@@ -2850,7 +2853,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     assert "href" in asset
     assert asset["href"] == str(tmp_path) + "/openEO.tif"
     assert "type" in asset
-    assert asset["type"] == "image/tiff; application=geotiff"
+    assert asset["type"] == "image/tiff; application=geotiff; profile=cloud-optimize"
 
 
 @pytest.mark.parametrize(
@@ -3855,8 +3858,105 @@ def test_export_workspace_derived_from(
         assert len(copy_derived_from_document_logs) == 2
 
 
-def test_webapp_derived_from(tmp_path, metadata_tracker):
-    # TODO: what has this to do with "webapp"?
+@pytest.mark.parametrize("merge_derived_from_links", [True, False])
+def test_export_workspace_merge_derived_from_links(job_dir, requests_mock, mock_s3_bucket, merge_derived_from_links):
+    stac_api_workspace_id = "stac_api_workspace"
+    stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
+    assert isinstance(stac_api_workspace, StacApiWorkspace)
+
+    merge = _random_merge(is_actual_collection_document=True)
+    collection_id = merge.name
+
+    item_collection_path = job_dir / "stac-item-collection-loadstac1.json"
+    item_collection_path.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+
+    requests_mock.get(
+        stac_api_workspace.root_url,
+        json={
+            "type": "Catalog",
+            "stac_version": "1.0.0",
+            "id": "stac.test",
+            "description": "stac.test",
+            "conformsTo": [
+                "https://api.stacspec.org/v1.0.0/collections",
+                "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+                "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+            ],
+            "links": [],
+        },
+    )
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{collection_id}", status_code=404)
+    create_collection = requests_mock.post(f"{stac_api_workspace.root_url}/collections", status_code=201)
+    create_item = requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}/items", status_code=201
+    )
+
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat16x16",
+                    "temporal_extent": ["2021-01-05", "2021-01-06"],
+                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                    "bands": ["Longitude"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                },
+            },
+            "exportworkspace1": {
+                "process_id": "export_workspace",
+                "arguments": {
+                    "data": {"from_node": "saveresult1"},
+                    "workspace": stac_api_workspace_id,
+                    "merge": str(merge),
+                },
+                "result": True,
+            },
+        },
+        "job_options": {
+            "stac-version": "1.1",
+            "export-workspace-merge-derived-from-links": merge_derived_from_links,
+        },
+    }
+
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    assert create_collection.call_count == 1
+    assert create_item.call_count == 1
+
+    expected_link = {
+        "rel": "derived_from",
+        "href": item_collection_path.as_uri(),
+        "type": "application/geo+json",
+    }
+    results_metadata = read_json(metadata_file)
+    assert [link for link in results_metadata["links"] if link["rel"] == "derived_from"] == [
+        {**expected_link, ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True}
+    ]
+
+    new_collection = create_collection.last_request.json()
+    assert new_collection["id"] == collection_id
+    assert [link for link in new_collection["links"] if link["rel"] == "derived_from"] == (
+        [expected_link] if merge_derived_from_links else []
+    )
+
+
+def test_derived_from_metadata(tmp_path, metadata_tracker):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -3870,6 +3970,9 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
                     "north": 50.05,
                 },
                 "bands": ["B04", "B03", "B02"],
+                "featureflags": {
+                    "synthetic_data_override_celltype": "int16"
+                }
             },
         },
         "saveresult1": {
@@ -4344,6 +4447,9 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
                         "crs": "EPSG:32631",
                     },
                     "temporal_extent": ["2023-09-01", "2023-09-10"],
+                    "featureflags": {
+                        "synthetic_data_override_celltype": "int16"
+                    }
                 },
                 "result": True,
             }

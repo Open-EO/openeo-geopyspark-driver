@@ -40,8 +40,18 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install "numpy>=2.3.3,<2.5" setuptools wheel
-          python -m pip download --no-binary :all: --no-deps --no-build-isolation \
-            "jep==${{ inputs.jep_version }}" -d sdist
+          # Fetch the sdist directly from PyPI: `pip download` runs the package's setup.py to
+          # prepare metadata, which fails for jep <= 4.1.x (needs `setuptools.dep_util`).
+          mkdir sdist
+          JEP_VERSION="${{ inputs.jep_version }}" python - <<'PY'
+          import json, os, urllib.request
+          v = os.environ["JEP_VERSION"]
+          with urllib.request.urlopen(f"https://pypi.org/pypi/jep/{v}/json") as r:
+              files = json.load(r)["urls"]
+          sdist = next(f for f in files if f["packagetype"] == "sdist")
+          urllib.request.urlretrieve(sdist["url"], os.path.join("sdist", sdist["filename"]))
+          print("Downloaded", sdist["filename"])
+          PY
           mkdir src
           tar -xzf sdist/*.tar.gz -C src --strip-components=1
           # jep <= 4.2.0 only looks for numpy headers in `numpy/core/include` (numpy 1.x layout).

@@ -30,6 +30,7 @@ from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import (
     _extract_and_install_udf_dependencies,
     run_job,
+    start_main,
 )
 from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
 from openeogeotrellis.job_results.raster_metadata import (
@@ -102,6 +103,25 @@ def test_extract_result_metadata():
         "links": [],
     }
     assert metadata == expected
+
+
+def test_start_main_logs_failed_job_summary_as_user_facing(monkeypatch, caplog):
+    from openeogeotrellis.deploy import batch_job
+
+    monkeypatch.setattr(batch_job, "setup_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(batch_job, "main", mock.Mock(side_effect=RuntimeError("job failed")))
+    monkeypatch.setattr(
+        batch_job.GeoPySparkBackendImplementation,
+        "summarize_exception_static",
+        lambda exc: mock.Mock(summary="actionable diagnostic"),
+    )
+
+    with pytest.raises(RuntimeError, match="job failed"):
+        start_main()
+
+    [record] = [r for r in caplog.records if "OpenEO batch job failed" in r.getMessage()]
+    assert record.audience == "user"
+    assert "actionable diagnostic" in record.getMessage()
 
 
 def test_extract_result_metadata_aggregate_spatial():
@@ -1141,7 +1161,8 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
     # We still want the test data to be cleaned up though, so we need to use
     # tempfile instead of pytest's tmp_path.
     with tempfile.TemporaryDirectory(dir=".", suffix="job-test-proj-metadata") as job_dir:
-        job_dir = Path(job_dir)
+        # Since Python 3.12, `TemporaryDirectory` returns an absolute path, even if `dir` is relative.
+        job_dir = Path(job_dir).absolute().relative_to(Path.cwd())
         # Emile 2024-10-29: Not sure what the use-case of a relative path is here.
         # STAC metadata uses relative paths internally, but the job_dir is better absolute IMHO
         assert not job_dir.is_absolute()

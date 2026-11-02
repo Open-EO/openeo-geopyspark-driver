@@ -24,6 +24,7 @@ from openeo_driver.util.http import is_http_url
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.util.audience_logging import user_facing_log_context
 from openeogeotrellis.utils import ensure_executor_logging
 
 _log = logging.getLogger(__name__)
@@ -34,6 +35,9 @@ UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
 
 
 class _NoOpMetric:
+    def labels(self, **kwargs):
+        return self
+
     def set(self, value: float, **kwargs):
         pass
 
@@ -69,10 +73,12 @@ def _initialize_prometheus_metrics():
     _udf_execution_time_ms = Gauge(
         "openeo_udf_execution_time_ms",
         "Time spent executing a UDF in milliseconds.",
+        labelnames=["node_id"],
     )
     _udf_max_rss_delta_bytes = Gauge(
         "openeo_udf_max_rss_delta_bytes",
         "RSS delta for a UDF execution in bytes.",
+        labelnames=["node_id"],
     )
 
     try:
@@ -108,11 +114,12 @@ def _record_udf_execution_gauge_metrics(
     duration_ms: float,
     rss_before_bytes: int,
     rss_after_bytes: int,
+    node_id: Optional[str] = None,
     require_executor_context: bool = True,
 ):
     _initialize_prometheus_metrics()
-    gauge.set(duration_ms)
-    _udf_max_rss_delta_bytes.set(rss_after_bytes - rss_before_bytes)
+    gauge.labels(node_id=node_id or "").set(duration_ms)
+    _udf_max_rss_delta_bytes.labels(node_id=node_id or "").set(rss_after_bytes - rss_before_bytes)
 
 
 class UdfDependencyHandlingFailure(OpenEOApiException):
@@ -121,9 +128,18 @@ class UdfDependencyHandlingFailure(OpenEOApiException):
 
 
 @ensure_executor_logging
-def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: bool = True) -> openeo.udf.UdfData:
+def run_udf_code(
+    code: str,
+    data: openeo.udf.UdfData,
+    require_executor_context: bool = True,
+    *,
+    node_id: Optional[str] = None,
+) -> openeo.udf.UdfData:
     """
-    Wrapper around `openeo.udf.run_udf_code` for some additional guardrails and checks
+    Wrapper around `openeo.udf.run_udf_code` for some additional guardrails and checks.
+
+    ``node_id`` identifies the process-graph UDF node in Prometheus metrics.
+    Calls outside a process graph use an empty node_id label.
     """
     if require_executor_context:
         code += "\n\n" + textwrap.dedent(
@@ -155,13 +171,15 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
             rss_before_bytes = _get_max_rss_bytes()
             t0 = time.perf_counter()
             try:
-                return openeo.udf.run_udf_code(code=code, data=data)
+                with user_facing_log_context():
+                    return openeo.udf.run_udf_code(code=code, data=data)
             finally:
                 _record_udf_execution_gauge_metrics(
                     gauge=gauge,
                     duration_ms=(time.perf_counter() - t0) * 1000.0,
                     rss_before_bytes=rss_before_bytes,
                     rss_after_bytes=_get_max_rss_bytes(),
+                    node_id=node_id,
                     require_executor_context=require_executor_context,
                 )
 

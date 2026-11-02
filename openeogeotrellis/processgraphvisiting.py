@@ -2,9 +2,9 @@ import json
 import numbers
 import sys
 from collections import OrderedDict
-from typing import Union
+from typing import Optional, Union
 
-from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+from openeo.internal.process_graph_visitor import ORIG_NODE_ID_KEY, ProcessGraphVisitor
 from openeogeotrellis.utils import get_jvm
 
 
@@ -81,6 +81,12 @@ class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
     def __init__(self):
         super().__init__()
         self.udf_args = {}
+        self.node_id: Optional[str] = None
+
+    def accept_node(self, node: dict):
+        if node["process_id"] == "run_udf":
+            self.node_id = node.get(ORIG_NODE_ID_KEY)
+        return super().accept_node(node)
 
     def enterArgument(self, argument_id: str, value):
         self.udf_args[argument_id] = value

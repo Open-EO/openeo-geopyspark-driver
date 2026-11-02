@@ -183,11 +183,11 @@ def build_pyramid_factory(
                     f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
                     f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
                 )
-        logger.info("Creating NetCDFCollection pyramid factory")
+        logger.debug("Creating NetCDFCollection pyramid factory")
         return jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
         opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
-        logger.info(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
+        logger.debug(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
         logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         return jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -349,7 +349,7 @@ def _prepare_context(
         map_optional(dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]),
         map_optional(dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]),
     )
-    logger.info(f"_prepare_context {url=} {metadata_temporal_extent=}")
+    logger.debug(f"_prepare_context {url=} {metadata_temporal_extent=}")
     metadata = metadata.with_temporal_extent(
         temporal_extent=metadata_temporal_extent,
         allow_adding_dimension=True,
@@ -488,7 +488,7 @@ def _build_datacube(context: _LoadStacContext) -> "GeopysparkDataCube":
 
     try:
         if netcdf_with_time_dimension:
-            logger.info("_build_datacube: calling NetCDFCollection.datacube_seq")
+            logger.debug("_build_datacube: calling NetCDFCollection.datacube_seq")
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
@@ -500,7 +500,7 @@ def _build_datacube(context: _LoadStacContext) -> "GeopysparkDataCube":
             )
         elif single_level:
             if not items_found and allow_empty_cubes:
-                logger.info("_build_datacube: calling PyramidFactory.empty_datacube_seq")
+                logger.debug("_build_datacube: calling PyramidFactory.empty_datacube_seq")
                 pyramid = pyramid_factory.empty_datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -508,7 +508,7 @@ def _build_datacube(context: _LoadStacContext) -> "GeopysparkDataCube":
                     data_cube_parameters,
                 )
             else:
-                logger.info("_build_datacube: calling PyramidFactory.datacube_seq")
+                logger.debug("_build_datacube: calling PyramidFactory.datacube_seq")
                 pyramid = pyramid_factory.datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -526,16 +526,16 @@ def _build_datacube(context: _LoadStacContext) -> "GeopysparkDataCube":
                 extent_crs = "EPSG:4326"
 
             if not items_found and allow_empty_cubes:
-                logger.info("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
+                logger.debug("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
                 pyramid = pyramid_factory.empty_pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat()
                 )
             else:
-                logger.info("_build_datacube: calling PyramidFactory.pyramid_seq")
+                logger.debug("_build_datacube: calling PyramidFactory.pyramid_seq")
                 pyramid = pyramid_factory.pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
                 )
-        logger.info(f"_build_datacube: done building pyramid")
+        logger.debug(f"load_stac: _build_datacube: done {context.url}")
     except Exception as e:
         raise OpenEOApiException(
             message=f"load_stac: Error when constructing datacube from {url}: {e}",

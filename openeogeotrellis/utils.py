@@ -38,9 +38,9 @@ from openeo_driver.util.logging import (
     GlobalExtraLoggingFilter,
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
-    get_logging_config,
     setup_logging,
 )
+from openeogeotrellis.util.audience_logging import get_logging_config
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView

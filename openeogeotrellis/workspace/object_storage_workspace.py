@@ -8,8 +8,9 @@ import botocore.exceptions
 from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.utils import remove_slash_prefix
-from openeo_driver.workspace import Workspace, _merge_collection_metadata
-from pystac import STACObject, Collection, CatalogType, Item, Asset
+from openeo_driver.workspace import MergeOptions, Workspace, _merge_collection_metadata
+import pystac
+from pystac import STACObject, Collection, CatalogType, Item, Asset, Catalog, RelType
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
 from .custom_stac_io import CustomStacIO
@@ -58,7 +59,9 @@ class ObjectStorageWorkspace(Workspace):
         _log.debug(f"{'moved' if remove_original else 'uploaded'} {file_absolute} to {workspace_uri}")
         return workspace_uri
 
-    def import_object(self, common_path: str, s3_uri: str, merge: str, remove_original: bool = False) -> str:
+    def import_object(
+        self, common_path: Union[str, Path], s3_uri: str, merge: str, remove_original: bool = False
+    ) -> str:
         uri_parts = urlparse(s3_uri)
 
         if not uri_parts.scheme or uri_parts.scheme.lower() != "s3":
@@ -80,7 +83,13 @@ class ObjectStorageWorkspace(Workspace):
         _log.debug(f"{'moved' if remove_original else 'copied'} s3://{source_bucket}/{source_key} to {workspace_uri}")
         return workspace_uri
 
-    def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+    def merge(
+        self,
+        stac_resource: STACObject,
+        target: PurePath,
+        remove_original: bool = False,
+        merge_options: MergeOptions = MergeOptions(),
+    ) -> STACObject:
         if not target.suffix:
             # limitation of recent pystac
             raise ValueError("merge argument requires a file extension")
@@ -89,7 +98,7 @@ class ObjectStorageWorkspace(Workspace):
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
         def href_layout_strategy() -> HrefLayoutStrategy:
-            def collection_func(_: Collection, parent_dir: str, is_root: bool) -> str:
+            def collection_func(_: Catalog, parent_dir: str, is_root: bool) -> str:
                 if not is_root:
                     raise NotImplementedError("nested collections")
                 # make the collection file end up at $target, not at $target/collection.json
@@ -99,7 +108,9 @@ class ObjectStorageWorkspace(Workspace):
                 unique_item_filename = item.id.replace("/", "_")
                 return f"{parent_dir.rstrip('/')}/{target.name}_items/{unique_item_filename}.json"
 
-            return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
+            return CustomLayoutStrategy(
+                collection_func=collection_func, catalog_func=collection_func, item_func=item_func
+            )
 
         def replace_asset_href(asset: Asset) -> Asset:
             if urlparse(asset.href).scheme not in ["", "file", "s3"]:  # TODO: convenient place; move elsewhere?
@@ -116,13 +127,16 @@ class ObjectStorageWorkspace(Workspace):
                 asset.href = original_absolute_href.replace(common_path + "/","")
             return asset
 
-        if isinstance(stac_resource, Collection):
+        if isinstance(stac_resource, Catalog):  # includes Collection
             new_collection = stac_resource
             new_collection.make_all_asset_hrefs_absolute()
 
+            if not merge_options.merge_derived_from_links:
+                new_collection.clear_links(rel=RelType.DERIVED_FROM)
+
             existing_collection = None
             try:
-                existing_collection = Collection.from_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
+                existing_collection = pystac.read_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
             except botocore.exceptions.ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "AccessDenied":
@@ -151,6 +165,9 @@ class ObjectStorageWorkspace(Workspace):
                         )
                         new_asset.extra_fields["alternate"] = {"s3": workspace_uri}
             else:
+                assert isinstance(
+                    new_collection, Collection
+                ), f"Can only merge a Collection into an existing Collection. Was type: {new_collection}"
                 merged_collection = _merge_collection_metadata(existing_collection, new_collection)
                 new_collection = new_collection.map_assets(lambda _, asset: replace_asset_href(asset))
 

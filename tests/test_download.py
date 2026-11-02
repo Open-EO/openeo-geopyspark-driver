@@ -141,7 +141,7 @@ class TestDownload:
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
         assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
+        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
         assert "openEO" in name
 
@@ -212,9 +212,10 @@ class TestDownload:
                 "datetime": "2017-09-25T11:37:00Z",
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                 "href": str(tmp_path / name),
+                "data_type": "int32",
                 "nodata": -1,
                 "roles": ["data"],
-                "type": "image/tiff; application=geotiff",
+                "type": "image/tiff; application=geotiff; profile=cloud-optimize",
                 "proj:epsg": 4326,
                 "proj:shape": dirty_equals.IsListOrTuple(length=2),
                 "proj:bbox": dirty_equals.IsListOrTuple(length=4),
@@ -254,7 +255,7 @@ class TestDownload:
         asset = list(assets.values())[0]
         assert Path(asset["href"]).parent == tmp_path
         assert asset['roles'] == ['data']
-        assert 'image/tiff; application=geotiff' == asset['type']
+        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
         """
@@ -283,7 +284,7 @@ class TestDownload:
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
         assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
+        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
     @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
@@ -300,8 +301,10 @@ class TestDownload:
                                              tile_grid, filename_prefix,bands_metadata,add_bands_statistics):
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
+            expected_data_type = "int32"
         else:
             imagecollection = imagecollection_with_two_bands_spatial_only
+            expected_data_type = "float64"
 
         if bands_metadata == "s":
             bands_metadata = {"red":{"SCALE":1.23}}
@@ -347,6 +350,7 @@ class TestDownload:
                         "bbox": dirty_equals.IsListOrTuple(length=4),
                         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                         "href": str(tmp_path / name),
+                        "data_type": expected_data_type,
                         "nodata": -1,
                         "proj:epsg" : 4326,
                         "proj:bbox": dirty_equals.IsListOrTuple(length=4),
