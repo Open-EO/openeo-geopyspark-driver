@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import botocore.exceptions
 import mock
-from openeo_driver.workspace import MergeCollectionMetadataOptions
+from openeo_driver.workspace import MergeOptions
 from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset, Link, RelType
 import pytest
 
@@ -119,10 +119,8 @@ def test_merge_new(
     )
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket, region=test_region)
-    merge_collection_metadata_options = MergeCollectionMetadataOptions(
-        merge_derived_from_links=merge_derived_from_links
-    )
-    imported_collection = workspace.merge(new_collection, merge, remove_original, merge_collection_metadata_options)
+    merge_options = MergeOptions(merge_derived_from_links=merge_derived_from_links)
+    imported_collection = workspace.merge(new_collection, merge, remove_original, merge_options)
 
     assert isinstance(imported_collection, Collection)
 
@@ -243,21 +241,19 @@ def test_merge_into_existing(
     )
 
     workspace = ObjectStorageWorkspace(target_bucket, region=test_region)
-    merge_collection_metadata_options = MergeCollectionMetadataOptions(
-        merge_derived_from_links=merge_derived_from_links
-    )
+    merge_options = MergeOptions(merge_derived_from_links=merge_derived_from_links)
 
     workspace.merge(
         existing_collection,
         target=merge,
         remove_original=remove_original,
-        merge_collection_metadata_options=merge_collection_metadata_options,
+        merge_options=merge_options,
     )
     imported_collection = workspace.merge(
         new_collection,
         target=merge,
         remove_original=remove_original,
-        merge_collection_metadata_options=merge_collection_metadata_options,
+        merge_options=merge_options,
     )
 
     assert isinstance(imported_collection, Collection)
@@ -310,7 +306,7 @@ def test_merge_into_existing(
                 "href": "https://src.test/new_collection/object_asset.tif",
             },
         ]
-        if merge_collection_metadata_options.merge_derived_from_links
+        if merge_options.merge_derived_from_links
         else []
     )
 

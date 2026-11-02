@@ -13,7 +13,7 @@ import pystac
 from openeo_driver.backend import BatchJobs
 from openeo_driver.save_result import SaveResult
 from openeo_driver.util.stac_utils import find_stac_root, get_files_from_stac_catalog
-from openeo_driver.workspace import MergeCollectionMetadataOptions
+from openeo_driver.workspace import MergeOptions
 from openeo_driver.workspacerepository import Workspace, WorkspaceRepository
 
 from .stac_export import write_exported_stac_collection, write_exported_stac_collection_from_item
@@ -104,12 +104,12 @@ def export_result_to_workspaces(
         remove_original = remove_exported_assets and final_export
 
         if enable_merge or workspace.merges_by_default:
-            merge_collection_metadata_options = MergeCollectionMetadataOptions(merge_derived_from_links)
+            merge_options = MergeOptions(merge_derived_from_links)
             imported_collection = workspace.merge(
                 collection,
                 target=Path(merge),
                 remove_original=remove_original,
-                merge_collection_metadata_options=merge_collection_metadata_options,
+                merge_options=merge_options,
             )
             assert isinstance(imported_collection, pystac.Catalog)  # includes Collection
 

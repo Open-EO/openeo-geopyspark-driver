@@ -8,7 +8,7 @@ import botocore.exceptions
 from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.utils import remove_slash_prefix
-from openeo_driver.workspace import MergeCollectionMetadataOptions, Workspace, _merge_collection_metadata
+from openeo_driver.workspace import MergeOptions, Workspace, _merge_collection_metadata
 import pystac
 from pystac import STACObject, Collection, CatalogType, Item, Asset, Catalog, RelType
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
@@ -88,7 +88,7 @@ class ObjectStorageWorkspace(Workspace):
         stac_resource: STACObject,
         target: PurePath,
         remove_original: bool = False,
-        merge_collection_metadata_options: MergeCollectionMetadataOptions = MergeCollectionMetadataOptions(),
+        merge_options: MergeOptions = MergeOptions(),
     ) -> STACObject:
         if not target.suffix:
             # limitation of recent pystac
@@ -131,7 +131,7 @@ class ObjectStorageWorkspace(Workspace):
             new_collection = stac_resource
             new_collection.make_all_asset_hrefs_absolute()
 
-            if not merge_collection_metadata_options.merge_derived_from_links:
+            if not merge_options.merge_derived_from_links:
                 new_collection.clear_links(rel=RelType.DERIVED_FROM)
 
             existing_collection = None

@@ -8,7 +8,7 @@ import responses
 from mock import ANY, MagicMock
 from openeo_driver.testing import DictSubSet
 from openeo_driver.constants import ITEM_LINK_PROPERTY
-from openeo_driver.workspace import MergeCollectionMetadataOptions
+from openeo_driver.workspace import MergeOptions
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -37,11 +37,9 @@ def test_merge_new(requests_mock, tmp_path, merge_derived_from_links: bool):
         root_path=tmp_path / "collection1", collection_id="collection1", asset_hrefs=[str(asset_path)]
     )
 
-    merge_collection_metadata_options = MergeCollectionMetadataOptions(
-        merge_derived_from_links=merge_derived_from_links
-    )
+    merge_options = MergeOptions(merge_derived_from_links=merge_derived_from_links)
     imported_collection = stac_api_workspace.merge(
-        stac_resource=collection1, target=target, merge_collection_metadata_options=merge_collection_metadata_options
+        stac_resource=collection1, target=target, merge_options=merge_options
     )
 
     assert isinstance(imported_collection, Collection)
@@ -121,12 +119,8 @@ def test_merge_into_existing(requests_mock, tmp_path, merge_derived_from_links: 
         ]]),
     )
 
-    merge_collection_metadata_options = MergeCollectionMetadataOptions(
-        merge_derived_from_links=merge_derived_from_links
-    )
-    imported_collection = stac_api_workspace.merge(
-        new_collection, target=target, merge_collection_metadata_options=merge_collection_metadata_options
-    )
+    merge_options = MergeOptions(merge_derived_from_links=merge_derived_from_links)
+    imported_collection = stac_api_workspace.merge(new_collection, target=target, merge_options=merge_options)
     assert isinstance(imported_collection, Collection)
 
     assert _asset_workspace_uris(imported_collection, alternate_key="file") == {
