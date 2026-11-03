@@ -81,7 +81,9 @@ def test_usage_metadata_merges_execution_metrics(clean_execution_metrics, log_le
     ["run_time_ms", "expected_utilization"],
     [(5000.0, 50.0), (3333.33, 33.33), (10000.0, 100.0), (20000.0, 100.0)],
 )
-def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization):
+@pytest.mark.parametrize("application_duration_s", [None, 10.0])
+@pytest.mark.parametrize("injected_client", [False, True])
+def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization, application_duration_s, injected_client):
     monkeypatch.setattr(
         "openeogeotrellis.config.get_backend_config",
         lambda: mock.Mock(prometheus_api="https://prometheus.example.org/api/v1"),
@@ -98,11 +100,21 @@ def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization):
         prometheus.get_load_megapixel_total.return_value = {"S2": 15.0}
         prometheus.get_avg_udf_execution_time_ms.return_value = 120.0
         prometheus.get_max_udf_execution_time_ms.return_value = 200.0
-        prometheus.get_executor_run_time_ms.return_value = {"1": run_time_ms, "2": 2000.0}
+        prometheus.get_executor_run_time_ms.return_value = {"1": run_time_ms, "2": 2000.0, "3": 3000.0}
+        prometheus.get_memory_usage.return_value = 12000.0
 
-        report = get_detailed_metrics("a-example", "j-example", at="2026-10-26T08:00:00Z")
+        report = get_detailed_metrics(
+            "a-example",
+            "j-example",
+            at="2026-10-26T08:00:00Z",
+            application_duration_s=application_duration_s,
+            prometheus=prometheus if injected_client else None,
+        )
 
-    assert client.call_args.args == ("https://prometheus.example.org/api/v1",)
+    if injected_client:
+        client.assert_not_called()
+    else:
+        client.assert_called_once_with("https://prometheus.example.org/api/v1")
     assert report == {
         "metrics": {
             "executor_wall_clock_lifetime": {"unit": "s", "data": {"1": 10.0, "2": 0.0}},
@@ -114,10 +126,21 @@ def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization):
             "load_pixel_total": {"unit": "megapixel", "data": {"S2": 15.0}},
             "udf_execution_time_avg": {"unit": "ms", "data": 120.0},
             "udf_execution_time_max": {"unit": "ms", "data": 200.0},
-            "executor_run_time": {"unit": "ms", "data": {"1": run_time_ms, "2": 2000.0}},
+            "executor_run_time": {"unit": "ms", "data": {"1": run_time_ms, "2": 2000.0, "3": 3000.0}},
             "executor_cpu_utilization": {"unit": "percentage", "data": {"1": expected_utilization}},
+            **(
+                {"memory_usage_byte_seconds": {"unit": "byte*s", "data": 12000.0}}
+                if application_duration_s is not None
+                else {}
+            ),
         }
     }
+    if application_duration_s is not None:
+        prometheus.get_memory_usage.assert_called_once_with(
+            "a-example", application_duration_s=application_duration_s, at="2026-10-26T08:00:00Z"
+        )
+    else:
+        prometheus.get_memory_usage.assert_not_called()
 
 
 def test_usage_metadata_includes_detailed_metrics(monkeypatch):

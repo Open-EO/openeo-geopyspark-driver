@@ -141,7 +141,7 @@ class TestDownload:
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
         assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
+        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
         assert "openEO" in name
 
@@ -215,7 +215,7 @@ class TestDownload:
                 "data_type": "int32",
                 "nodata": -1,
                 "roles": ["data"],
-                "type": "image/tiff; application=geotiff",
+                "type": "image/tiff; application=geotiff; profile=cloud-optimize",
                 "proj:epsg": 4326,
                 "proj:shape": dirty_equals.IsListOrTuple(length=2),
                 "proj:bbox": dirty_equals.IsListOrTuple(length=4),
@@ -255,7 +255,7 @@ class TestDownload:
         asset = list(assets.values())[0]
         assert Path(asset["href"]).parent == tmp_path
         assert asset['roles'] == ['data']
-        assert 'image/tiff; application=geotiff' == asset['type']
+        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
         """
@@ -284,7 +284,7 @@ class TestDownload:
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
         assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
+        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
     @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])

@@ -71,7 +71,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.48.0.a4.dev",
-        "openeo_driver>=0.142.0a3.dev",
+        "openeo_driver>=0.142.0a6.dev",
         "opentelemetry-api>=1.0.0",
         "prometheus-client>=0.20.0",
         "pyspark>=4.0.0",
@@ -81,7 +81,8 @@ setup(
         "rasterio~=1.3.10; python_version == '3.11'",
         "rasterio; python_version >= '3.12'",
         'py4j',
-        "numpy>=2.3.3,<2.5",
+        "numpy>=2.3.3,<2.5; python_version == '3.11'",
+        "numpy~=2.5.0; python_version >= '3.12'",
         "pandas",
         "pyproj~=3.7.2",
         'protobuf~=3.9.2',
@@ -92,13 +93,14 @@ setup(
         'python_dateutil',
         'pytz',
         'affine',
-        "xarray~=2024.7.0",
+        "xarray~=2024.7.0; python_version == '3.11'",
+        "xarray~=2026.09.0; python_version >= '3.12'",
         "netcdf4",
         "shapely>=2.0.0",
         "antimeridian>=0.3.8",
         'epsel~=1.0.0',
         "Bottleneck~=1.4.0",
-        "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
+        "python-json-logger",
         "jep_openeo_numpy==4.1.2; python_version == '3.11'", # Required because Jep needs to compile against numpy 2.x
         # Precompiled wheels (built by .github/workflows/build_jep_wheels.yml) are published at
         # https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels

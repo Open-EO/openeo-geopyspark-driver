@@ -22,6 +22,7 @@ from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.testing import gps_config_overrides
 import openeogeotrellis.udf as udf_module
+from openeogeotrellis.util.audience_logging import AudienceLoggingFilter
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
     UdfRuntimeSpecified,
@@ -70,6 +71,26 @@ def test_run_udf_code_in_driver():
     data = UdfData(structured_data_list=[StructuredData([1, 2, 3, 4, 5])])
     with pytest.raises(RuntimeError, match="Not running in PySpark executor context."):
         _ = run_udf_code(code=UDF_SQUARES, data=data)
+
+
+def test_run_udf_code_marks_udf_logs_as_user_facing(caplog):
+    caplog.set_level(logging.WARNING)
+    audience_filter = AudienceLoggingFilter()
+    caplog.handler.addFilter(audience_filter)
+    try:
+        run_udf_code(
+            code=(
+                "import logging\nfrom openeo.udf import UdfData\n"
+                "logging.warning('user-authored UDF log')\ndef apply_udf_data(data: UdfData): return data"
+            ),
+            data=UdfData(structured_data_list=[StructuredData([1])]),
+            require_executor_context=False,
+        )
+    finally:
+        caplog.handler.removeFilter(audience_filter)
+
+    record = next(record for record in caplog.records if record.getMessage() == "user-authored UDF log")
+    assert record.audience == "user"
 
 
 def test_run_udf_code_in_executor_per_item(spark_context):

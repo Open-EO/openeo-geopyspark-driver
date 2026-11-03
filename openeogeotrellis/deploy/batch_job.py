@@ -21,9 +21,9 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     LOGGING_CONTEXT_BATCH_JOB,
     GlobalExtraLoggingFilter,
-    get_logging_config,
     setup_logging,
 )
+from openeogeotrellis.util.audience_logging import AUDIENCE_USER, get_logging_config
 from openeo_driver.utils import EvalEnv
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeo_driver.workspacerepository import backend_config_workspace_repository
@@ -386,6 +386,8 @@ def _build_job_results_settings(
         gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
         item_collection_glob=get_stac_item_collection_filename(pg_node_id="*"),
         spark_context_cleanup=job_options.get("spark-context-cleanup", "none"),
+        # TODO: reuse "omit-derived-from-links"?
+        export_workspace_merge_derived_from_links=job_options.get("export-workspace-merge-derived-from-links", True),
     )
 
 
@@ -656,7 +658,7 @@ def start_main():
             main(sys.argv)
     except BaseException as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        logger.exception("OpenEO batch job failed: " + error_summary.summary)
+        logger.exception("OpenEO batch job failed: " + error_summary.summary, extra={"audience": AUDIENCE_USER})
         raise
 
 

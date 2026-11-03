@@ -8,7 +8,6 @@ import os
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
-    get_logging_config,
     setup_logging,
 )
 from openeo_driver.views import build_app
@@ -18,6 +17,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket, patch_sar_backscatter_spec
 from openeogeotrellis.integrations.kubernetes import kube_client
 from openeogeotrellis.job_registry import EagerlyK8sTrackingInMemoryJobRegistry
+from openeogeotrellis.util.audience_logging import get_logging_config
 
 log = logging.getLogger(__name__)
 
