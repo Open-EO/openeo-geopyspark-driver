@@ -288,6 +288,41 @@ class CwLSource:
             estimate_max_memory_usage_step(yaml_parsed)
         return max_memory
 
+    def estimate_max_cores_usage(self) -> float:
+        """
+        Highest `coresMin`/`coresMax` of any `ResourceRequirement` (in `requirements` or `hints`)
+        anywhere in the CWL document, including nested/inline steps. Returns -1 if none found.
+        Non-numeric values (e.g. CWL expressions) are ignored.
+        """
+        max_cores = -1.0
+
+        def resource_requirements(container) -> list:
+            if isinstance(container, dict):
+                rr = container.get("ResourceRequirement")
+                return [rr] if isinstance(rr, dict) else []
+            elif isinstance(container, list):
+                return [r for r in container if isinstance(r, dict) and r.get("class") == "ResourceRequirement"]
+            return []
+
+        def walk(node):
+            nonlocal max_cores
+            if isinstance(node, dict):
+                for rr in resource_requirements(node.get("requirements")) + resource_requirements(node.get("hints")):
+                    for key in ("coresMin", "coresMax"):
+                        try:
+                            max_cores = max(max_cores, float(rr[key]))
+                        except (KeyError, TypeError, ValueError):
+                            pass
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+
+        for doc in yaml.safe_load_all(self._cwl):
+            walk(doc)
+        return max_cores
+
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
         # noinspection HttpUrlsUsage
@@ -507,6 +542,16 @@ class CalrissianJobLauncher:
                 raise ValueError(
                     f"Estimated max memory usage of CWL workflow is {max_memory_estimate}, which exceeds the configured "
                     f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
+                )
+
+        max_cores_per_step = get_backend_config().calrissian_config.max_cores_per_step
+        if max_cores_per_step is not None:
+            max_cores_estimate = cwl_source.estimate_max_cores_usage()
+            if max_cores_estimate > max_cores_per_step:
+                raise ValueError(
+                    f"CWL workflow requests {max_cores_estimate:g} cores for a single step, which exceeds the "
+                    f"configured max_cores_per_step of {max_cores_per_step}. "
+                    f"Lower coresMin/coresMax in the ResourceRequirement of the CWL."
                 )
 
         cwl_content = cwl_source.get_content()
