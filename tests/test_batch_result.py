@@ -1016,11 +1016,14 @@ def test_multiple_image_collection_results(tmp_path):
 
 @pytest.mark.parametrize("remove_original", [False, True])
 @pytest.mark.parametrize("attach_gdalinfo_assets", [False, True])
-@pytest.mark.parametrize(["stac_version","asset_names","bands_name"], [
-    ("1.0",["openEO_2021-01-15Z.tif","openEO_2021-01-05Z.tif"],"raster:bands"),
-    ("1.1",["openEO","openEO"],"bands"),
-])
-def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, stac_version, asset_names, bands_name):
+@pytest.mark.parametrize(
+    ["stac_version", "asset_keys", "bands_name"],
+    [
+        ("1.0", ["saveresult1_2021-01-15Z.tif", "saveresult1_2021-01-05Z.tif"], "raster:bands"),
+        ("1.1", ["openEO", "openEO"], "bands"),
+    ],
+)
+def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, stac_version, asset_keys, bands_name):
     workspace_id = "tmp"
     merge = _random_merge()
     if stac_version == "1.1":
@@ -1093,32 +1096,32 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         assert len(job_dir_files) > 0
 
         if remove_original:
-            assert "openEO_2021-01-05Z.tif" not in job_dir_files
-            assert "openEO_2021-01-15Z.tif" not in job_dir_files
+            assert "saveresult1_2021-01-05Z.tif" not in job_dir_files
+            assert "saveresult1_2021-01-15Z.tif" not in job_dir_files
         else:
-            assert "openEO_2021-01-05Z.tif" in job_dir_files
-            assert "openEO_2021-01-15Z.tif" in job_dir_files
+            assert "saveresult1_2021-01-05Z.tif" in job_dir_files
+            assert "saveresult1_2021-01-15Z.tif" in job_dir_files
         expected_len = 5
         expected_paths = {
             Path("collection.json"),
-            Path("openEO_2021-01-05Z.tif"),
-            Path("openEO_2021-01-15Z.tif"),
+            Path("saveresult1_2021-01-05Z.tif"),
+            Path("saveresult1_2021-01-15Z.tif"),
         }
         if stac_version == "1.0":
             expected_paths |= {
-                Path("openEO_2021-01-05Z.tif.json"),
-                Path("openEO_2021-01-15Z.tif.json"),
+                Path("saveresult1_2021-01-05Z.tif.json"),
+                Path("saveresult1_2021-01-15Z.tif.json"),
             }
         if attach_gdalinfo_assets:
             expected_paths |= {
-                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
-                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"saveresult1_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"saveresult1_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
             }
             expected_len+=2
             if stac_version == "1.0":
                 expected_paths |= {
-                    Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
-                    Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
+                    Path(f"saveresult1_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
+                    Path(f"saveresult1_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
                 }
                 expected_len += 2
         assert len(_paths_relative_to(workspace_dir)) == expected_len
@@ -1189,9 +1192,9 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
             .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
         )
 
-        geotiff_asset = item.get_assets()[asset_names[1]]
+        geotiff_asset = item.get_assets()[asset_keys[1]]
         assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href.endswith("/openEO_2021-01-05Z.tif")
+        assert geotiff_asset.href.endswith("/saveresult1_2021-01-05Z.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         if stac_version == "1.0":
             assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
@@ -1208,7 +1211,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
                     "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
                 }
             ]
-        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
+        geotiff_asset_copy_path = tmp_path / "saveresult1_2021-01-05Z.tif.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
@@ -1224,15 +1227,13 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         assert len(item_assets0) == (2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(item_assets0) == 1)
         item_assets1 = assets[1]
         assert len(item_assets1) == (2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(item_assets0) == 1)
-        assert item_assets0[asset_names[0]]["href"] == str(tmp_path / "openEO_2021-01-15Z.tif")
-        assert item_assets1[asset_names[1]]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+        assert item_assets0[asset_keys[0]]["href"] == str(tmp_path / "saveresult1_2021-01-15Z.tif")
+        assert item_assets1[asset_keys[1]]["href"] == str(tmp_path / "saveresult1_2021-01-05Z.tif")
         assert not remove_original or (
-                item_assets0[asset_names[0]]["public_href"]
-                == f"file:{workspace_dir / 'openEO_2021-01-15Z.tif'}"
+            item_assets0[asset_keys[0]]["public_href"] == f"file:{workspace_dir / 'saveresult1_2021-01-15Z.tif'}"
         )
         assert not remove_original or (
-                item_assets1[asset_names[1]]["public_href"]
-                == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
+            item_assets1[asset_keys[1]]["public_href"] == f"file:{workspace_dir / 'saveresult1_2021-01-05Z.tif'}"
         )
 
     finally:
@@ -1561,10 +1562,14 @@ def test_filepath_per_band(
             workspace_dir = Path(f"{workspace.root_directory}/{merge}")
             shutil.rmtree(workspace_dir, ignore_errors=True)
 
-@pytest.mark.parametrize(["stac_version","bands_name"], [
-    ("1.0","raster:bands"),
-    ("1.1","bands"),
-])
+
+@pytest.mark.parametrize(
+    ["stac_version", "bands_name"],
+    [
+        ("1.0", "raster:bands"),
+        ("1.1", "bands"),
+    ],
+)
 def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_version, bands_name):
     object_workspace_id = "s3_workspace"
 
@@ -1639,23 +1644,25 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
     run_merge_job(
         job_dir=tmp_path / "first",
         temporal_extent=["2021-01-05", "2021-01-06"],
-        expected_asset_filename="openEO_2021-01-05Z.tif",
+        expected_asset_filename="saveresult1_2021-01-05Z.tif",
     )
 
     run_merge_job(
         job_dir=tmp_path / "second",
         temporal_extent=["2021-01-15", "2021-01-16"],
-        expected_asset_filename="openEO_2021-01-15Z.tif",
+        expected_asset_filename="saveresult1_2021-01-15Z.tif",
     )
 
     object_workspace_keys = [obj.key for obj in mock_s3_bucket.objects.all()]
     assert len(object_workspace_keys) == 5, "STAC item document(s) not found"
 
-    assert object_workspace_keys == ListSubSet([
-        f"{merge}",  # the Collection itself
-        f"{merge}_items/openEO_2021-01-05Z.tif",
-        f"{merge}_items/openEO_2021-01-15Z.tif",
-    ])
+    assert object_workspace_keys == ListSubSet(
+        [
+            f"{merge}",  # the Collection itself
+            f"{merge}_items/saveresult1_2021-01-05Z.tif",
+            f"{merge}_items/saveresult1_2021-01-15Z.tif",
+        ]
+    )
 
     stac_collection = pystac.Collection.from_file(
         f"s3://{mock_s3_bucket.name}/{merge}", stac_io=CustomStacIO(object_workspace.region)
