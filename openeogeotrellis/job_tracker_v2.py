@@ -9,6 +9,7 @@ import collections
 import datetime as dt
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Union
 
@@ -546,8 +547,13 @@ class JobTracker:
         keytab: str,
         job_costs_calculator: Optional[JobCostsCalculator] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
-        elastic_job_registry: Optional[ElasticJobRegistry] = None
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        final_status_grace_period: float = 60,
     ):
+        # EJR is eventually consistent: after a job transitioned (e.g. running -> finished) it might still be reported
+        # as running for a while. Remember such jobs (job_id -> monotonic timestamp) to avoid acting on stale data.
+        self._final_status_grace_period = final_status_grace_period
+        self._recently_transitioned: Dict[str, float] = {}
         self._app_state_getter = app_state_getter
         self._job_costs_calculator: JobCostsCalculator = job_costs_calculator or NoJobCostsCalculator()
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
@@ -564,6 +570,17 @@ class JobTracker:
         self._double_job_registry = DoubleJobRegistry(
             elastic_job_registry=elastic_job_registry,
         )
+
+    def _remember_transition(self, job_id: str):
+        now = time.monotonic()
+        self._recently_transitioned = {
+            j: t for j, t in self._recently_transitioned.items() if now - t < self._final_status_grace_period
+        }
+        self._recently_transitioned[job_id] = now
+
+    def _is_recently_transitioned(self, job_id: str) -> bool:
+        t = self._recently_transitioned.get(job_id)
+        return t is not None and time.monotonic() - t < self._final_status_grace_period
 
     #: Job registry fields needed to sync a job's status
     JOB_INFO_FIELDS = [
@@ -694,6 +711,11 @@ class JobTracker:
             )
             stats["new metadata"] += 1
         except AppNotFound:
+            if self._is_recently_transitioned(job_id):
+                # Registry data is probably stale (eventual consistency) and app was already cleaned up.
+                log.info(f"App not found: {job_id=} {application_id=}, but job recently transitioned, skipping")
+                stats["skip: app not found (recently transitioned)"] += 1
+                return
             infra_id = get_backend_config().infra_id
             if infra_id:
                 if self._is_already_final(job_id=job_id, user_id=user_id, double_job_registry=double_job_registry):
@@ -729,6 +751,8 @@ class JobTracker:
                 f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
             )
             stats["status change"] += 1
+            if job_metadata.status not in (JOB_STATUS.QUEUED, JOB_STATUS.RUNNING):
+                self._remember_transition(job_id)
             stats[f"status change {previous_status!r} -> {job_metadata.status!r}"] += 1
         else:
             stats["status same"] += 1
@@ -915,7 +939,8 @@ class CliApp:
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
-                    job_costs_calculator=job_costs_calculator
+                    job_costs_calculator=job_costs_calculator,
+                    final_status_grace_period=args.final_status_grace_period,
                 )
                 if args.daemon:
                     # Local import: daemon mode pulls in extra (optional) dependencies
@@ -991,6 +1016,13 @@ class CliApp:
             "--run-id",
             default=None,
             help='Correlation ID to track logs of a particular run. This appears as "run_id" in log entries.'
+        )
+        parser.add_argument(
+            "--final-status-grace-period",
+            type=float,
+            default=60,
+            help="Seconds to remember jobs that transitioned to a final status, to cope with eventually consistent"
+            " job registry data (e.g. don't flag such a job as error when its app is already gone).",
         )
         daemon_group = parser.add_argument_group(
             "daemon mode",
