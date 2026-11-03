@@ -3981,7 +3981,7 @@ def test_export_workspace_merge_derived_from_links(job_dir, requests_mock, mock_
     new_collection = create_collection.last_request.json()
     assert new_collection["id"] == collection_id
     assert [link for link in new_collection["links"] if link["rel"] == "derived_from"] == (
-        [expected_link] if merge_derived_from_links else []
+        [expected_link] if not omit_derived_from_links else []
     )
 
 
