@@ -266,7 +266,7 @@ def run_job(
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
     stac11_mode = parsed_job_options.stac_version == "1.1"
-    omit_derived_from_links = parsed_job_options.omit_derived_from_links or stac11_mode
+    omit_derived_from_links = parsed_job_options.omit_derived_from_links
     logger.info(f"{stac11_mode=} {job_options.get('stac-version')=}")
 
     settings = _build_job_results_settings(
