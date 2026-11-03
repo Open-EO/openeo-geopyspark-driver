@@ -2400,11 +2400,15 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
     assert len(timestamps) > 0
     assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
 
-@pytest.mark.parametrize(["stac_version", "asset_name","bands_name"], [
-    ("1.1", "openEO","bands"),
-    ("1.0", "openEO.tif","raster:bands"),
-])
-def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, asset_name, bands_name):
+
+@pytest.mark.parametrize(
+    ["stac_version", "asset_key", "bands_key"],
+    [
+        ("1.0", "saveresult2.tif", "raster:bands"),
+        ("1.1", "openEO", "bands"),
+    ],
+)
+def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, asset_key, bands_key):
     workspace_id = "tmp"
     merge = _random_merge()
 
@@ -2484,7 +2488,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
 
         assert {
             Path("collection.json"),
-            Path("openEO.tif"),
+            Path("saveresult2.tif"),
         }.issubset(_paths_relative_to(workspace_dir))
         assert len(_paths_relative_to(workspace_dir)) == 3, "STAC item document not found"
 
@@ -2497,9 +2501,9 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
         item = items[0]
         assets = item.get_assets()
         assert len(assets) == 1
-        assert asset_name in assets
-        geotiff_asset =  assets[asset_name]
-        assert geotiff_asset.extra_fields[bands_name] == [
+        assert asset_key in assets
+        geotiff_asset = assets[asset_key]
+        assert geotiff_asset.extra_fields[bands_key] == [
             {
                 "name": "Flat:2",
                 "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
@@ -2626,11 +2630,14 @@ def test_custom_geotiff_tags(tmp_path):
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-@pytest.mark.parametrize(["stac_version", "asset_name"], [
-    ("1.1", "openEO"),
-    ("1.0", "openEO_2021-01-05Z.tif"),
-])
-def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, asset_name):
+@pytest.mark.parametrize(
+    ["stac_version", "asset_key"],
+    [
+        ("1.1", "openEO"),
+        ("1.0", "saveresult1_2021-01-05Z.tif"),
+    ],
+)
+def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, asset_key):
     workspace_id = "tmp"
 
     merge1 = _random_merge()
@@ -2700,12 +2707,12 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
 
         assets = [{asset_key:asset} for items in job_metadata["items"] for asset_key,asset in items["assets"].items()] if stac_version == "1.1" else [job_metadata["assets"]]
         assert len(assets)==1
-        asset = assets[0][asset_name]
+        asset = assets[0][asset_key]
 
-        assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+        assert asset["href"] == str(tmp_path / "saveresult1_2021-01-05Z.tif")
 
-        first_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
-        second_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        first_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/saveresult1_2021-01-05Z.tif"
+        second_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/saveresult1_2021-01-05Z.tif"
 
         if remove_original:
             assert asset["public_href"] == first_workspace_uri
@@ -2809,11 +2816,14 @@ def _paths_relative_to(base: Path) -> Set[Path]:
     }
 
 
-@pytest.mark.parametrize(["stac_version", "asset_name"], [
-    ("1.1", "openEO"),
-    ("1.0", "openEO.tif"),
-])
-def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
+@pytest.mark.parametrize(
+    ["stac_version", "asset_key"],
+    [
+        ("1.0", "saveresult1.tif"),
+        ("1.1", "openEO"),
+    ],
+)
+def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_key):
     job_dir = tmp_path
 
     process_graph = {
@@ -2872,8 +2882,8 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
         metadata = json.load(f)
     assets = [{asset_key: asset} for items in metadata["items"] for asset_key, asset in items["assets"].items()] if stac_version == "1.1" else [metadata["assets"]]
     assert len(assets) == 1
-    assert set(assets[0].keys()) == {asset_name}
-    asset = assets[0][asset_name]
+    assert set(assets[0].keys()) == {asset_key}
+    asset = assets[0][asset_key]
     assert "bbox" in asset
     assert asset["bbox"] == [0.0, 0.0, 1.0, 2.0]
     assert "geometry" in asset
@@ -2887,7 +2897,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     assert "bands" in asset
     assert asset["bands"] == [{"name":"Longitude"},{"name":"Latitude"}]
     assert "href" in asset
-    assert asset["href"] == str(tmp_path) + "/openEO.tif"
+    assert asset["href"] == str(tmp_path) + "/saveresult1.tif"
     assert "type" in asset
     assert asset["type"] == "image/tiff; application=geotiff; profile=cloud-optimize"
 
@@ -2980,7 +2990,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
             dependencies=[],
         )
 
-    output_tiff = job_dir / "openEO_2021-01-05Z.tif"
+    output_tiff = job_dir / "saveresult1_2021-01-05Z.tif"
 
     with rasterio.open(output_tiff) as dataset:
         assert dataset.crs.to_epsg() == 4326
