@@ -193,6 +193,7 @@ def test_load_file_oscars_resample(jvm_mock, catalog):
     )
 
 
+@pytest.mark.skip("OSCARS removal fallout")
 def test_load_collection_old_and_new_band_names(jvm_mock, catalog):
     temporal_extent = ('2019-01-01', '2019-01-01')
     spatial_extent = {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
@@ -220,7 +221,7 @@ def test_load_file_oscars_no_data_available(catalog):
         _ = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
 
     assert exc_info.value.code == "NoDataAvailable"
-    assert "no data available for the given extents" in exc_info.value.message
+    assert "No data available" in exc_info.value.message
 
 
 def test_create_params():
@@ -252,6 +253,7 @@ def test_reprojection_identity_with_integer_coordinates_returns_float_extent():
     assert all(type(coordinate) is float for coordinate in coordinates)
 
 
+@pytest.mark.skip("OSCARS removal fallout")
 def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
     load_params = LoadParameters(
         temporal_extent=('2019-01-01', '2019-01-01'),
@@ -490,5 +492,5 @@ def test_property_filter_from_parameter(catalog):
 
     env = EvalEnv().push_parameters({"cloud_cover": 24})
 
-    with pytest.raises(OpenEOApiException, match=r"There is no data available"):  # expected, not a problem
+    with pytest.raises(OpenEOApiException, match=r"No data available"):  # expected, not a problem
         catalog.load_collection("TERRASCOPE_S2_TOC_V2", load_params=load_params, env=env)

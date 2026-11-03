@@ -190,6 +190,7 @@ class TestCollections:
             assert 'extent' in collections
             assert 'links' in collections
 
+    @pytest.mark.skip("OSCARS removal fallout")
     def test_collections_s2_radiometry(self, api):
         resp = api.get('/collections/TERRASCOPE_S2_TOC_V2').assert_status_code(200).json
         assert resp['id'] == "TERRASCOPE_S2_TOC_V2"

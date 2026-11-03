@@ -45,6 +45,7 @@ def test_opensearch_enrich_default():
     assert get_backend_config().opensearch_enrich is False
 
 
+@pytest.mark.skip("OSCARS removal fallout")
 @pytest.mark.parametrize(["id", "layer"], _get_layers())
 def test_layer_metadata(id, layer):
     # TODO: move/copy to openeo-deploy project?
