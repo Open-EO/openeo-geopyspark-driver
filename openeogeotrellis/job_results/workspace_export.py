@@ -36,7 +36,6 @@ def export_result_to_workspaces(
     result_items_metadata: Optional[dict] = None,
     usage_metadata: dict,
     copy_auxiliary_links: Callable[..., List[dict]],
-    merge_derived_from_links: bool = True,
 ) -> None:
     workspace_exports = sorted(
         list(result.workspace_exports),
@@ -104,7 +103,7 @@ def export_result_to_workspaces(
         remove_original = remove_exported_assets and final_export
 
         if enable_merge or workspace.merges_by_default:
-            merge_options = MergeOptions(merge_derived_from_links)
+            merge_options = MergeOptions(merge_derived_from_links=not omit_derived_from_links)
             imported_collection = workspace.merge(
                 collection,
                 target=Path(merge),

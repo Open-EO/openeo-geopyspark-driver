@@ -3887,8 +3887,8 @@ def test_export_workspace_derived_from(
         assert len(copy_derived_from_document_logs) == 2
 
 
-@pytest.mark.parametrize("merge_derived_from_links", [True, False])
-def test_export_workspace_merge_derived_from_links(job_dir, requests_mock, mock_s3_bucket, merge_derived_from_links):
+@pytest.mark.parametrize("omit_derived_from_links", [False, True])
+def test_export_workspace_merge_derived_from_links(job_dir, requests_mock, mock_s3_bucket, omit_derived_from_links):
     stac_api_workspace_id = "stac_api_workspace"
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
@@ -3950,7 +3950,7 @@ def test_export_workspace_merge_derived_from_links(job_dir, requests_mock, mock_
         },
         "job_options": {
             "stac-version": "1.1",
-            "export-workspace-merge-derived-from-links": merge_derived_from_links,
+            "omit-derived-from-links": omit_derived_from_links,
         },
     }
 
