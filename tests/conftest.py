@@ -34,7 +34,7 @@ import pytest
 import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
-from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
+from openeo_driver.testing import ApiTester, ephemeral_fileserver, ephemeral_flask_server, UrllibMocker
 from openeo_driver.utils import smart_bool, get_package_versions, read_json
 from openeo_driver.views import build_app
 
@@ -968,6 +968,28 @@ def metadata_tracker():
     tracker = _get_tracker()
     yield tracker
     tracker.setGlobalTracking(False)
+
+
+@pytest.fixture
+def oscars_server():
+    """Local OSCARS product search, with mutable features and captured query parameters."""
+    app = flask.Flask(__name__)
+    features = []
+    queries = []
+
+    @app.get("/products")
+    def products():
+        queries.append(dict(flask.request.args))
+        start = flask.request.args.get("start", "")
+        end = flask.request.args.get("end", "")
+        matching = [feature for feature in features if start <= feature["properties"]["date"] < end]
+        if int(flask.request.args.get("startIndex", 1)) > 1:
+            matching = []
+        return {"type": "FeatureCollection", "features": matching, "totalResults": len(matching)}
+
+    with ephemeral_flask_server(app) as endpoint:
+        with gps_config_overrides(default_opensearch_endpoint=endpoint):
+            yield features, queries
 
 
 @pytest.fixture
