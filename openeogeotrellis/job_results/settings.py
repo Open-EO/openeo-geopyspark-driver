@@ -19,7 +19,7 @@ class JobResultsSettings:
     job_id: str
     stac11_mode: bool
     omit_derived_from_links: bool
-    detailed_asset_metadata: bool  # job option, default True
+    detailed_asset_metadata: bool  # job option, default False
     concurrent_save_results: int  # job option, default 1
     remove_exported_assets: bool
     export_workspace_enable_merge: bool
