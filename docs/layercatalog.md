@@ -179,7 +179,7 @@ Some of the supported feature flags are:
     ```
 - `granule_metadata_band_map`.
     Sentinel2 collections can contain metadata about sun/view azimuth and zenith angles
-    in a "granule_metadata" XML metadata asset.
+    in a "granule_metadata" XML metadata asset (`MTD_TL.xml`).
     How to extract these angles can be configured through the `granule_metadata_band_map` config,
     for example:
 
@@ -189,9 +189,24 @@ Some of the supported feature flags are:
           "sunAzimuthAngles": "granule_metadata##0",
           "sunZenithAngles": "granule_metadata##1",
           "viewAzimuthMean": "granule_metadata##2",
-          "viewZenithMean": "granule_metadata##3"
+          "viewZenithMean": "granule_metadata##3",
+          "sunAzimuthAnglesPerPixel": "granule_metadata##4",
+          "sunZenithAnglesPerPixel": "granule_metadata##5",
+          "viewAzimuthAnglesPerPixel": "granule_metadata##6",
+          "viewZenithAnglesPerPixel": "granule_metadata##7"
         }
     ```
+
+    The index `N` of `granule_metadata##N` selects the angle, in degrees:
+    `0` to `3` are constant tile means (sun azimuth, sun zenith, and the B05 viewing azimuth and zenith);
+    `4` to `7` are per-pixel values, interpolated from the angle grids in the metadata
+    (sun azimuth, sun zenith, and the viewing azimuth and zenith of B05,
+    taken from the grid of the detector that observed each pixel).
+    The per-pixel viewing angles are NoData for products with GML detector masks (processing baselines before 04.00).
+    The band name of each entry is free.
+
+    The index that is actually used is the position of `granule_metadata##N` among the sorted values of this map,
+    so the map must list `granule_metadata##0` up to its highest index without gaps (and at most 10 entries).
 - `property_filter_adaptations`.
     To support legacy property filtering
     (originating from usage patterns when the collection was backed by another source type),

@@ -2011,6 +2011,73 @@ class TestPrepareContext:
         assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
 
     @pytest.mark.parametrize(
+        ["load_params_bands", "expected_link_hrefs", "expected_metadata_band_names", "expected_link_titles"],
+        [
+            (
+                None,
+                ["https://stac.test/B02_10m.tif", "https://stac.test/B03_10m.tif", "https://stac.test/MTD_TL.xml"],
+                [
+                    "B02",
+                    "B03",
+                    "sunAzimuthAngles",
+                    "sunZenithAngles",
+                    "viewAzimuthMean",
+                    "viewZenithMean",
+                    "sunAzimuthAnglesPerPixel",
+                    "sunZenithAnglesPerPixel",
+                    "viewAzimuthAnglesPerPixel",
+                    "viewZenithAnglesPerPixel",
+                ],
+                ["B02", "B03"] + [f"granule_metadata##{n}" for n in range(8)],
+            ),
+            (
+                ["B02", "sunZenithAnglesPerPixel", "viewZenithAnglesPerPixel", "sunAzimuthAngles"],
+                ["https://stac.test/B02_10m.tif", "https://stac.test/MTD_TL.xml"],
+                ["B02", "sunZenithAnglesPerPixel", "viewZenithAnglesPerPixel", "sunAzimuthAngles"],
+                ["B02", "granule_metadata##5", "granule_metadata##7", "granule_metadata##0"],
+            ),
+            (
+                ["viewAzimuthAnglesPerPixel"],
+                ["https://stac.test/MTD_TL.xml"],
+                ["viewAzimuthAnglesPerPixel"],
+                ["granule_metadata##6"],
+            ),
+        ],
+    )
+    def test_prepare_context_sentinel2_with_per_pixel_angle_bands(
+        self, load_params_bands, expected_link_hrefs, expected_metadata_band_names, expected_link_titles
+    ):
+        dummy_server = DummyStacApiServer()
+        collection_id = "s2-with-granule_metadata"
+        self._define_collection_s2_with_granule_metadata(dummy_server, collection_id=collection_id)
+        layercatalog_feature_flags = {
+            "granule_metadata_band_map": {
+                "sunAzimuthAngles": "granule_metadata##0",
+                "sunZenithAngles": "granule_metadata##1",
+                "viewAzimuthMean": "granule_metadata##2",
+                "viewZenithMean": "granule_metadata##3",
+                "sunAzimuthAnglesPerPixel": "granule_metadata##4",
+                "sunZenithAnglesPerPixel": "granule_metadata##5",
+                "viewAzimuthAnglesPerPixel": "granule_metadata##6",
+                "viewZenithAnglesPerPixel": "granule_metadata##7",
+            },
+        }
+        with dummy_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(bands=load_params_bands),
+                env=EvalEnv(),
+                feature_flags=layercatalog_feature_flags,
+            )
+
+        [feature] = OpenSearchClientDumper().dump_opensearch_client_features(context.opensearch_client)
+        assert [link["href"] for link in feature["links"]] == expected_link_hrefs
+        # The angle index is the position in this list, so it must equal N for every granule_metadata##N.
+        assert feature["links"][-1]["bandNames"] == [f"granule_metadata##{n}" for n in range(8)]
+        assert context.metadata.band_names == expected_metadata_band_names
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+    @pytest.mark.parametrize(
         ["asset_id", "user_bands", "normalized_band_selection", "expected_metadata_bands", "expected_link_titles"],
         [
             ("asset-123", None, None, ["SO2CBR"], ["SO2CBR"]),

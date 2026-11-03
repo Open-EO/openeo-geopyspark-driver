@@ -1,3 +1,6 @@
+from unittest.mock import MagicMock
+
+import pytest
 from openeo_driver.backend import LoadParameters
 from openeo_driver.utils import EvalEnv
 
@@ -20,3 +23,19 @@ def test_data_cube_params():
     assert str(cube_params) == ("DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, None, None, "
                                 "Average, 0.0, 0.0, false, true, true)")
     assert "Average" == str(cube_params.resampleMethod())
+
+
+@pytest.mark.parametrize(
+    ["featureflags", "expected"],
+    [
+        ({}, False),
+        ({"retain_nodata_tiles": False}, False),
+        ({"retain_nodata_tiles": True}, True),
+    ],
+)
+def test_retain_nodata_tiles_feature_flag(featureflags, expected):
+    load_params = LoadParameters(featureflags=featureflags)
+
+    cube_params, _ = datacube_parameters.create(load_params, EvalEnv({}), MagicMock())
+
+    cube_params.setRetainNoDataTiles.assert_called_once_with(expected)
