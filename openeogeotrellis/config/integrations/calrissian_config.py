@@ -77,3 +77,9 @@ class CalrissianConfig:
     the resources that actually perform the work which are specified . Ideally a default
     """
     runner_resource_requirements: dict = attrs.Factory(DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS.copy)
+
+    """
+    Reject CWL workflows where a single step requests more than this number of cores
+    (`coresMin`/`coresMax` of a `ResourceRequirement`). Set to `None` to disable the check.
+    """
+    max_cores_per_step: Optional[float] = 7
