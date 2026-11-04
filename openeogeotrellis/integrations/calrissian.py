@@ -326,11 +326,7 @@ class CwLSource:
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
         # noinspection HttpUrlsUsage
-        if (
-            content.lower().startswith("http://")
-            or content.lower().startswith("https://")
-            or content.lower().startswith(keep_as_url_prefix)
-        ):
+        if content.lower().startswith("http://") or content.lower().startswith("https://"):
             return cls.from_url(content)
         elif (
             content.lower().endswith(".cwl")
@@ -356,6 +352,7 @@ class CwLSource:
     @classmethod
     def from_url(cls, url: str) -> CwLSource:
         with requests_with_retry(total=3, backoff_factor=2) as session:
+            # Remove keep_as_url_prefix for backwards compatibility.
             resp = session.get(url.replace(keep_as_url_prefix, "", 1), timeout=30)
         resp.raise_for_status()
         return cls(content=resp.text, source=url)
@@ -879,9 +876,10 @@ class CalrissianJobLauncher:
         """
         # Input staging
         source = cwl_source.get_source()
-        if source and (str(source).lower().startswith(keep_as_url_prefix)):
-            # This allows to keep relative paths working.
-            cwl_path = source.replace(keep_as_url_prefix, "", 1)
+        if source and str(source).lower().startswith(("http://", "https://")):
+            # Pass URLs directly to Calrissian (no input staging), so that relative references keep working.
+            # Remove keep_as_url_prefix for backwards compatibility.
+            cwl_path = str(source).replace(keep_as_url_prefix, "", 1)
         else:
             input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
             self.launch_job_and_wait(manifest=input_staging_manifest)
