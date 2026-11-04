@@ -3004,16 +3004,16 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
 @pytest.mark.parametrize(
     ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
     [
-        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}, {"openEO"}),
+        (False, {"save1_2025-04-05Z.tif", "save1_2025-04-15Z.tif"}, {"openEO"}),
         (
             True,
             {
-                "openEO_2025-04-05Z_Flat:0.tif",
-                "openEO_2025-04-05Z_Flat:1.tif",
-                "openEO_2025-04-05Z_Flat:2.tif",
-                "openEO_2025-04-15Z_Flat:0.tif",
-                "openEO_2025-04-15Z_Flat:1.tif",
-                "openEO_2025-04-15Z_Flat:2.tif",
+                "save1_2025-04-05Z_Flat:0.tif",
+                "save1_2025-04-05Z_Flat:1.tif",
+                "save1_2025-04-05Z_Flat:2.tif",
+                "save1_2025-04-15Z_Flat:0.tif",
+                "save1_2025-04-15Z_Flat:1.tif",
+                "save1_2025-04-15Z_Flat:2.tif",
             },
             {"Flat:0", "Flat:1", "Flat:2"},
         ),
@@ -3136,10 +3136,10 @@ def test_unified_asset_keys_tile_grid(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "openEO_2025-04-05Z_N50E000.tif",
-        "openEO_2025-04-05Z_N50E001.tif",
-        "openEO_2025-04-15Z_N50E000.tif",
-        "openEO_2025-04-15Z_N50E001.tif",
+        "save1_2025-04-05Z_N50E000.tif",
+        "save1_2025-04-05Z_N50E001.tif",
+        "save1_2025-04-15Z_N50E000.tif",
+        "save1_2025-04-15Z_N50E001.tif",
     }
 
     with open(metadata_file) as f:
