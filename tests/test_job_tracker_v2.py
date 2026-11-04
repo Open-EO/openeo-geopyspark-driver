@@ -24,6 +24,7 @@ from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
+    AppNotFound,
     CliApp,
     JobCostsCalculator,
     JobTracker,
@@ -739,6 +740,29 @@ class TestYarnJobTracker:
         assert stats["app not found: set error"] == 1
         assert any(r.levelname == "ERROR" and "App not found" in r.getMessage() for r in caplog.records)
         assert not any(r.levelname == "WARNING" and "App not found" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize(["remembered", "expected_status"], [(True, "running"), (False, "error")])
+    def test_app_not_found_recently_transitioned(self, elastic_job_registry, job_tracker, remembered, expected_status):
+        """Stale EJR (job still 'running') and app gone: don't set error if job recently transitioned."""
+        elastic_job_registry.create_job(
+            job_id="job-1", user_id="john", process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
+        )
+        elastic_job_registry.set_application_id(job_id="job-1", application_id="app-job-1")
+        elastic_job_registry.set_status(job_id="job-1", status="running", infra_id="infra-a")
+        job_tracker._app_state_getter = mock.Mock()
+        job_tracker._app_state_getter.get_job_metadata.side_effect = AppNotFound()
+        if remembered:
+            job_tracker._remember_transition("job-1")
+
+        with gps_config_overrides(infra_id="infra-a"):
+            job_tracker.update_statuses()
+
+        assert elastic_job_registry.db["job-1"]["status"] == expected_status
+
+    def test_recently_transitioned_expires(self, job_tracker):
+        job_tracker._final_status_grace_period = 0
+        job_tracker._remember_transition("job-1")
+        assert not job_tracker._is_recently_transitioned("job-1")
 
     @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     @pytest.mark.parametrize(

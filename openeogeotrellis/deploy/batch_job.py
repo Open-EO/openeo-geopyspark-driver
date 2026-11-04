@@ -371,7 +371,7 @@ def _build_job_results_settings(
         job_id=get_job_id(default="unknown-job"),
         stac11_mode=stac11_mode,
         omit_derived_from_links=omit_derived_from_links,
-        detailed_asset_metadata=job_options.get("detailed_asset_metadata", True),
+        detailed_asset_metadata=job_options.get("detailed_asset_metadata", False),
         concurrent_save_results=int(job_options.get("concurrent-save-results", 1)),
         remove_exported_assets=job_options.get("remove-exported-assets", False),
         export_workspace_enable_merge=job_options.get("export-workspace-enable-merge", True),

@@ -2941,8 +2941,14 @@ class GeopysparkDataCube(DriverDataCube):
 
         if filename_prefix and filename_prefix.isDefined():
             p = pathlib.Path(path)
-            ext = p.name[p.name.index("."):]
-            path = str(p.parent / (filename_prefix.get() + ext))
+            try:
+                dot_index = p.name.index(".")
+                ext = p.name[dot_index:]
+                path = str(p.parent / (filename_prefix.get() + ext))
+            except ValueError as e:
+                if "substring not found" in str(e):
+                    _log.debug(f"'.' not found in '{p.name}'")
+                raise
 
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
