@@ -2352,13 +2352,13 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
                     gtiff_options.setAddBandStatistics(add_bands_statistics)
-                    if filename_prefix.isDefined():
-                        gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
                     if filepath_per_band:
                         # Validated eagerly in SaveResultFormatOptions.parse(): filepath_per_band
                         # is not supported with a temporal dimension.
                         gtiff_options.setFilepathPerBand(get_jvm().scala.Option.apply(filepath_per_band))
+                    elif filename_prefix.isDefined():
+                        gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE", softwareversion)
                     if description != "":
                         gtiff_options.addHeadTag("ImageDescription", description)
