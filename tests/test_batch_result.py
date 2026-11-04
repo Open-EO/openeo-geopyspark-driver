@@ -1239,11 +1239,15 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
     finally:
        shutil.rmtree(workspace_dir)
 
-@pytest.mark.parametrize(["stac_version","asset_name","bands_name"], [
-    ("1.0",["openEO_2021-01-05Z_Latitude.tif","openEO_2021-01-05Z_Longitude.tif"],"raster:bands"),
-    ("1.1",["Latitude","Longitude"],"bands"),
-])
-def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name, bands_name):
+
+@pytest.mark.parametrize(
+    ["stac_version", "asset_key", "bands_name"],
+    [
+        ("1.0", ["saveresult1_2021-01-05Z_Latitude.tif", "saveresult1_2021-01-05Z_Longitude.tif"], "raster:bands"),
+        ("1.1", ["Latitude", "Longitude"], "bands"),
+    ],
+)
+def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key, bands_name):
     workspace_id = "tmp"
     merge = _random_merge()
 
@@ -1347,9 +1351,9 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
 
         assets = [{asset_key:asset} for item in items for asset_key, asset in item.assets.items()]
         assert len(assets) == 2
-        assert asset_name[0] in assets[0]
-        assert asset_name[1] in assets[1]
-        geotiff_asset = assets[0][asset_name[0]]
+        assert asset_key[0] in assets[0]
+        assert asset_key[1] in assets[1]
+        geotiff_asset = assets[0][asset_key[0]]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href.endswith("/saveresult1_2021-01-05Z_Latitude.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
