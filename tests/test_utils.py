@@ -283,6 +283,14 @@ spatial_extent_tap = {
                 (0.0001471299295632278, 9.240073598704157e-05),
         ),
         (
+                # Equal Earth (Greenwich), a less common equal-area projection:
+                spatial_extent_tap,
+                (8.3333333333e-05, 8.3333333333e-05),
+                "EPSG:4326",
+                "EPSG:8857",
+                (6.802802932972554, 8.271164020523429),
+        ),
+        (
                 # North Pole is outside EPSG:32632, but still interesting:
                 {'east': 0.01, 'north': 89.999999, 'south': 89.999998, 'west': 0},
                 (1000, 1000),
