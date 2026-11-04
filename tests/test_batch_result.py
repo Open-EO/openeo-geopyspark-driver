@@ -1312,13 +1312,13 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
-        assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
+        assert "saveresult1_2021-01-05Z_Longitude.tif" in job_dir_files
+        assert "saveresult1_2021-01-05Z_Latitude.tif" in job_dir_files
 
         assert {
             Path("collection.json"),
-            Path("openEO_2021-01-05Z_Longitude.tif"),
-            Path("openEO_2021-01-05Z_Latitude.tif"),
+            Path("saveresult1_2021-01-05Z_Longitude.tif"),
+            Path("saveresult1_2021-01-05Z_Latitude.tif"),
         }.issubset(_paths_relative_to(workspace_dir))
 
         assert len(_paths_relative_to(workspace_dir)) == 4 if stac_version == "1.1" else len(_paths_relative_to(workspace_dir)) ==  5, "STAC item document not found"
@@ -1351,7 +1351,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
         assert asset_name[1] in assets[1]
         geotiff_asset = assets[0][asset_name[0]]
         assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href.endswith("/openEO_2021-01-05Z_Latitude.tif")
+        assert geotiff_asset.href.endswith("/saveresult1_2021-01-05Z_Latitude.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         assert bands_name in geotiff_asset.extra_fields
         assert geotiff_asset.extra_fields[bands_name] == [
@@ -1367,7 +1367,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
             }
         ]
 
-        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z_Latitude.copy"
+        geotiff_asset_copy_path = tmp_path / "saveresult1_2021-01-05Z_Latitude.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
@@ -3221,8 +3221,8 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
     assert tiff_files == {
-        "openEO-N50E000.tiff",
-        "openEO-N50E001.tiff",
+        "save1-N50E000.tiff",
+        "save1-N50E001.tiff",
     }
 
     with open(metadata_file) as f:
@@ -3314,10 +3314,10 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "openEO_2025-04-05Z_0.tif",
-        "openEO_2025-04-05Z_1.tif",
-        "openEO_2025-04-15Z_0.tif",
-        "openEO_2025-04-15Z_1.tif",
+        "save1_2025-04-05Z_0.tif",
+        "save1_2025-04-05Z_1.tif",
+        "save1_2025-04-15Z_0.tif",
+        "save1_2025-04-15Z_1.tif",
     }
 
     with open(metadata_file) as f:
@@ -3336,13 +3336,13 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 @pytest.mark.parametrize(
     ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
     [
-        (False, {"openEO.tif"}, {"openEO"}),
+        (False, {"save1.tif"}, {"openEO"}),
         (
             True,
             {
-                "openEO_Flat:0.tif",
-                "openEO_Flat:1.tif",
-                "openEO_Flat:2.tif",
+                "save1_Flat:0.tif",
+                "save1_Flat:1.tif",
+                "save1_Flat:2.tif",
             },
             {"Flat:0", "Flat:1", "Flat:2"},
         ),
@@ -3554,8 +3554,8 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
     assert tiff_files == {
-        "openEO-N50E000.tiff",
-        "openEO-N50E001.tiff",
+        "save1-N50E000.tiff",
+        "save1-N50E001.tiff",
     }
 
     with open(metadata_file) as f:
@@ -4481,9 +4481,9 @@ class TestLoadStac:
             job_dir=job_dir,
         )
         assert sorted(p.name for p in job_dir.glob("*.tif")) == [
-            "openEO_2024-05-01Z.tif",
-            "openEO_2024-06-02Z.tif",
-            "openEO_2024-07-03Z.tif",
+            "saveresult1_2024-05-01Z.tif",
+            "saveresult1_2024-06-02Z.tif",
+            "saveresult1_2024-07-03Z.tif",
         ]
 
     @pytest.mark.parametrize(
