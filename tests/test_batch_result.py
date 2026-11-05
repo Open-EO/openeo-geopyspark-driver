@@ -3576,10 +3576,10 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
         dependencies=[],
     )
 
-    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "openEO-N50E000.tiff",
-        "openEO-N50E001.tiff",
+        "openEO_N50E000.tif",
+        "openEO_N50E001.tif",
     }
 
     with open(metadata_file) as f:
