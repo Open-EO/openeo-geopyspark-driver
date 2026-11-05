@@ -44,6 +44,7 @@ without compromising stable operations.
 - Job tracker: collect detailed application metrics for Kubernetes jobs with `detailed-metrics` enabled and persist them alongside usage in the job registry.
 - Tests: replace live OSCARS queries with a local catalog server for synthetic batch results and collection-loading checks, so these tests work after the OSCARS service shutdown.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
+- Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 
 
 ## 0.73.0
