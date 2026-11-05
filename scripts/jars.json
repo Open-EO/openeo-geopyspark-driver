@@ -2,9 +2,9 @@
   "default": "spark4-scala213",
   "variants": {
     "spark4-scala213": [
-      "https://repo.vito.be/artifactory/openeo-maven-snapshot-local/org/openeo/geotrellis-extensions/2.6.4_2.13-SNAPSHOT/geotrellis-extensions-2.6.4_2.13-SNAPSHOT.jar",
-      "https://repo.vito.be/artifactory/openeo-maven-snapshot-local/org/openeo/geotrellis-dependencies/2.6.4_2.13-SNAPSHOT/geotrellis-dependencies-2.6.4_2.13-SNAPSHOT.jar",
-      "https://repo.vito.be/artifactory/openeo-maven-snapshot-local/org/openeo/openeo-logging/2.6.4_2.13-SNAPSHOT/openeo-logging-2.6.4_2.13-SNAPSHOT.jar"
+      "https://repo.vito.be/artifactory/openeo-maven-release-local/org/openeo/geotrellis-extensions/PR-937/geotrellis-extensions-PR-937.jar",
+      "https://repo.vito.be/artifactory/openeo-maven-release-local/org/openeo/geotrellis-dependencies/PR-937/geotrellis-dependencies-PR-937.jar",
+      "https://repo.vito.be/artifactory/openeo-maven-release-local/org/openeo/openeo-logging/PR-937/openeo-logging-PR-937.jar"
     ]
   }
 }
