@@ -446,6 +446,8 @@ spec:
         value: "OFF"
       - name: GDAL_NETCDF_BOTTOMUP
         value: "NO"
+      - name: LD_PRELOAD
+        value: "/usr/lib64/libjemalloc.so.2"
 {%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
