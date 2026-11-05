@@ -288,6 +288,7 @@ spec:
         value: {{ value }}
 {%- endfor %}
 {%- endblock %}
+{%- block driver_envFrom %}{% endblock %}
     labels:
 {%- block driver_labels %}
       version: 3.2.0
@@ -442,6 +443,7 @@ spec:
         value: "{{ separate_asset_per_band_new_partitioner }}"
 {%- endif %}
 {%- endblock %}
+{%- block executor_envFrom %}{% endblock %}
     labels:
 {%- block executor_labels %}
       version: 3.2.0
