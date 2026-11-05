@@ -4227,7 +4227,7 @@ def test_predict_onnx_reduce_sum(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
 
-    bands = metadata["assets"]['openEO_2023-06-05Z.tif']["raster:bands"]
+    bands = metadata["assets"]["saveresult1_2023-06-05Z.tif"]["raster:bands"]
     assert len(bands) == 1
     assert bands[0]["statistics"]["minimum"] == 15
     assert bands[0]["statistics"]["maximum"] == 15
