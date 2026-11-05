@@ -80,8 +80,10 @@ spec:
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
     "spark.hadoop.fs.s3a.path.style.access": "true"
+{%- block s3a_credentials_conf %}
     "spark.hadoop.fs.s3a.access.key": {{ swift_access_key_id }}
     "spark.hadoop.fs.s3a.secret.key": {{ swift_secret_access_key }}
+{%- endblock %}
     "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
     "spark.eventLog.enabled": "true"
     "spark.kubernetes.allocation.batch.size": "4"
@@ -218,10 +220,12 @@ spec:
       - name: OPENEO_ADDITIONAL_EXECUTION_METRICS_FILE
         value: "{{ additional_execution_metrics_file }}"
   {%- block gdal_aws_env %}
+  {%- block aws_credentials_env %}
       - name: AWS_ACCESS_KEY_ID
         value: {{ aws_access_key_id }}
       - name: AWS_SECRET_ACCESS_KEY
         value: {{ aws_secret_access_key }}
+  {%- endblock %}
       - name: AWS_S3_ENDPOINT
         value: "{{aws_endpoint}}"
       - name: AWS_DEFAULT_REGION
@@ -233,10 +237,12 @@ spec:
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
   {%- endblock %}
+{%- block driver_swift_credentials_env %}
       - name: SWIFT_ACCESS_KEY_ID
         value: {{ swift_access_key_id }}
       - name: SWIFT_SECRET_ACCESS_KEY
         value: {{ swift_secret_access_key }}
+{%- endblock %}
       - name: AWS_DIRECT
         value: "TRUE"
       - name: SWIFT_URL
@@ -394,10 +400,12 @@ spec:
         value: {{ swift_url }}
       - name: SWIFT_BUCKET
         value: {{ swift_bucket }}
+{%- block executor_swift_credentials_env %}
       - name: SWIFT_ACCESS_KEY_ID
         value: {{ swift_access_key_id }}
       - name: SWIFT_SECRET_ACCESS_KEY
         value: {{ swift_secret_access_key }}
+{%- endblock %}
       - name: ZOOKEEPERNODES
         value: {{ zookeeper_nodes }}
       - name: OPENEO_S1BACKSCATTER_ELEV_GEOID
@@ -438,6 +446,8 @@ spec:
         value: "OFF"
       - name: GDAL_NETCDF_BOTTOMUP
         value: "NO"
+      - name: LD_PRELOAD
+        value: "/usr/lib64/libjemalloc.so.2"
 {%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
