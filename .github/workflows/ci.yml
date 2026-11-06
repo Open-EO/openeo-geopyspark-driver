@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OPENEO_JARS_VARIANT: "spark4-scala213"
+  OPENEO_JARS_VARIANT: "spark4-scala213-github"
   PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
   UV_INDEX_STRATEGY: "unsafe-best-match"
   UV_EXTRA_INDEX_URL: "https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple"
@@ -93,6 +93,7 @@ jobs:
           uv pip install \
             --find-links "${JEP_FIND_LINKS}" \
             --find-links "${GEOPYSPARK_FIND_LINKS}" \
+            "openeo_driver @ git+https://github.com/Open-EO/openeo-python-driver.git@master" \
             -e ".[dev,spark40x]"
           python -c "import netCDF4, pyspark"
 
