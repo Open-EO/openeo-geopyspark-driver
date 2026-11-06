@@ -340,8 +340,8 @@ class DummyCatalog(CollectionCatalog):
         """Helper to create a "cube:dimensions" dict"""
         # merging some defaults with given overrides.
         return {
-            "x": {**{"type": "spatial", "axis": "x", "reference_system": 4326, "extent": [-180, 180]}, **(x or {})},
-            "y": {**{"type": "spatial", "axis": "y", "reference_system": 4326, "extent": [-90, 90]}, **(y or {})},
+            "x": {**{"type": "spatial", "axis": "x", "reference_system": 4326, "step":0.0001, "extent": [-180, 180]}, **(x or {})},
+            "y": {**{"type": "spatial", "axis": "y", "reference_system": 4326, "step":0.0001, "extent": [-90, 90]}, **(y or {})},
             "t": {**{"type": "temporal", "extent": ["2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z"]}, **(t or {})},
             # TODO: bands too?
         }
@@ -609,13 +609,89 @@ class TestPostDryRun:
         }
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+        expected_extent = BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326")
+        source_ids = [source_id for source_id, _ in source_constraints]
         assert global_extent == {
-            "global_extent": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+            "global_extent": expected_extent,
             "global_extent_variants": {
-                "original": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
-                "target_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+                "original": expected_extent,
+                "target_aligned": expected_extent,
+            },
+            "global_extent_per_source": {source_id: expected_extent for source_id in source_ids},
+        }
+
+    def test_determine_global_extent_mask(self, dummy_catalog, extract_source_constraints):
+        # Mask cube has a larger extent than the data cube being masked
+        pg = {
+            "data": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 1, "south": 2, "east": 3, "north": 4}},
+            },
+            "maskcube": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 0, "south": 1, "east": 5, "north": 6}},
+            },
+            "mask": {
+                "process_id": "mask",
+                "arguments": {"data": {"from_node": "data"}, "mask": {"from_node": "maskcube"}},
+                "result": True,
             },
         }
+        source_constraints = extract_source_constraints(pg)
+        result = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+
+        # Data cube global extent is NOT inflated by the mask extent
+        assert result["global_extent"] == BoundingBox(1, 2, 3, 4, crs="EPSG:4326")
+        # Per-source: mask gets the larger (full union) extent, data keeps its own
+        per_source = {sid.pg_node_id: bbox for sid, bbox in result["global_extent_per_source"].items()}
+        assert per_source == {
+            "data": BoundingBox(1, 2, 3, 4, crs="EPSG:4326"),
+            "maskcube": BoundingBox(0, 1, 5, 6, crs="EPSG:4326"),
+        }
+
+    def test_determine_global_extent_mask_same_source_for_data_and_mask(
+        self, dummy_catalog, extract_source_constraints
+    ):
+        """
+        Special case: the `mask` process uses the *same* `load_collection` node for both its
+        `data` and `mask` argument. The dry run still produces two leaf traces (one tagged
+        `is_mask`), but they both resolve back to the same source id (same `load_collection`
+        node). `global_extent_per_source` is keyed by source id, so this naturally collapses
+        to a single entry: the cube for this source only needs to be created/loaded once,
+        with a single (non-duplicated) global extent, instead of twice (once for the "data"
+        role, once for the "mask" role).
+        """
+        pg = {
+            "data": {
+                "process_id": "load_collection",
+                "arguments": {"id": "S2", "spatial_extent": {"west": 1, "south": 2, "east": 3, "north": 4}},
+            },
+            "toscldilationmask1": {
+                "process_id": "to_scl_dilation_mask",
+                "arguments": {
+                    "data": {
+                        "from_node": "data"
+                    }
+                }
+            },
+            "mask": {
+                "process_id": "mask",
+                "arguments": {"data": {"from_node": "data"}, "mask": {"from_node": "toscldilationmask1"}},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        # Two leaf traces (data branch + is_mask-tagged branch), but same underlying source id.
+        source_ids = {source_id for source_id, _ in source_constraints}
+        assert len(source_constraints) == 2
+        assert len(source_ids) == 1
+
+        result = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+
+        expected_extent = BoundingBox(1, 2, 3, 4, crs="EPSG:4326")
+        assert result["global_extent"] == expected_extent
+        # Single entry: the duplicate source id collapses, so the cube is only created once.
+        assert result["global_extent_per_source"] == {source_ids.pop(): expected_extent}
 
     def test_determine_global_extent_load_collection_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
         dummy_catalog.define_collection_metadata(
@@ -661,6 +737,9 @@ class TestPostDryRun:
             "global_extent_variants": {
                 "original": expected_orig,
                 "target_aligned": expected_aligned,
+            },
+            "global_extent_per_source": {
+                source_id: expected_aligned for source_id, _ in source_constraints
             },
         }
 
@@ -1263,6 +1342,7 @@ class TestPostDryRun:
                 "assets_full_bbox": BoundingBox(1, 2, 3, 4, crs="EPSG:4326"),
                 "assets_covered_bbox": expected,
             },
+            "global_extent_per_source": {source_id: expected for source_id, _ in source_constraints},
         }
 
     def test_extract_spatial_extent_from_constraint_load_collection_type_stac_minimal(
