@@ -93,6 +93,7 @@ jobs:
           uv pip install \
             --find-links "${JEP_FIND_LINKS}" \
             --find-links "${GEOPYSPARK_FIND_LINKS}" \
+            "openeo_driver @ git+https://github.com/Open-EO/openeo-python-driver.git@master" \
             -e ".[dev,spark40x]"
           python -c "import netCDF4, pyspark"
 
