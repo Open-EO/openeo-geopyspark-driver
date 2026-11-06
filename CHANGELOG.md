@@ -44,6 +44,8 @@ without compromising stable operations.
 - Job tracker: collect detailed application metrics for Kubernetes jobs with `detailed-metrics` enabled and persist them alongside usage in the job registry.
 - Tests: replace live OSCARS queries with a local catalog server for synthetic batch results and collection-loading checks, so these tests work after the OSCARS service shutdown.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
+- Document the `retain_nodata_tiles` load feature flag, which retains all-NoData tiles such as pure Sentinel-2 angle placeholders; this is separate from the `save_result` format option of the same name.
+- Sentinel-2 per-pixel angle bands: configure `granule_metadata##4` to `##7` through `granule_metadata_band_map` (gapless from `##0`) for sun and B05 viewing angles per pixel; GML detector masks give NoData viewing angles (see `docs/layercatalog.md`).
 
 
 ## 0.73.0
