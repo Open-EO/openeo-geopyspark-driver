@@ -1,6 +1,5 @@
 import sys
 import datetime as dt
-import io
 import json
 import logging
 import os
@@ -125,6 +124,7 @@ from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrl
 from openeogeotrellis.integrations.s3proxy.exceptions import ProxyException, S3ProxyUnsupportedBucketType
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
 from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri
+from openeogeotrellis.integrations.job_storage import get_job_storage
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -180,7 +180,6 @@ from openeogeotrellis.utils import (
     mdc_remove,
     normalize_temporal_extent,
     reproject_cellsize,
-    S3ClientBuilder,
     single_value,
     to_projected_polygons,
     typechecked,
@@ -2041,15 +2040,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
 
             bucket = get_backend_config().s3_bucket_name
-            s3_instance = S3ClientBuilder.from_bucket(bucket)
 
             output_dir = str(self.get_job_output_dir(job_id))
             job_work_dir = self.get_job_work_dir(job_id=job_id)
 
             job_specification_file = str(job_work_dir / "job_specification.json")
-            s3_instance.upload_fileobj(
-                io.BytesIO(job_specification_json.encode("utf8")),
-                bucket,
+            get_job_storage(bucket).upload_bytes(
+                job_specification_json.encode("utf8"),
                 job_specification_file.strip("/"),
             )
 
@@ -2120,6 +2117,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 image_name=image_name,
                 openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
                 swift_bucket=bucket,
+                azure_storage_account_name=get_backend_config().azure_storage_account_name,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
                 archives=",".join(archives),
