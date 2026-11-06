@@ -249,6 +249,10 @@ spec:
         value: {{ swift_url }}
       - name: SWIFT_BUCKET
         value: {{ swift_bucket }}
+{%- if azure_storage_account_name %}
+      - name: AZURE_STORAGE_ACCOUNT_NAME
+        value: "{{ azure_storage_account_name }}"
+{%- endif %}
       - name: ZOOKEEPERNODES
         value: {{ zookeeper_nodes }}
       - name: OPENEO_S1BACKSCATTER_ELEV_GEOID

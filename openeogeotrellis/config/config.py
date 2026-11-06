@@ -161,8 +161,20 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
+    """
+    Object storage bucket for batch job files.
+    Despite the name, this can also be an Azure Blob Storage container name:
+    when `azure_storage_account_name` is set, the job specification is exchanged through that container
+    (see `openeogeotrellis.integrations.job_storage`).
+    """
     # TODO: generically named config for a single bucket: not future/feature-proof (support for multiple buckets)
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
+
+    """
+    Azure storage account: when set, `s3_bucket_name` is interpreted as an Azure Blob Storage container
+    in this account (currently only for the job specification exchange).
+    """
+    azure_storage_account_name: Optional[str] = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME") or None
 
     """
     S3 bucket to temporarily store ML models (e.g. random forest) in, so they can be loaded by executors
