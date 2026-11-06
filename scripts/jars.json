@@ -5,6 +5,11 @@
       "https://repo.vito.be/artifactory/openeo-maven-snapshot-local/org/openeo/geotrellis-extensions/2.6.4_2.13-SNAPSHOT/geotrellis-extensions-2.6.4_2.13-SNAPSHOT.jar",
       "https://repo.vito.be/artifactory/openeo-maven-snapshot-local/org/openeo/geotrellis-dependencies/2.6.4_2.13-SNAPSHOT/geotrellis-dependencies-2.6.4_2.13-SNAPSHOT.jar",
       "https://repo.vito.be/artifactory/openeo-maven-snapshot-local/org/openeo/openeo-logging/2.6.4_2.13-SNAPSHOT/openeo-logging-2.6.4_2.13-SNAPSHOT.jar"
+    ],
+    "spark4-scala213-github": [
+      "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/geotrellis-extensions-2.6.4_2.13-SNAPSHOT.jar",
+      "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/geotrellis-dependencies-2.6.4_2.13-SNAPSHOT.jar",
+      "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/openeo-logging-2.6.4_2.13-SNAPSHOT.jar"
     ]
   }
 }
