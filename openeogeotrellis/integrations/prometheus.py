@@ -327,7 +327,7 @@ class Prometheus:
         return self._query_for_float(query, at)
 
     def get_memory_requested(self, application_id: str, at: str = None) -> Optional[float]:
-        """Returns memory usage in byte-seconds."""
+        """Returns requested memory in MiB-seconds (assuming a 60s scrape interval)."""
 
         # Prometheus doesn't expose this as a counter: do integration over time ourselves
         query = f'sum(sum_over_time(kube_pod_container_resource_requests{{job="kube-state-metrics", resource="memory", pod=~"{application_id}-.+"}}[5d])) * 60 / (1024*1024) '

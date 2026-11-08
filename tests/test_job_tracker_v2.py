@@ -934,6 +934,7 @@ class TestK8sJobTracker:
         prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
         prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
         prometheus_mock.get_billable_memory_requested.return_value = prometheus_mock.get_memory_usage.return_value
+        prometheus_mock.get_memory_requested.return_value = 7.0 * 3600
         prometheus_mock.get_max_executor_memory_usage.return_value = 3.5
 
         return prometheus_mock
@@ -1049,7 +1050,7 @@ class TestK8sJobTracker:
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
-                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
+                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(7.0 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                 },
@@ -1421,7 +1422,7 @@ class TestK8sJobTracker:
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
-                    "memory_requested": {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
+                    "memory_requested": {'unit': 'mb-seconds', 'value': pytest.approx(7.0 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                     "max_executor_memory": {"unit": "gb", "value": 3.5},

@@ -79,7 +79,7 @@ class _Usage(NamedTuple):
         if self.mb_seconds:
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.memory_requested:
-            result["memory_requested"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
+            result["memory_requested"] = {"value": self.memory_requested, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
         if self.max_executor_gigabytes:
