@@ -279,10 +279,6 @@ spec:
         value: "{{fuse_mount_batchjob_s3_bucket}}"
       - name: OPENEO_OTEL_ENABLED
         value: "{{ detailed_metrics | default('false', true) }}"
-{%- if prometheus_api %}
-      - name: OPENEO_PROMETHEUS_API
-        value: "{{ prometheus_api }}"
-{%- endif %}
       - name: OPENEO_EJR_API
         value: {{ openeo_ejr_api }}
       - name: OPENEO_EJR_BACKEND_ID

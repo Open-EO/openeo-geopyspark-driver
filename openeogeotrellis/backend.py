@@ -2150,7 +2150,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 debug_metrics="true" if options.log_level.lower() == "debug" else "false",
                 detailed_metrics="true" if options.detailed_metrics else "false",
                 open_telemetry_prometheus_port=get_backend_config().otel_prometheus_metrics_port,
-                prometheus_api=get_backend_config().prometheus_api,
                 force_s3proxy=k8sOptions.force_s3proxy,
                 layer_catalog_init_image=os.environ.get("LAYER_CATALOG_INIT_IMAGE", "DISABLED"),
                 layer_catalog_init_dir=os.environ.get("LAYER_CATALOG_INIT_DIR", "/opt/layercatalogs"),
