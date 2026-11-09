@@ -98,8 +98,8 @@ def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization, ap
         prometheus.get_avg_load_megapixel_per_second.return_value = {"S2": 1.5}
         prometheus.get_min_load_megapixel_per_second.return_value = {"S2": 0.5}
         prometheus.get_load_megapixel_total.return_value = {"S2": 15.0}
-        prometheus.get_avg_udf_execution_time_ms.return_value = 120.0
-        prometheus.get_max_udf_execution_time_ms.return_value = 200.0
+        prometheus.get_avg_udf_execution_time_ms.return_value = {"runudf1": 120.0}
+        prometheus.get_max_udf_execution_time_ms.return_value = {"runudf1": 200.0}
         prometheus.get_executor_run_time_ms.return_value = {"1": run_time_ms, "2": 2000.0, "3": 3000.0}
         prometheus.get_memory_usage.return_value = 12000.0
 
@@ -124,8 +124,8 @@ def test_get_detailed_metrics(monkeypatch, run_time_ms, expected_utilization, ap
             "load_pixel_speed_avg": {"unit": "megapixel/s", "data": {"S2": 1.5}},
             "load_pixel_speed_min": {"unit": "megapixel/s", "data": {"S2": 0.5}},
             "load_pixel_total": {"unit": "megapixel", "data": {"S2": 15.0}},
-            "udf_execution_time_avg": {"unit": "ms", "data": 120.0},
-            "udf_execution_time_max": {"unit": "ms", "data": 200.0},
+            "udf_execution_time_avg": {"unit": "ms", "data": {"runudf1": 120.0}},
+            "udf_execution_time_max": {"unit": "ms", "data": {"runudf1": 200.0}},
             "executor_run_time": {"unit": "ms", "data": {"1": run_time_ms, "2": 2000.0, "3": 3000.0}},
             "executor_cpu_utilization": {"unit": "percentage", "data": {"1": expected_utilization}},
             **(

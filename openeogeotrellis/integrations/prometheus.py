@@ -292,15 +292,21 @@ class Prometheus:
                 report.setdefault(executor_id, {})[name] = float(result["value"][1])
         return report
 
-    def get_avg_udf_execution_time_ms(self, job_id: str, at: str = None) -> Optional[float]:
-        """Average each UDF duration gauge over 24 hours, then average across series."""
-        query = "avg(" f"avg_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
-        return self._query_for_float(query, at)
+    def get_avg_udf_execution_time_ms(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Average each series over the preceding 24 hours, then average per UDF node."""
+        query = (
+            "avg by (node_id) ("
+            f"avg_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["node_id"]: float(result["value"][1]) for result in self._query(query, at)}
 
-    def get_max_udf_execution_time_ms(self, job_id: str, at: str = None) -> Optional[float]:
-        """Return the maximum sampled UDF execution duration over the preceding 24 hours."""
-        query = "max(" f"max_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
-        return self._query_for_float(query, at)
+    def get_max_udf_execution_time_ms(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Return the maximum sampled UDF execution duration per UDF node over the preceding 24 hours."""
+        query = (
+            "max by (node_id) ("
+            f"max_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["node_id"]: float(result["value"][1]) for result in self._query(query, at)}
 
     def get_avg_udf_max_rss_delta_bytes(self, job_id: str, at: str = None) -> Optional[float]:
         """Average each UDF high-water RSS delta gauge over 24 hours, then average across series."""
