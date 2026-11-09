@@ -419,29 +419,31 @@ class GeoPySparkJobResultsHooks:
         logger.debug("GeoPySparkJobResultsHooks: getting usage metadata")
         execution_metadata = batch_job_metadata.get_execution_metadata(log_level=self._job_options.log_level)
         tracker_metadata = batch_job_metadata.get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        if self._job_options.detailed_metrics:
-            application_id = os.environ.get("HOSTNAME", "").removesuffix("-driver")
-            job_id = os.environ.get("OPENEO_BATCH_JOB_ID")
-            if not application_id or not job_id:
-                logger.warning(
-                    "Detailed metrics enabled, but application ID or batch job ID is unavailable "
-                    "(HOSTNAME=%r, OPENEO_BATCH_JOB_ID=%r)",
-                    os.environ.get("HOSTNAME"),
-                    job_id,
-                )
-            else:
-                try:
-                    tracker_metadata["detailed_metrics"] = batch_job_metadata.get_detailed_metrics(
-                        application_id=application_id, job_id=job_id
-                    )
-                except Exception:
-                    logger.exception("Failed to fetch detailed Prometheus metrics")
         if execution_metadata:
             tracker_metadata["usage"] = {
                 **tracker_metadata.get("usage", {}),
                 **execution_metadata,
             }
         return tracker_metadata
+
+    def detailed_metrics(self) -> Optional[dict]:
+        if not self._job_options.detailed_metrics:
+            return None
+        application_id = os.environ.get("HOSTNAME", "").removesuffix("-driver")
+        job_id = os.environ.get("OPENEO_BATCH_JOB_ID")
+        if not application_id or not job_id:
+            logger.warning(
+                "Detailed metrics enabled, but application ID or batch job ID is unavailable "
+                "(HOSTNAME=%r, OPENEO_BATCH_JOB_ID=%r)",
+                os.environ.get("HOSTNAME"),
+                job_id,
+            )
+            return None
+        try:
+            return batch_job_metadata.get_detailed_metrics(application_id=application_id, job_id=job_id)
+        except Exception:
+            logger.exception("Failed to fetch detailed Prometheus metrics")
+            return None
 
     def prepare_result_options(self, result: SaveResult) -> None:
         result.options["use_s3proxy"] = should_proxy_be_used()

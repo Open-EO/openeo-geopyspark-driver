@@ -288,7 +288,9 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
-
+        detailed_metrics = hooks.detailed_metrics()
+        if detailed_metrics:
+            logger.info(f"Detailed metrics of job {settings.job_id}: {json.dumps(detailed_metrics, default=json_default)}")
 
 
 def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings, hooks: JobResultsHooks) -> None:
