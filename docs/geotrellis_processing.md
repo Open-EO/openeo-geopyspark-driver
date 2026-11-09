@@ -181,6 +181,7 @@ cube.result_node().update_arguments(featureflags=temporal_partition_options)
 - `indexreduction` usually between 3 and 10, a higher reduction reduces the number of partitions, so more memory per partition
 - `no_resample_on_read` allows to disable resamplilng at load time
 - `allow_empty_cube`: do not raise exception if cube will be empty
+- `retain_nodata_tiles`: keep tiles whose bands are all NoData when loading; default false
 
 ## Runtime properties of a typical cloud setup
 

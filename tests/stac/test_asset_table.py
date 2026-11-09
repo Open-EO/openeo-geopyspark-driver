@@ -433,6 +433,34 @@ class TestBuildAssetTable:
         # feature flag handling extends available_band_names in place
         assert available_band_names == ["B02", "sunAzimuthAngles"]
 
+    def test_granule_metadata_band_map_positions_equal_indices(self):
+        # The JVM side takes the position of "granule_metadata##N" in `band_names` as the angle index,
+        # so with indices 0 to 7 without gaps, every position must be N, whatever the order of the map.
+        band_map = {
+            "viewZenithAnglesPerPixel": "granule_metadata##7",
+            "sunAzimuthAngles": "granule_metadata##0",
+            "sunZenithAnglesPerPixel": "granule_metadata##5",
+            "viewAzimuthMean": "granule_metadata##2",
+            "sunZenithAngles": "granule_metadata##1",
+            "viewAzimuthAnglesPerPixel": "granule_metadata##6",
+            "viewZenithMean": "granule_metadata##3",
+            "sunAzimuthAnglesPerPixel": "granule_metadata##4",
+        }
+        item = _item(
+            assets={
+                "B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]},
+                "granule_metadata": {
+                    "href": "https://stac.test/MTD_TL.xml",
+                    "title": "MTD_TL.xml",
+                    "roles": ["metadata"],
+                },
+            }
+        )
+        asset_table = _build(item, available_band_names=["B02"], feature_flags={"granule_metadata_band_map": band_map})
+        band_names = asset_table.items[0].metadata_links[0].band_names
+        assert band_names == [f"granule_metadata##{n}" for n in range(8)]
+        assert asset_table.opensearch_link_titles_map == band_map
+
     def test_skipped_assets_and_preferred_url_prefix(self):
         item = _item(
             assets={
