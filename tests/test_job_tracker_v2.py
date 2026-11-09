@@ -24,6 +24,7 @@ from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
+    AppNotFound,
     CliApp,
     JobCostsCalculator,
     JobTracker,
@@ -740,6 +741,29 @@ class TestYarnJobTracker:
         assert any(r.levelname == "ERROR" and "App not found" in r.getMessage() for r in caplog.records)
         assert not any(r.levelname == "WARNING" and "App not found" in r.getMessage() for r in caplog.records)
 
+    @pytest.mark.parametrize(["remembered", "expected_status"], [(True, "running"), (False, "error")])
+    def test_app_not_found_recently_transitioned(self, elastic_job_registry, job_tracker, remembered, expected_status):
+        """Stale EJR (job still 'running') and app gone: don't set error if job recently transitioned."""
+        elastic_job_registry.create_job(
+            job_id="job-1", user_id="john", process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
+        )
+        elastic_job_registry.set_application_id(job_id="job-1", application_id="app-job-1")
+        elastic_job_registry.set_status(job_id="job-1", status="running", infra_id="infra-a")
+        job_tracker._app_state_getter = mock.Mock()
+        job_tracker._app_state_getter.get_job_metadata.side_effect = AppNotFound()
+        if remembered:
+            job_tracker._remember_transition("job-1")
+
+        with gps_config_overrides(infra_id="infra-a"):
+            job_tracker.update_statuses()
+
+        assert elastic_job_registry.db["job-1"]["status"] == expected_status
+
+    def test_recently_transitioned_expires(self, job_tracker):
+        job_tracker._final_status_grace_period = 0
+        job_tracker._remember_transition("job-1")
+        assert not job_tracker._is_recently_transitioned("job-1")
+
     @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     @pytest.mark.parametrize(
         ["yarn_state", "yarn_final_state", "expected_etl_state", "expected_job_status"],
@@ -827,19 +851,6 @@ class TestYarnJobTracker:
 
 
 class TestYarnStatusGetter:
-    @pytest.mark.parametrize("detailed_metrics", [False, True])
-    def test_detailed_metrics_not_collected(self, requests_mock, detailed_metrics):
-        status_getter = YarnStatusGetter(get_backend_config().yarn_rest_api_base_url)
-        app_id = "application_1671092799310_26739"
-        requests_mock.get(
-            status_getter.get_application_url(app_id),
-            json=fake_yarn_rest_response_json(app_id=app_id, state="FINISHED", final_status="SUCCEEDED"),
-        )
-        with mock.patch("openeogeotrellis.deploy.batch_job_metadata.get_detailed_metrics") as get_metrics:
-            metadata = status_getter.get_job_metadata("j-example", "john", app_id, detailed_metrics=detailed_metrics)
-        assert metadata.metrics is None
-        get_metrics.assert_not_called()
-
     def test_parse_application_response_basic(self):
         response = fake_yarn_rest_response_json(
             app_id="application_1671092799310_26739",
@@ -923,6 +934,7 @@ class TestK8sJobTracker:
         prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
         prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
         prometheus_mock.get_billable_memory_requested.return_value = prometheus_mock.get_memory_usage.return_value
+        prometheus_mock.get_memory_requested.return_value = 7.0 * 3600
         prometheus_mock.get_max_executor_memory_usage.return_value = 3.5
 
         return prometheus_mock
@@ -945,53 +957,6 @@ class TestK8sJobTracker:
             elastic_job_registry=elastic_job_registry,
         )
         return job_tracker
-
-    @pytest.mark.parametrize("detailed_metrics", [False, True])
-    @pytest.mark.parametrize("results_metadata_uri", [None, "s3://results/job-123/job_metadata.json"])
-    def test_persist_detailed_metrics(
-        self, job_tracker, elastic_job_registry, k8s_mock, prometheus_mock, detailed_metrics, results_metadata_uri
-    ):
-        job_id, user_id = "job-123", "john"
-        elastic_job_registry.create_job(
-            job_id=job_id,
-            user_id=user_id,
-            process=DUMMY_PROCESS_1,
-            job_options={"detailed-metrics": detailed_metrics},
-        )
-        app_id = k8s_job_name()
-        kube_app = k8s_mock.submit(app_id=app_id)
-        kube_app.set_submitted()
-        kube_app.set_running()
-        kube_app.set_completed()
-        elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
-        if results_metadata_uri:
-            elastic_job_registry.set_results_metadata_uri(job_id=job_id, results_metadata_uri=results_metadata_uri)
-        metrics = {"executor_cpu_utilization": {"unit": "percentage", "data": {"1": 50.0}}}
-        with mock.patch.object(
-            job_tracker._batch_jobs, "load_results_metadata", return_value={"usage": {}}
-        ), mock.patch(
-            "openeogeotrellis.deploy.batch_job_metadata.get_detailed_metrics",
-            return_value={"metrics": metrics},
-        ) as get_metrics:
-            job_tracker.update_statuses(fail_fast=True)
-
-        assert elastic_job_registry.db[job_id]["status"] == "finished"
-        if detailed_metrics:
-            assert elastic_job_registry.db[job_id]["metrics"] == metrics
-            get_metrics.assert_called_once_with(
-                application_id=app_id,
-                job_id=job_id,
-                application_duration_s=(
-                    rfc3339.parse_datetime(kube_app.finish_time) - rfc3339.parse_datetime(kube_app.start_time)
-                ).total_seconds(),
-                prometheus=prometheus_mock,
-            )
-        else:
-            assert "metrics" not in elastic_job_registry.db[job_id]
-            get_metrics.assert_not_called()
-        assert elastic_job_registry.db[job_id]["usage"]["cpu"] == {"value": 8424.0, "unit": "cpu-seconds"}
-        if results_metadata_uri:
-            assert elastic_job_registry.db[job_id]["results_metadata"] is None
 
     @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     @pytest.mark.parametrize("etl_source_id_override", [None, "overridden"])
@@ -1085,7 +1050,7 @@ class TestK8sJobTracker:
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
-                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
+                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(7.0 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                 },
@@ -1457,7 +1422,7 @@ class TestK8sJobTracker:
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
-                    "memory_requested": {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
+                    "memory_requested": {'unit': 'mb-seconds', 'value': pytest.approx(7.0 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
@@ -1646,37 +1611,6 @@ class TestK8sJobTracker:
 
 
 class TestK8sStatusGetter:
-    @pytest.mark.parametrize("finished", [False, True])
-    def test_detailed_metrics(self, finished):
-        k8s_mock = mock.Mock()
-        k8s_mock.get_namespaced_custom_object.return_value = {
-            "status": {
-                "applicationState": {
-                    "state": K8S_SPARK_APP_STATE.COMPLETED if finished else K8S_SPARK_APP_STATE.RUNNING
-                },
-                "lastSubmissionAttemptTime": "2026-10-30T08:00:00Z",
-                "terminationTime": "2026-10-30T08:01:00Z" if finished else None,
-            }
-        }
-        getter = K8sStatusGetter(k8s_mock, mock.Mock(Prometheus))
-        metrics = {"load_pixel_total": {"unit": "megapixel", "data": {"S2": 12.0}}}
-        with mock.patch.object(getter, "_get_usage"), mock.patch(
-            "openeogeotrellis.deploy.batch_job_metadata.get_detailed_metrics",
-            return_value={"metrics": metrics},
-        ) as get_metrics:
-            metadata = getter.get_job_metadata("j-example", "john", "a-example", detailed_metrics=True)
-        assert metadata.metrics.to_dict() == metrics
-        assert get_metrics.call_args.kwargs["application_duration_s"] == (60.0 if finished else None)
-
-    def test_detailed_metrics_failure(self, caplog):
-        getter = K8sStatusGetter(mock.Mock(), mock.Mock(endpoint="https://prometheus.test/api/v1"))
-        with mock.patch(
-            "openeogeotrellis.deploy.batch_job_metadata.get_detailed_metrics", side_effect=RuntimeError("query failed")
-        ):
-            assert getter._get_metrics("a-example", None, None, "j-example", "john") is None
-        assert "Failed to retrieve detailed metrics" in caplog.text
-        assert "query failed" in caplog.text
-
     @pytest.mark.parametrize(
         ["error_message", "expected_diagnostic"],
         [

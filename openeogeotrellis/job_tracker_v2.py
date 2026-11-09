@@ -9,8 +9,9 @@ import collections
 import datetime as dt
 import logging
 import os
+import time
 from pathlib import Path
-from typing import Any, Dict, List, NamedTuple, Optional, Union
+from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 
@@ -78,23 +79,13 @@ class _Usage(NamedTuple):
         if self.mb_seconds:
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.memory_requested:
-            result["memory_requested"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
+            result["memory_requested"] = {"value": self.memory_requested, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
         if self.max_executor_gigabytes:
             result["max_executor_memory"] = {"value": self.max_executor_gigabytes, "unit": "gb"}
 
         return result
-
-
-class _Metrics:
-    """Container for detailed performance metrics in the diagnostics CLI format."""
-
-    def __init__(self, metrics: Dict[str, Any]):
-        self._metrics = metrics
-
-    def to_dict(self) -> dict:
-        return self._metrics
 
 
 class _JobMetadata(NamedTuple):
@@ -118,9 +109,6 @@ class _JobMetadata(NamedTuple):
     # allows overriding the ETL source ID for this job (i.e. when set as a label on the K8s application)
     etl_source_id_override: Optional[str] = None
 
-    # Detailed performance metrics, in the diagnostics CLI's unit/data format.
-    metrics: Optional[_Metrics] = None
-
 
 class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     """
@@ -131,9 +119,7 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     """
 
     @abc.abstractmethod
-    def get_job_metadata(
-        self, job_id: str, user_id: str, app_id: str, *, detailed_metrics: bool = False
-    ) -> _JobMetadata:
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         raise NotImplementedError
 
     def cleanup_app(self, job_id: str, user_id: str, app_id: str) -> None:
@@ -202,9 +188,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             f"/ws/v1/cluster/apps/{application_id}",
         )
 
-    def get_job_metadata(
-        self, job_id: str, user_id: str, app_id: str, *, detailed_metrics: bool = False
-    ) -> _JobMetadata:
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         url = self.get_application_url(application_id=app_id)
         response = requests.get(url, auth=self.auth)
         if response.status_code == 404:
@@ -315,9 +299,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         self._kubernetes_api = kubernetes_api
         self._prometheus_api = prometheus_api
 
-    def get_job_metadata(
-        self, job_id: str, user_id: str, app_id: str, *, detailed_metrics: bool = False
-    ) -> _JobMetadata:
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
@@ -387,35 +369,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             start_time=start_time,
             finish_time=finish_time,
             etl_source_id_override=etl_source_id_override,
-            metrics=self._get_metrics(app_id, start_time, finish_time, job_id, user_id) if detailed_metrics else None,
         )
-
-    def _get_metrics(
-        self,
-        application_id: str,
-        start_time: Optional[dt.datetime],
-        finish_time: Optional[dt.datetime],
-        job_id: str,
-        user_id: str,
-    ) -> Optional[_Metrics]:
-        from openeogeotrellis.deploy.batch_job_metadata import get_detailed_metrics
-
-        duration = (finish_time - start_time).total_seconds() if start_time and finish_time else None
-        try:
-            metrics = get_detailed_metrics(
-                application_id=application_id,
-                job_id=job_id,
-                application_duration_s=duration,
-                prometheus=self._prometheus_api,
-            )["metrics"]
-            return _Metrics(metrics)
-        except Exception:
-            _log.exception(
-                "Failed to retrieve detailed metrics from %s",
-                self._prometheus_api.endpoint,
-                extra={"job_id": job_id, "user_id": user_id},
-            )
-            return None
 
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
@@ -546,8 +500,13 @@ class JobTracker:
         keytab: str,
         job_costs_calculator: Optional[JobCostsCalculator] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
-        elastic_job_registry: Optional[ElasticJobRegistry] = None
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        final_status_grace_period: float = 60,
     ):
+        # EJR is eventually consistent: after a job transitioned (e.g. running -> finished) it might still be reported
+        # as running for a while. Remember such jobs (job_id -> monotonic timestamp) to avoid acting on stale data.
+        self._final_status_grace_period = final_status_grace_period
+        self._recently_transitioned: Dict[str, float] = {}
         self._app_state_getter = app_state_getter
         self._job_costs_calculator: JobCostsCalculator = job_costs_calculator or NoJobCostsCalculator()
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
@@ -564,6 +523,17 @@ class JobTracker:
         self._double_job_registry = DoubleJobRegistry(
             elastic_job_registry=elastic_job_registry,
         )
+
+    def _remember_transition(self, job_id: str):
+        now = time.monotonic()
+        self._recently_transitioned = {
+            j: t for j, t in self._recently_transitioned.items() if now - t < self._final_status_grace_period
+        }
+        self._recently_transitioned[job_id] = now
+
+    def _is_recently_transitioned(self, job_id: str) -> bool:
+        t = self._recently_transitioned.get(job_id)
+        return t is not None and time.monotonic() - t < self._final_status_grace_period
 
     #: Job registry fields needed to sync a job's status
     JOB_INFO_FIELDS = [
@@ -687,13 +657,15 @@ class JobTracker:
         try:
             stats["get metadata attempt"] += 1
             job_metadata: _JobMetadata = self._app_state_getter.get_job_metadata(
-                job_id=job_id,
-                user_id=user_id,
-                app_id=application_id,
-                detailed_metrics=smart_bool((job_info.get("job_options") or {}).get("detailed-metrics", False)),
+                job_id=job_id, user_id=user_id, app_id=application_id
             )
             stats["new metadata"] += 1
         except AppNotFound:
+            if self._is_recently_transitioned(job_id):
+                # Registry data is probably stale (eventual consistency) and app was already cleaned up.
+                log.info(f"App not found: {job_id=} {application_id=}, but job recently transitioned, skipping")
+                stats["skip: app not found (recently transitioned)"] += 1
+                return
             infra_id = get_backend_config().infra_id
             if infra_id:
                 if self._is_already_final(job_id=job_id, user_id=user_id, double_job_registry=double_job_registry):
@@ -729,6 +701,8 @@ class JobTracker:
                 f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
             )
             stats["status change"] += 1
+            if job_metadata.status not in (JOB_STATUS.QUEUED, JOB_STATUS.RUNNING):
+                self._remember_transition(job_id)
             stats[f"status change {previous_status!r} -> {job_metadata.status!r}"] += 1
         else:
             stats["status same"] += 1
@@ -804,11 +778,6 @@ class JobTracker:
                     user_id=user_id,
                     costs=job_costs,
                     usage=to_jsonable(dict(total_usage)),
-                    metrics=(
-                        to_jsonable(job_metadata.metrics.to_dict())
-                        if job_metadata.metrics is not None
-                        else None
-                    ),
                     results_metadata=to_jsonable(results_metadata) if include_all_results_metadata else None,
                 )
 
@@ -915,7 +884,8 @@ class CliApp:
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
-                    job_costs_calculator=job_costs_calculator
+                    job_costs_calculator=job_costs_calculator,
+                    final_status_grace_period=args.final_status_grace_period,
                 )
                 if args.daemon:
                     # Local import: daemon mode pulls in extra (optional) dependencies
@@ -991,6 +961,13 @@ class CliApp:
             "--run-id",
             default=None,
             help='Correlation ID to track logs of a particular run. This appears as "run_id" in log entries.'
+        )
+        parser.add_argument(
+            "--final-status-grace-period",
+            type=float,
+            default=60,
+            help="Seconds to remember jobs that transitioned to a final status, to cope with eventually consistent"
+            " job registry data (e.g. don't flag such a job as error when its app is already gone).",
         )
         daemon_group = parser.add_argument_group(
             "daemon mode",
