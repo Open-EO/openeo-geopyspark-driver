@@ -2214,7 +2214,12 @@ class GeopysparkDataCube(DriverDataCube):
         colormap = format_opts.colormap
         description = format_opts.description
         filename_prefix = get_jvm().scala.Option.apply(
-            format_opts.filename_prefix or map_optional(lambda h: h.node_id, save_result_hints)
+            format_opts.filename_prefix
+            or (
+                map_optional(lambda h: h.node_id, save_result_hints)
+                if format_opts.prefix_filename_with_node_id
+                else "openEO"
+            )
         )
         separate_asset_per_band = format_opts.separate_asset_per_band
         bands_metadata = format_opts.bands_metadata  # band_name -> (tag -> value)

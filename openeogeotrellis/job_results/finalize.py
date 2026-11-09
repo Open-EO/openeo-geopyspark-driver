@@ -101,6 +101,7 @@ def finalize_job(
 
         for result in results:
             result.options["batch_mode"] = True
+            result.options["prefix_filename_with_node_id"] = settings.stac11_mode
             hooks.prepare_result_options(result)
             result.options["file_metadata"] = {**global_metadata_attributes, **result.options.get("file_metadata", {})}
             if result.options.get("sample_by_feature"):

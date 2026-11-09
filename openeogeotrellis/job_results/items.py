@@ -57,6 +57,7 @@ class SaveResultFormatOptions:
     bigtiff: bool = True
     add_bands_statistics: bool = False
     to_zip: bool = True
+    prefix_filename_with_node_id: bool = False
 
     @staticmethod
     def parse(format: str, format_options: Optional[dict], *, has_temporal_dimension: bool) -> "SaveResultFormatOptions":
@@ -115,6 +116,7 @@ class SaveResultFormatOptions:
             bigtiff=format_options.get("bigtiff", True),
             add_bands_statistics=format_options.get("add_bands_statistics", True),
             to_zip=format_options.get("to_zip", True),
+            prefix_filename_with_node_id=format_options.get("prefix_filename_with_node_id", False),
         )
 
         if options.format == "GTIFF" and not options.stitch:
