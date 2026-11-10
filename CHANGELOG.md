@@ -44,6 +44,7 @@ without compromising stable operations.
 - Batch jobs with `detailed-metrics` enabled: log the detailed application metrics at the end of the job instead of storing them in `job_metadata.json`.
 - Tests: replace live OSCARS queries with a local catalog server for synthetic batch results and collection-loading checks, so these tests work after the OSCARS service shutdown.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
+- `save_result`: prefix asset file names with node ID instead of "openEO" ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 
 
 ## 0.73.0
