@@ -29,7 +29,7 @@ def elasticsearch_logs(
     create_time: Optional[dt.datetime] = None,
     offset: Optional[str] = None,
     level: Optional[str] = None,
-    audience: Optional[str] = "user",
+    audience: Optional[str] = "all",
 ) -> Iterable[dict]:
     """Retrieve a job's logs from Elasticsearch.
 
@@ -52,8 +52,8 @@ def elasticsearch_logs(
         Return only logs with this log level or higher.
 
     :param audience:
-        Return only logs with this `audience` ("user" by default, so developer-only logs are hidden);
-        use None or "all" to disable this filtering.
+        Return only logs with this `audience` ("all" by default, which disables filtering);
+        use "user" to hide developer-only logs.
 
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON

@@ -41,7 +41,7 @@ without compromising stable operations.
 - Label Python UDF execution-time and RSS-delta Prometheus gauges with the process-graph `node_id` for raster callbacks; direct calls without a node ID use an empty label.
 - Detailed metrics: rename `executor_utilization` to `executor_cpu_utilization` and cap the percentage at 100.
 - `load_stac`: read `data_type` and `nodata` from assets using the pre-STAC 1.1 metadata layout ([Open-EO/openeo-geotrellis-extensions#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
-- Job tracker: collect detailed application metrics for Kubernetes jobs with `detailed-metrics` enabled and persist them alongside usage in the job registry.
+- Batch jobs with `detailed-metrics` enabled: log the detailed application metrics at the end of the job instead of storing them in `job_metadata.json`.
 - Tests: replace live OSCARS queries with a local catalog server for synthetic batch results and collection-loading checks, so these tests work after the OSCARS service shutdown.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))

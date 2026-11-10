@@ -2743,7 +2743,7 @@ class GpsBatchJobs(backend.BatchJobs):
             create_time=job_info.created,
             offset=offset,
             level=level,
-            audience=audience or AUDIENCE_USER,
+            audience=audience or AUDIENCE_ALL,
         )
 
     def cancel_job(self, job_id: str, user_id: str):
