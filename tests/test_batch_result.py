@@ -3166,7 +3166,13 @@ def test_unified_asset_keys_tile_grid(tmp_path):
         assert set(item["assets"].keys()) == {"openEO"}
 
 
-def test_unified_asset_keys_tile_grid_spatial(tmp_path):
+@pytest.mark.parametrize("filename_prefix", [None, "some_prefix"])
+def test_unified_asset_keys_tile_grid_spatial(tmp_path, filename_prefix):
+    format_options = {"tile_grid": "wgs84-1degree"}
+
+    if filename_prefix:
+        format_options["filename_prefix"] = filename_prefix
+
     process_graph = {
         "load2": {
             "process_id": "load_collection",
@@ -3207,7 +3213,7 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
             "arguments": {
                 "data": {"from_node": "reducedimension1"},
                 "format": "GTIFF",
-                "options": {"tile_grid": "wgs84-1degree"},
+                "options": format_options,
             },
             "result": True,
         },
@@ -3230,11 +3236,18 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
         dependencies=[],
     )
 
-    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
-    assert tiff_files == {
-        "openEO-N50E000.tiff",
-        "openEO-N50E001.tiff",
-    }
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
+    assert tiff_files == (
+        {
+            "some_prefix_N50E000.tif",
+            "some_prefix_N50E001.tif",
+        }
+        if filename_prefix
+        else {
+            "openEO_N50E000.tif",
+            "openEO_N50E001.tif",
+        }
+    )
 
     with open(metadata_file) as f:
         job_metadata = json.load(f)
@@ -3563,10 +3576,10 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
         dependencies=[],
     )
 
-    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "openEO-N50E000.tiff",
-        "openEO-N50E001.tiff",
+        "openEO_N50E000.tif",
+        "openEO_N50E001.tif",
     }
 
     with open(metadata_file) as f:
