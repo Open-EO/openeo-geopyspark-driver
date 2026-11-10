@@ -234,11 +234,16 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 
 
 @pytest.mark.parametrize("prefix", [None, "prefixTest"])
-@pytest.mark.parametrize(["stac_version", "asset_name"], [
-    ("1.0", ""),
-    ("1.1", "openEO"),
-])
-def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path, stac_version, asset_name):
+@pytest.mark.parametrize(
+    ["stac_version", "asset_name", "default_prefix"],
+    [
+        ("1.0", "", "openEO"),
+        ("1.1", "openEO", "save"),
+    ],
+)
+def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(
+    prefix, tmp_path, stac_version, asset_name, default_prefix
+):
     job_spec = {
         "job_options": {"stac-version": stac_version},
         "process_graph":{
@@ -305,8 +310,8 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         assert f"{prefix}_22.nc" in asset_filenames
         assert f"{prefix}_myTextId.nc" in asset_filenames
     else:
-        assert "save_22.nc" in asset_filenames
-        assert "save_myTextId.nc" in asset_filenames
+        assert f"{default_prefix}_22.nc" in asset_filenames
+        assert f"{default_prefix}_myTextId.nc" in asset_filenames
 
     for _, theAsset in assets:
         bands = [Band(**b) for b in theAsset["bands"]]
@@ -322,13 +327,13 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         (
             "loadcollection_sentinel2",
             {
-                "save1_2021-06-05Z_TileRow.tif",
-                "save1_2021-06-05Z_TileCol.tif",
-                "save1_2021-06-15Z_TileRow.tif",
-                "save1_2021-06-15Z_TileCol.tif",
+                "{prefix}_2021-06-05Z_TileRow.tif",
+                "{prefix}_2021-06-05Z_TileCol.tif",
+                "{prefix}_2021-06-15Z_TileRow.tif",
+                "{prefix}_2021-06-15Z_TileCol.tif",
             },
         ),
-        ("reducedimension_temporal", {"save1_TileRow.tif", "save1_TileCol.tif"}),
+        ("reducedimension_temporal", {"{prefix}_TileRow.tif", "{prefix}_TileCol.tif"}),
     ],
 )
 @pytest.mark.parametrize("stac_version", ["1.0","1.1",])
@@ -402,7 +407,8 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_v
     assets = [asset for item in metadata["items"] for asset in item["assets"].values()] if stac_version == "1.1" else [asset for asset in metadata["assets"].values()]
     # get file names as set:
     asset_filenames = {Path(asset["href"]).name for asset in assets}
-    assert asset_filenames == expected_filenames
+    prefix = "save1" if stac_version == "1.1" else "openEO"
+    assert asset_filenames == {filename.format(prefix=prefix) for filename in expected_filenames}
 
     for asset in assets:
         assert len(asset["bands"]) == 1
@@ -450,8 +456,8 @@ def test_separate_asset_per_band_throw(tmp_path):
         )
 
 
-@pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
-def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, stac_version):
+@pytest.mark.parametrize(["stac_version", "prefix"], [("1.0", "openEO"), ("1.1", "save")])
+def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, stac_version, prefix):
     """
     sample_by_feature with vector cube loaded through load_url
     https://github.com/Open-EO/openeo-geopyspark-driver/issues/700
@@ -527,10 +533,10 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, st
         asset_minima[Path(asset_metadata["href"]).name] = ds["Longitude"].min().item()
 
     assert asset_minima == {
-        "save_0.nc": 1.0,
-        "save_1.nc": 4.0,
-        "save_2.nc": 2.0,
-        "save_3.nc": 5.0,
+        f"{prefix}_0.nc": 1.0,
+        f"{prefix}_1.nc": 4.0,
+        f"{prefix}_2.nc": 2.0,
+        f"{prefix}_3.nc": 5.0,
     }
 
 
@@ -1019,20 +1025,22 @@ def test_multiple_image_collection_results(tmp_path):
 
     output_files = os.listdir(tmp_path)
 
-    assert "saveresult1_2021-01-05Z.tif" in output_files
-    assert "saveresult2.nc" in output_files
+    assert "openEO_2021-01-05Z.tif" in output_files
+    assert "openEO.nc" in output_files
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
 @pytest.mark.parametrize("attach_gdalinfo_assets", [False, True])
 @pytest.mark.parametrize(
-    ["stac_version", "asset_keys", "bands_name"],
+    ["stac_version", "asset_keys", "bands_name", "prefix"],
     [
-        ("1.0", ["saveresult1_2021-01-15Z.tif", "saveresult1_2021-01-05Z.tif"], "raster:bands"),
-        ("1.1", ["openEO", "openEO"], "bands"),
+        ("1.0", ["openEO_2021-01-15Z.tif", "openEO_2021-01-05Z.tif"], "raster:bands", "openEO"),
+        ("1.1", ["openEO", "openEO"], "bands", "saveresult1"),
     ],
 )
-def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, stac_version, asset_keys, bands_name):
+def test_export_workspace(
+    tmp_path, remove_original, attach_gdalinfo_assets, stac_version, asset_keys, bands_name, prefix
+):
     workspace_id = "tmp"
     merge = _random_merge()
     if stac_version == "1.1":
@@ -1041,7 +1049,6 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
     else:
         add_bands_statistics = False
         detailed_asset_metadata = True
-
 
     process_graph = {
         "loadcollection1": {
@@ -1105,32 +1112,32 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         assert len(job_dir_files) > 0
 
         if remove_original:
-            assert "saveresult1_2021-01-05Z.tif" not in job_dir_files
-            assert "saveresult1_2021-01-15Z.tif" not in job_dir_files
+            assert f"{prefix}_2021-01-05Z.tif" not in job_dir_files
+            assert f"{prefix}_2021-01-15Z.tif" not in job_dir_files
         else:
-            assert "saveresult1_2021-01-05Z.tif" in job_dir_files
-            assert "saveresult1_2021-01-15Z.tif" in job_dir_files
+            assert f"{prefix}_2021-01-05Z.tif" in job_dir_files
+            assert f"{prefix}_2021-01-15Z.tif" in job_dir_files
         expected_len = 5
         expected_paths = {
             Path("collection.json"),
-            Path("saveresult1_2021-01-05Z.tif"),
-            Path("saveresult1_2021-01-15Z.tif"),
+            Path(f"{prefix}_2021-01-05Z.tif"),
+            Path(f"{prefix}_2021-01-15Z.tif"),
         }
         if stac_version == "1.0":
             expected_paths |= {
-                Path("saveresult1_2021-01-05Z.tif.json"),
-                Path("saveresult1_2021-01-15Z.tif.json"),
+                Path(f"{prefix}_2021-01-05Z.tif.json"),
+                Path(f"{prefix}_2021-01-15Z.tif.json"),
             }
         if attach_gdalinfo_assets:
             expected_paths |= {
-                Path(f"saveresult1_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
-                Path(f"saveresult1_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"{prefix}_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"{prefix}_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
             }
             expected_len+=2
             if stac_version == "1.0":
                 expected_paths |= {
-                    Path(f"saveresult1_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
-                    Path(f"saveresult1_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
+                    Path(f"{prefix}_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
+                    Path(f"{prefix}_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
                 }
                 expected_len += 2
         assert len(_paths_relative_to(workspace_dir)) == expected_len
@@ -1203,7 +1210,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         geotiff_asset = item.get_assets()[asset_keys[1]]
         assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href.endswith("/saveresult1_2021-01-05Z.tif")
+        assert geotiff_asset.href.endswith(f"/{prefix}_2021-01-05Z.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         if stac_version == "1.0":
             assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
@@ -1220,7 +1227,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
                     "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
                 }
             ]
-        geotiff_asset_copy_path = tmp_path / "saveresult1_2021-01-05Z.tif.copy"
+        geotiff_asset_copy_path = tmp_path / f"{prefix}_2021-01-05Z.tif.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
@@ -1236,13 +1243,13 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         assert len(item_assets0) == (2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(item_assets0) == 1)
         item_assets1 = assets[1]
         assert len(item_assets1) == (2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(item_assets0) == 1)
-        assert item_assets0[asset_keys[0]]["href"] == str(tmp_path / "saveresult1_2021-01-15Z.tif")
-        assert item_assets1[asset_keys[1]]["href"] == str(tmp_path / "saveresult1_2021-01-05Z.tif")
+        assert item_assets0[asset_keys[0]]["href"] == str(tmp_path / f"{prefix}_2021-01-15Z.tif")
+        assert item_assets1[asset_keys[1]]["href"] == str(tmp_path / f"{prefix}_2021-01-05Z.tif")
         assert not remove_original or (
-            item_assets0[asset_keys[0]]["public_href"] == f"file:{workspace_dir / 'saveresult1_2021-01-15Z.tif'}"
+            item_assets0[asset_keys[0]]["public_href"] == f"file:{workspace_dir}/{prefix}_2021-01-15Z.tif"
         )
         assert not remove_original or (
-            item_assets1[asset_keys[1]]["public_href"] == f"file:{workspace_dir / 'saveresult1_2021-01-05Z.tif'}"
+            item_assets1[asset_keys[1]]["public_href"] == f"file:{workspace_dir}/{prefix}_2021-01-05Z.tif"
         )
 
     finally:
@@ -1250,13 +1257,13 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
 
 @pytest.mark.parametrize(
-    ["stac_version", "asset_key", "bands_name"],
+    ["stac_version", "asset_key", "bands_name", "prefix"],
     [
-        ("1.0", ["saveresult1_2021-01-05Z_Latitude.tif", "saveresult1_2021-01-05Z_Longitude.tif"], "raster:bands"),
-        ("1.1", ["Latitude", "Longitude"], "bands"),
+        ("1.0", ["openEO_2021-01-05Z_Latitude.tif", "openEO_2021-01-05Z_Longitude.tif"], "raster:bands", "openEO"),
+        ("1.1", ["Latitude", "Longitude"], "bands", "saveresult1"),
     ],
 )
-def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key, bands_name):
+def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key, bands_name, prefix):
     workspace_id = "tmp"
     merge = _random_merge()
 
@@ -1266,7 +1273,6 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key,
     else:
         add_bands_statistics = False
         detailed_asset_metadata = True
-
 
     process_graph = {
         "loadcollection1": {
@@ -1325,13 +1331,13 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key,
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "saveresult1_2021-01-05Z_Longitude.tif" in job_dir_files
-        assert "saveresult1_2021-01-05Z_Latitude.tif" in job_dir_files
+        assert f"{prefix}_2021-01-05Z_Longitude.tif" in job_dir_files
+        assert f"{prefix}_2021-01-05Z_Latitude.tif" in job_dir_files
 
         assert {
             Path("collection.json"),
-            Path("saveresult1_2021-01-05Z_Longitude.tif"),
-            Path("saveresult1_2021-01-05Z_Latitude.tif"),
+            Path(f"{prefix}_2021-01-05Z_Longitude.tif"),
+            Path(f"{prefix}_2021-01-05Z_Latitude.tif"),
         }.issubset(_paths_relative_to(workspace_dir))
 
         assert len(_paths_relative_to(workspace_dir)) == 4 if stac_version == "1.1" else len(_paths_relative_to(workspace_dir)) ==  5, "STAC item document not found"
@@ -1364,7 +1370,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key,
         assert asset_key[1] in assets[1]
         geotiff_asset = assets[0][asset_key[0]]
         assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href.endswith("/saveresult1_2021-01-05Z_Latitude.tif")
+        assert geotiff_asset.href.endswith(f"/{prefix}_2021-01-05Z_Latitude.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
         assert bands_name in geotiff_asset.extra_fields
         assert geotiff_asset.extra_fields[bands_name] == [
@@ -1380,7 +1386,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key,
             }
         ]
 
-        geotiff_asset_copy_path = tmp_path / "saveresult1_2021-01-05Z_Latitude.copy"
+        geotiff_asset_copy_path = tmp_path / f"{prefix}_2021-01-05Z_Latitude.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
@@ -1577,13 +1583,13 @@ def test_filepath_per_band(
 
 
 @pytest.mark.parametrize(
-    ["stac_version", "bands_name"],
+    ["stac_version", "bands_name", "prefix"],
     [
-        ("1.0", "raster:bands"),
-        ("1.1", "bands"),
+        ("1.0", "raster:bands", "openEO"),
+        ("1.1", "bands", "saveresult1"),
     ],
 )
-def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_version, bands_name):
+def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_version, bands_name, prefix):
     object_workspace_id = "s3_workspace"
 
     enable_merge = True
@@ -1657,13 +1663,13 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
     run_merge_job(
         job_dir=tmp_path / "first",
         temporal_extent=["2021-01-05", "2021-01-06"],
-        expected_asset_filename="saveresult1_2021-01-05Z.tif",
+        expected_asset_filename=f"{prefix}_2021-01-05Z.tif",
     )
 
     run_merge_job(
         job_dir=tmp_path / "second",
         temporal_extent=["2021-01-15", "2021-01-16"],
-        expected_asset_filename="saveresult1_2021-01-15Z.tif",
+        expected_asset_filename=f"{prefix}_2021-01-15Z.tif",
     )
 
     object_workspace_keys = [obj.key for obj in mock_s3_bucket.objects.all()]
@@ -1672,8 +1678,8 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
     assert object_workspace_keys == ListSubSet(
         [
             f"{merge}",  # the Collection itself
-            f"{merge}_items/saveresult1_2021-01-05Z.tif",
-            f"{merge}_items/saveresult1_2021-01-15Z.tif",
+            f"{merge}_items/{prefix}_2021-01-05Z.tif",
+            f"{merge}_items/{prefix}_2021-01-15Z.tif",
         ]
     )
 
@@ -2415,13 +2421,15 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
 
 
 @pytest.mark.parametrize(
-    ["stac_version", "asset_key", "bands_key"],
+    ["stac_version", "asset_key", "bands_key", "netcdf_prefix", "geotiff_prefix"],
     [
-        ("1.0", "saveresult2.tif", "raster:bands"),
-        ("1.1", "openEO", "bands"),
+        ("1.0", "openEO.tif", "raster:bands", "openEO", "openEO"),
+        ("1.1", "openEO", "bands", "saveresult1", "saveresult2"),
     ],
 )
-def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, asset_key, bands_key):
+def test_multiple_save_result_single_export_workspace(
+    tmp_path, stac_version, asset_key, bands_key, netcdf_prefix, geotiff_prefix
+):
     workspace_id = "tmp"
     merge = _random_merge()
 
@@ -2496,12 +2504,12 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "saveresult1.nc" in job_dir_files
-        assert "saveresult2.tif" in job_dir_files
+        assert f"{netcdf_prefix}.nc" in job_dir_files
+        assert f"{geotiff_prefix}.tif" in job_dir_files
 
         assert {
             Path("collection.json"),
-            Path("saveresult2.tif"),
+            Path(f"{geotiff_prefix}.tif"),
         }.issubset(_paths_relative_to(workspace_dir))
         assert len(_paths_relative_to(workspace_dir)) == 3, "STAC item document not found"
 
@@ -2523,7 +2531,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
             }
         ]
 
-        geotiff_asset_copy_path = tmp_path / "saveresult2.tif.copy"
+        geotiff_asset_copy_path = tmp_path / f"{geotiff_prefix}.tif.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
@@ -2644,13 +2652,13 @@ def test_custom_geotiff_tags(tmp_path):
 
 @pytest.mark.parametrize("remove_original", [False, True])
 @pytest.mark.parametrize(
-    ["stac_version", "asset_key"],
+    ["stac_version", "asset_key", "prefix"],
     [
-        ("1.1", "openEO"),
-        ("1.0", "saveresult1_2021-01-05Z.tif"),
+        ("1.1", "openEO", "saveresult1"),
+        ("1.0", "openEO_2021-01-05Z.tif", "openEO"),
     ],
 )
-def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, asset_key):
+def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, asset_key, prefix):
     workspace_id = "tmp"
 
     merge1 = _random_merge()
@@ -2722,10 +2730,10 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         assert len(assets)==1
         asset = assets[0][asset_key]
 
-        assert asset["href"] == str(tmp_path / "saveresult1_2021-01-05Z.tif")
+        assert asset["href"] == str(tmp_path / f"{prefix}_2021-01-05Z.tif")
 
-        first_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/saveresult1_2021-01-05Z.tif"
-        second_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/saveresult1_2021-01-05Z.tif"
+        first_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/{prefix}_2021-01-05Z.tif"
+        second_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/{prefix}_2021-01-05Z.tif"
 
         if remove_original:
             assert asset["public_href"] == first_workspace_uri
@@ -2830,13 +2838,13 @@ def _paths_relative_to(base: Path) -> Set[Path]:
 
 
 @pytest.mark.parametrize(
-    ["stac_version", "asset_key"],
+    ["stac_version", "asset_key", "prefix"],
     [
-        ("1.0", "saveresult1.tif"),
-        ("1.1", "openEO"),
+        ("1.0", "openEO.tif", "openEO"),
+        ("1.1", "openEO", "saveresult1"),
     ],
 )
-def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_key):
+def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_key, prefix):
     job_dir = tmp_path
 
     process_graph = {
@@ -2929,7 +2937,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_key):
         }
     ]
     assert "href" in asset
-    assert asset["href"] == str(tmp_path) + "/saveresult1.tif"
+    assert asset["href"] == str(tmp_path) + f"/{prefix}.tif"
     assert "type" in asset
     assert asset["type"] == "image/tiff; application=geotiff; profile=cloud-optimize"
 
@@ -3022,7 +3030,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
             dependencies=[],
         )
 
-    output_tiff = job_dir / "saveresult1_2021-01-05Z.tif"
+    output_tiff = job_dir / "openEO_2021-01-05Z.tif"
 
     with rasterio.open(output_tiff) as dataset:
         assert dataset.crs.to_epsg() == 4326
@@ -3681,14 +3689,14 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     assets = metadata["assets"]
     assert len(assets) == 2
 
-    assert assets["save_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
-    assert assets["save_0.nc"]["geometry"] == {
+    assert assets["openEO_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
+    assert assets["openEO_0.nc"]["geometry"] == {
         "type": "Polygon",
         "coordinates": [[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]]],
     }
 
-    assert assets["save_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
-    assert assets["save_1.nc"]["geometry"] == {
+    assert assets["openEO_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
+    assert assets["openEO_1.nc"]["geometry"] == {
         "type": "Polygon",
         "coordinates": [[[5.0, 4.0], [5.0, 5.0], [4.0, 5.0], [4.0, 4.0], [5.0, 4.0]]],
     }
@@ -4166,7 +4174,7 @@ def test_predict_onnx_double(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
 
-    bands = metadata["assets"]["saveresult1_2023-06-05Z.tif"]["raster:bands"]
+    bands = metadata["assets"]["openEO_2023-06-05Z.tif"]["raster:bands"]
     assert len(bands) == 1
     assert bands[0]["statistics"]["minimum"] == 10
     assert bands[0]["statistics"]["maximum"] == 10
@@ -4227,7 +4235,7 @@ def test_predict_onnx_reduce_sum(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
 
-    bands = metadata["assets"]["saveresult1_2023-06-05Z.tif"]["raster:bands"]
+    bands = metadata["assets"]["openEO_2023-06-05Z.tif"]["raster:bands"]
     assert len(bands) == 1
     assert bands[0]["statistics"]["minimum"] == 15
     assert bands[0]["statistics"]["maximum"] == 15
@@ -4513,9 +4521,9 @@ class TestLoadStac:
             job_dir=job_dir,
         )
         assert sorted(p.name for p in job_dir.glob("*.tif")) == [
-            "saveresult1_2024-05-01Z.tif",
-            "saveresult1_2024-06-02Z.tif",
-            "saveresult1_2024-07-03Z.tif",
+            "openEO_2024-05-01Z.tif",
+            "openEO_2024-06-02Z.tif",
+            "openEO_2024-07-03Z.tif",
         ]
 
     @pytest.mark.parametrize(

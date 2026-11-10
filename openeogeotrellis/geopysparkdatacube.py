@@ -2614,10 +2614,7 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = (
-                    format_options.get(
-                        "filename_prefix", map_optional(lambda h: h.node_id, save_result_hints) or "openEO"
-                    )
-                    + ".nc"
+                    (filename_prefix.get() if filename_prefix.isDefined() else "openEO") + ".nc"
                     if originalName.name == "out"
                     else originalName.name
                 )
