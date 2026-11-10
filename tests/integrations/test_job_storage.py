@@ -36,6 +36,7 @@ def test_s3_round_trip(mock_s3_bucket, tmp_path):
     local = tmp_path / "job_specification.json"
     storage.download_file("data/jobs/j-123/job_specification.json", local)
     assert local.read_bytes() == b'{"process_graph": {}}'
+    assert storage.download_bytes("data/jobs/j-123/job_specification.json") == b'{"process_graph": {}}'
 
 
 class TestAzureBlobJobStorage:
@@ -63,6 +64,13 @@ class TestAzureBlobJobStorage:
         AzureBlobJobStorage(account_name="acc", container="cont").download_file("data/job_specification.json", local)
         client.download_blob.assert_called_once_with("data/job_specification.json")
         assert local.read_bytes() == b"{}"
+
+    def test_download_bytes(self, container_client):
+        _, client = container_client
+        client.download_blob.return_value.readall.return_value = b"{}"
+        data = AzureBlobJobStorage(account_name="acc", container="cont").download_bytes("data/job_metadata.json")
+        client.download_blob.assert_called_once_with("data/job_metadata.json")
+        assert data == b"{}"
 
 
 def test_azure_token_credential_ignores_client_secret_in_env(monkeypatch):

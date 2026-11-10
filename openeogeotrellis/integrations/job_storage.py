@@ -33,6 +33,10 @@ class JobStorage(abc.ABC):
     def download_file(self, key: str, local_path: Union[str, os.PathLike]) -> None:
         pass
 
+    @abc.abstractmethod
+    def download_bytes(self, key: str) -> bytes:
+        pass
+
 
 class S3JobStorage(JobStorage):
     def __init__(self, bucket: str):
@@ -47,6 +51,12 @@ class S3JobStorage(JobStorage):
         from openeogeotrellis.integrations.s3_client import S3ClientBuilder
 
         S3ClientBuilder.from_bucket(self.bucket).download_file(self.bucket, key, str(local_path))
+
+    def download_bytes(self, key: str) -> bytes:
+        from openeogeotrellis.integrations.s3_client import S3ClientBuilder
+
+        response = S3ClientBuilder.from_bucket(self.bucket).get_object(Bucket=self.bucket, Key=key)
+        return response["Body"].read()
 
 
 class AzureBlobJobStorage(JobStorage):
@@ -69,6 +79,10 @@ class AzureBlobJobStorage(JobStorage):
         Path(local_path).parent.mkdir(parents=True, exist_ok=True)
         with self._container_client() as container_client, open(local_path, "wb") as f:
             container_client.download_blob(key).readinto(f)
+
+    def download_bytes(self, key: str) -> bytes:
+        with self._container_client() as container_client:
+            return container_client.download_blob(key).readall()
 
 
 def azure_token_credential():

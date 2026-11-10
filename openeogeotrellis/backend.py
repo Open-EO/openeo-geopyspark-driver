@@ -124,7 +124,7 @@ from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrl
 from openeogeotrellis.integrations.s3proxy.exceptions import ProxyException, S3ProxyUnsupportedBucketType
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
 from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri
-from openeogeotrellis.integrations.job_storage import get_job_storage
+from openeogeotrellis.integrations.job_storage import get_job_storage, JobStorage
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -174,7 +174,6 @@ from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     dict_merge_recursive,
     get_jvm,
-    get_s3_file_contents,
     map_optional,
     mdc_include,
     mdc_remove,
@@ -2647,7 +2646,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         def try_get_results_metadata_from_object_storage(path: Union[Path, str], bucket: Optional[str]) -> dict:
             try:
-                contents = get_s3_file_contents(path, bucket)
+                contents = get_job_storage(bucket).download_bytes(str(path).strip("/"))
                 return json.loads(contents)
             except Exception:
                 logger.warning(
