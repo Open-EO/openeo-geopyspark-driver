@@ -163,18 +163,27 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     """
     Object storage bucket for batch job files.
-    Despite the name, this can also be an Azure Blob Storage container name:
-    when `azure_storage_account_name` is set, the job specification is exchanged through that container
-    (see `openeogeotrellis.integrations.job_storage`).
     """
     # TODO: generically named config for a single bucket: not future/feature-proof (support for multiple buckets)
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
     """
-    Azure storage account: when set, `s3_bucket_name` is interpreted as an Azure Blob Storage container
-    in this account (currently only for the job specification exchange).
+    Object storage type to exchange batch job files (currently: the job specification)
+    between web app driver and batch job driver (see `openeogeotrellis.integrations.job_storage`):
+
+    - "unspecified" (default, deprecated): legacy fallback to S3 bucket `s3_bucket_name`.
+      Will become invalid in the future: set an explicit type instead.
+    - "aws_s3": S3 bucket `job_aws_s3_bucket_name`.
+    - "azure_blob": Azure Blob Storage container `job_azure_storage_container_name`
+      in storage account `job_azure_storage_account_name`.
     """
-    azure_storage_account_name: Optional[str] = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME") or None
+    job_storage_type: str = attrs.field(
+        default="unspecified",
+        validator=attrs.validators.in_(["unspecified", "aws_s3", "azure_blob"]),
+    )
+    job_aws_s3_bucket_name: Optional[str] = None
+    job_azure_storage_account_name: Optional[str] = None
+    job_azure_storage_container_name: Optional[str] = None
 
     """
     S3 bucket to temporarily store ML models (e.g. random forest) in, so they can be loaded by executors

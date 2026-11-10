@@ -1258,26 +1258,6 @@ class TestK8sSetSecretOwnerReference:
         assert "Failed to set owner reference on secret cfg-a-1234" in caplog.text
 
 
-@pytest.mark.parametrize(
-    ["kwargs", "expected"],
-    [
-        ({}, []),
-        (
-            {"azure_storage_account_name": "acc"},
-            [{"name": "AZURE_STORAGE_ACCOUNT_NAME", "value": "acc"}],
-        ),
-    ],
-)
-def test_k8s_sparkapplication_dict_job_storage_envars(backend_config_path, kwargs, expected):
-    app_dict = k8s_render_manifest_template("sparkapplication.yaml.j2", propagatable_web_app_driver_envars={}, **kwargs)
-    storage_env = [
-        e
-        for e in app_dict["spec"]["driver"]["env"]
-        if e["name"] == "AZURE_STORAGE_ACCOUNT_NAME"
-    ]
-    assert storage_env == expected
-
-
 def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_config_path):
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",

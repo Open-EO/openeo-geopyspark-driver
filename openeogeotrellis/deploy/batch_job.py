@@ -154,8 +154,7 @@ def main(argv: List[str]) -> None:
         if not get_backend_config().fuse_mount_batchjob_s3_bucket:
             from openeogeotrellis.integrations.job_storage import get_job_storage
 
-            bucket = os.environ.get("SWIFT_BUCKET")
-            get_job_storage(bucket).download_file(job_specification_file.strip("/"), job_specification_file)
+            get_job_storage(job_dict=None).download_file(job_specification_file.strip("/"), job_specification_file)
 
     job_specification = _parse(job_specification_file)
     load_custom_processes()
