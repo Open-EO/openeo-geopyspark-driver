@@ -218,6 +218,7 @@ spark-submit \
  --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.executorEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
+ --conf spark.executorEnv.LD_PRELOAD="/usr/lib64/libjemalloc.so.2"
  --conf spark.yarn.appMasterEnv.OPENEO_BACKEND_CONFIG=${openeo_backend_config} \
  --conf spark.executorEnv.OPENEO_BACKEND_CONFIG=${openeo_backend_config} \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.dynamicAllocation.enabled=true \

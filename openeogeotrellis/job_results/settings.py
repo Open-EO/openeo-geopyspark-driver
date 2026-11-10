@@ -62,6 +62,10 @@ class JobResultsHooks(Protocol):
         """Return the job tracker's usage/billing metadata: ``{usage, links, auxiliary_links}``."""
         ...
 
+    def detailed_metrics(self) -> Optional[dict]:
+        """Return detailed application metrics to log at the end of the job, or ``None`` if not enabled/available."""
+        ...
+
     def prepare_result_options(self, result: SaveResult) -> None:
         """Fill in engine-specific ``result.options`` (s3proxy, s3 client, s3 bucket) before writing assets."""
         ...
