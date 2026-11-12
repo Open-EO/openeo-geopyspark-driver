@@ -1364,8 +1364,8 @@ class TestK8sJobTracker:
         kube_app = k8s_mock.submit(app_id=app_id)
         kube_app.set_submitted()
         elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
+        results_metadata_key = "path/to/results_metadata.json"
         if results_metadata_uri_present:
-            results_metadata_key = "path/to/results_metadata.json"
             results_metadata_uri = f"s3://{mock_s3_bucket.name}/{results_metadata_key}"
             # avoid WARNING log about not being able to retrieve results metadata from object storage
             mock_s3_bucket.put_object(Key=results_metadata_key, Body="{}")
@@ -1400,16 +1400,22 @@ class TestK8sJobTracker:
         # Set COMPLETED IN Kubernetes
         time_machine.coordinates.shift(70)
         kube_app.set_completed()
-        json_write(
-            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
-            data={
-                "foo": "bar",
-                "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                          "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
-                          },
-                "b0rked": [24, ["a", {"b": [float('nan'), None]}], {"c": [float('inf'), 1.23]}],
-            },
-        )
+        metadata_path = job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id)
+
+        new_result_metadata = {
+            "foo": "bar",
+            "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                      "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                      },
+            "b0rked": [24, ["a", {"b": [float('nan'), None]}], {"c": [float('inf'), 1.23]}],
+        }
+        if results_metadata_uri_present:
+            mock_s3_bucket.put_object(Key=results_metadata_key, Body=json.dumps(new_result_metadata))
+        else:
+            json_write(
+                path=metadata_path,
+                data=new_result_metadata
+            )
         job_tracker.update_statuses()
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {

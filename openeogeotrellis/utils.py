@@ -292,19 +292,6 @@ def s3_client():
     return s3_client
 
 
-def get_s3_file_contents(filename: Union[os.PathLike, str], bucket: Optional[str] = None) -> str:
-    """
-    Get contents of a text file in an S3 bucket; the bucket defaults to ConfigParams().s3_bucket_name.
-    """
-    # TODO: move this to openeodriver.integrations.s3?
-    _bucket = bucket or get_backend_config().s3_bucket_name
-    s3_instance = S3ClientBuilder.from_bucket(_bucket)
-    s3_file_object = s3_instance.get_object(
-        Bucket=_bucket,
-        Key=str(filename).strip("/"),
-    )
-    body = s3_file_object["Body"]
-    return body.read().decode("utf8")
 
 
 def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
