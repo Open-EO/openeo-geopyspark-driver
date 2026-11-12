@@ -191,6 +191,7 @@ class TestBuildMetadata:
             id="FOOBAR",
             stac_url="https://stac.test/c/foobar1",
             bands=[BandMetadata(name="blue", description="Not red")],
+            management_info={"manager": "alice"},
             enrichment_mode=ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME,
         )
         assert metadata == {
@@ -206,7 +207,7 @@ class TestBuildMetadata:
                     "url": "https://stac.test/c/foobar1",
                     "enrich": False,
                 },
-                "management_info": {"enrichment_mode": "legacy_at_build_time"},
+                "management_info": {"manager": "alice", "enrichment_mode": "legacy_at_build_time"},
             },
             "bands": [{"name": "blue", "description": "Not red"}],
             "cube:dimensions": {

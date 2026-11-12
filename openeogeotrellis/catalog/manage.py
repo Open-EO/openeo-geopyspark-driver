@@ -420,6 +420,7 @@ def build_stac_collection_metadata(
     debug_enrichment: bool = False,
     stac_version: str = "1.0.0",
     stac_extensions: Union[None, List[str], Callable[[List[str]], List[str]]] = None,
+    management_info: dict | None = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -488,7 +489,8 @@ def build_stac_collection_metadata(
     vito = {
         "data_source": data_source,
         "management_info": {
-            "enrichment_mode": enrichment_mode,
+            **{"enrichment_mode": enrichment_mode},
+            **(management_info or {}),
         },
     }
     if properties:
