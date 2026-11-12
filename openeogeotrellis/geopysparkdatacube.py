@@ -2253,6 +2253,20 @@ class GeopysparkDataCube(DriverDataCube):
                 nodata=asset.nodata(),  # py4j takes care of the conversion from java.lang.Number
             )
 
+        jvm = get_jvm()
+        bandNames = None
+        if self.metadata.has_band_dimension():
+            bandNames = self.metadata.band_names
+
+        def wrap_cube_with_band_names_if_present(cube):
+            if bandNames is not None:
+                cube = jvm.org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
+                cube.openEOMetadata().setBandNames(bandNames)
+                return cube
+            else:
+                return cube
+
+
         if format in ["GTIFF", "PNG"]:
             def get_color_cmap():
                 if (colormap is not None):
@@ -2405,7 +2419,7 @@ class GeopysparkDataCube(DriverDataCube):
                             0,
                             0,
                         )
-
+                    max_level_rdd = wrap_cube_with_band_names_if_present(max_level_rdd)
 
                     if batch_mode and is_temporal_layer:
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
@@ -2527,9 +2541,9 @@ class GeopysparkDataCube(DriverDataCube):
                     png_options.setColorMap(color_cmap)
                 if crop_bounds:
                     crop_extent = get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
-                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, crop_extent, png_options)
+                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(wrap_cube_with_band_names_if_present(max_level.srdd.rdd()), save_filename, crop_extent, png_options)
                 else:
-                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
+                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(wrap_cube_with_band_names_if_present(max_level.srdd.rdd()), save_filename, png_options)
 
                 return job_items.single_asset_item(
                     asset_key="openEO", asset={"href": save_filename, "type": "image/png", "roles": ["data"]}
@@ -2585,7 +2599,7 @@ class GeopysparkDataCube(DriverDataCube):
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
-                        max_level.srdd.rdd(),
+                        wrap_cube_with_band_names_if_present(max_level.srdd.rdd()),
                         save_directory,
                         projected_polygons,
                         labels,
@@ -2594,7 +2608,7 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                 else:
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
-                        max_level.srdd.rdd(),
+                        wrap_cube_with_band_names_if_present(max_level.srdd.rdd()),
                         save_directory,
                         projected_polygons,
                         labels,
@@ -2625,13 +2639,13 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         if max_level.layer_type != gps.LayerType.SPATIAL:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
-                                max_level.srdd.rdd(),
+                                wrap_cube_with_band_names_if_present(max_level.srdd.rdd()),
                                 filename,
                                 netcdf_options,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
-                                max_level.srdd.rdd(),
+                                wrap_cube_with_band_names_if_present(max_level.srdd.rdd()),
                                 filename,
                                 netcdf_options,
                             )
