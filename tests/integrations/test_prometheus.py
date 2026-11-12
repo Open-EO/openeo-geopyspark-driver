@@ -239,8 +239,37 @@ def test_load_megapixel_total_error(requests_mock):
 
 
 @pytest.mark.parametrize("aggregation", ["avg", "max"])
+def test_udf_execution_time_per_node(requests_mock, aggregation):
+    from urllib.parse import parse_qs, urlsplit
+
+    endpoint = "https://prometheus.example.org/api/v1"
+    requests_mock.get(
+        endpoint + "/query",
+        json={
+            "status": "success",
+            "data": {
+                "result": [
+                    {"metric": {"node_id": "runudf1"}, "value": [1793000000, "123.5"]},
+                    {"metric": {"node_id": "runudf2"}, "value": [1793000000, "0"]},
+                ]
+            },
+        },
+    )
+    job_id = 'j-example"\\'
+    method = getattr(Prometheus(endpoint), f"get_{aggregation}_udf_execution_time_ms")
+    assert method(job_id, at="2026-10-26T08:00:00Z") == {"runudf1": 123.5, "runudf2": 0.0}
+    assert parse_qs(urlsplit(requests_mock.last_request.url).query) == {
+        "query": [
+            f"{aggregation} by (node_id) ("
+            f"{aggregation}_over_time(openeo_udf_execution_time_ms{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        ],
+        "time": ["2026-10-26T08:00:00Z"],
+    }
+
+
+@pytest.mark.parametrize("aggregation", ["avg", "max"])
 @pytest.mark.parametrize("value", [None, 0.0, 123.5])
-@pytest.mark.parametrize("metric", ["udf_execution_time_ms", "udf_max_rss_delta_bytes"])
+@pytest.mark.parametrize("metric", ["udf_max_rss_delta_bytes"])
 def test_udf_gauge_metrics(requests_mock, aggregation, value, metric):
     from urllib.parse import parse_qs, urlsplit
 

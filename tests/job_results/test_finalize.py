@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import List, Optional
 
@@ -48,6 +49,9 @@ class _RecordingHooks:
     def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
         self.calls.append(("usage_metadata", omit_derived_from_links))
         return {"usage": {}, "links": [], "auxiliary_links": []}
+
+    def detailed_metrics(self) -> Optional[dict]:
+        return None
 
     def prepare_result_options(self, result: SaveResult) -> None:
         self.calls.append(("prepare_result_options", result))
@@ -157,6 +161,35 @@ def test_single_result(tmp_path):
     assert "after_assets_written" in hooks.call_names()
     # early, mid and final writes
     assert hooks.call_names().count("publish_metadata_file") == 3
+
+
+@pytest.mark.parametrize("detailed_metrics", [None, {"metrics": {"load_pixel_total": {"unit": "megapixel", "data": {"S2": 12.0}}}}])
+def test_detailed_metrics_logged(tmp_path, caplog, detailed_metrics):
+    caplog.set_level(logging.INFO)
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+
+    class _MetricsHooks(_RecordingHooks):
+        def detailed_metrics(self) -> Optional[dict]:
+            return detailed_metrics
+
+    finalize_job(
+        JSONResult({"a": 1}),
+        tracer=DryRunDataTracer(),
+        process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+        job_specification={"process_graph": {}},
+        job_dir=job_dir,
+        output_file=output_file,
+        metadata_file=metadata_file,
+        settings=_settings(),
+        hooks=_MetricsHooks(),
+        workspace_repository=None,
+    )
+
+    messages = [m for m in caplog.messages if m.startswith("Detailed metrics of job")]
+    if detailed_metrics:
+        assert messages == [f"Detailed metrics of job {_settings().job_id}: {json.dumps(detailed_metrics)}"]
+    else:
+        assert messages == []
 
 
 def test_multiple_results(tmp_path):

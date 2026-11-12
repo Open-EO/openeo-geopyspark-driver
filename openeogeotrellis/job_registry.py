@@ -92,9 +92,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
         del self.db[job_id]
 
-    def _update(self, job_id: str, data: Optional[dict] = None, **kwargs) -> JobDict:
+    def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
-        kwargs = {**(data or {}), **kwargs}
         if "usage" in kwargs:
             kwargs["input_pixel"] = kwargs["usage"].get("input_pixel", {}).get("value", 0.0)
         self.db[job_id].update(**kwargs)
@@ -151,11 +150,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
         costs: Optional[float],
         usage: dict,
         results_metadata: Optional[Dict[str, Any]] = None,
-        metrics: Optional[dict] = None,
     ) -> None:
         self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
-        if metrics is not None:
-            self._update(job_id=job_id, metrics=metrics)
 
     def set_results_metadata_uri(
         self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
@@ -392,15 +388,11 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         costs: Optional[float],
         usage: dict,
         results_metadata: Optional[Dict[str, Any]] = None,
-        metrics: Optional[dict] = None,
     ) -> None:
         if self.elastic_job_registry:
             self.elastic_job_registry.set_results_metadata(
                 job_id=job_id, user_id=user_id, costs=costs, usage=usage, results_metadata=results_metadata
             )
-            if metrics is not None:
-                # The driver registry API does not expose a metrics argument yet.
-                self.elastic_job_registry._update(job_id=job_id, data={"metrics": metrics})
 
 
 class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):

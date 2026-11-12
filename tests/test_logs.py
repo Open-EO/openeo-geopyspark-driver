@@ -136,24 +136,23 @@ def test_circuit_breaker_raises_openeoapiexception(mock_search):
 @pytest.mark.parametrize(
     ["audience", "expected_filter"],
     [
-        (None, True),  # default: user-facing only
+        ("user", True),
         ("developer", True),
     ],
 )
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
 def test_elasticsearch_logs_audience_filter(mock_search, audience, expected_filter):
     mock_search.return_value = {"hits": {"hits": []}}
-    kwargs = {} if audience is None else {"audience": audience}
-    list(elasticsearch_logs("job-foo", **kwargs))
-    query = mock_search.call_args.kwargs["query"]
-    assert {"term": {"audience": audience or "user"}} in query["bool"]["filter"]
-
-
-@pytest.mark.parametrize("audience", [None, "all"])
-@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-def test_elasticsearch_logs_audience_none_disables_filter(mock_search, audience):
-    mock_search.return_value = {"hits": {"hits": []}}
     list(elasticsearch_logs("job-foo", audience=audience))
+    query = mock_search.call_args.kwargs["query"]
+    assert {"term": {"audience": audience}} in query["bool"]["filter"]
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"audience": None}, {"audience": "all"}])
+@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+def test_elasticsearch_logs_audience_none_disables_filter(mock_search, kwargs):
+    mock_search.return_value = {"hits": {"hits": []}}
+    list(elasticsearch_logs("job-foo", **kwargs))
     query = mock_search.call_args.kwargs["query"]
     assert not any("audience" in str(f) for f in query["bool"]["filter"])
 
@@ -161,7 +160,7 @@ def test_elasticsearch_logs_audience_none_disables_filter(mock_search, audience)
 @pytest.mark.parametrize(
     ["audience", "expected_audience"],
     [
-        (None, "user"),
+        (None, "all"),
         ("user", "user"),
         ("developer", "developer"),
         ("all", "all"),

@@ -2311,11 +2311,11 @@ class GeopysparkDataCube(DriverDataCube):
                         _log.info("save_result save_stitched_tile_grid")
                         java_items = self._save_stitched_tile_grid(
                             max_level,
-                            save_filename,
+                            save_directory,
                             tile_grid,
-                           gtiff_options, crop_bounds,
+                            gtiff_options,
+                            crop_bounds,
                             zlevel=zlevel,
-                            filename_prefix=filename_prefix,
                         )
 
                         written = [
@@ -2486,11 +2486,11 @@ class GeopysparkDataCube(DriverDataCube):
                         if tile_grid:
                             java_items = self._save_stitched_tile_grid(
                                 max_level,
-                                str(save_filename),
+                                save_directory,
                                 tile_grid,
-                               gtiff_options, crop_bounds,
+                                gtiff_options,
+                                crop_bounds,
                                 zlevel=zlevel,
-                                filename_prefix=filename_prefix,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
@@ -2925,30 +2925,20 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression, gtiff_options)
 
-    def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, gtiff_options, crop_bounds=None, zlevel=6,
-                                 filename_prefix=None):
+    def _save_stitched_tile_grid(
+        self, spatial_rdd, save_directory, tile_grid, gtiff_options, crop_bounds=None, zlevel=6
+    ):
         jvm = get_jvm()
-
-        if filename_prefix and filename_prefix.isDefined():
-            p = pathlib.Path(path)
-            try:
-                dot_index = p.name.index(".")
-                ext = p.name[dot_index:]
-                path = str(p.parent / (filename_prefix.get() + ext))
-            except ValueError as e:
-                if "substring not found" in str(e):
-                    _log.debug(f"'.' not found in '{p.name}'")
-                raise
-
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
         if crop_bounds:
-            return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
-                                                                                  tile_grid, crop_bounds._asdict(),
-                                                                                  max_compression, gtiff_options)
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(
+                spatial_rdd.srdd.rdd(), save_directory, tile_grid, crop_bounds._asdict(), max_compression, gtiff_options
+            )
         else:
-            return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
-                                                                                  tile_grid, max_compression, gtiff_options)
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(
+                spatial_rdd.srdd.rdd(), save_directory, tile_grid, max_compression, gtiff_options
+            )
 
     def _save_zarr_executors(self,spatial_rdd, path, zarr_options):
         jvm = get_jvm()
