@@ -1,4 +1,5 @@
 import json
+import zipfile
 from pathlib import Path
 from unittest import skip
 
@@ -469,8 +470,18 @@ class TestDownload:
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         file_path = str(tmp_path / "res.zarr")
-        zarr_options = {"toZip":to_zip}
-        imagecollection.write_assets(file_path, format="ZARR",format_options=zarr_options)
+        zarr_options = {"to_zip": to_zip, "batch_mode": True}
+        res = imagecollection.write_assets(file_path, format="ZARR", format_options=zarr_options)
+        assert len(res) == 1
+        item = next(iter(res.values()))
+        assert len(item["assets"]) == 1
+        asset_key, asset = next(iter(item["assets"].items()))
+        if to_zip:
+            assert asset_key == "res.zarr.zip"
+            assert asset == {"href": file_path + ".zip", "roles": ["data"], "type": "application/zip"}
+        else:
+            assert asset_key == "res.zarr"
+            assert asset == {"href": file_path, "roles": ["data"], "type": "application/vnd.zarr"}
         ds = xr.open_zarr(file_path)
         assert len(ds.variables) == 5
         assert "band_one" in ds.variables
@@ -521,4 +532,25 @@ class TestDownload:
         assert (ds_netcdf.band_two.data == band2.data[0]).all()
 
         if to_zip:
-            Path(file_path + ".zip").exists()
+            assert Path(file_path + ".zip").exists()
+
+    def test_zarr_sync(self, tmp_path):
+        """Synchronous processing: target is an existing (placeholder) file, result must be a single zip file."""
+        input_layer = layer_with_two_bands_and_one_date()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension("band_one", "band_one", "bands")
+        imagecollection.metadata = imagecollection.metadata.append_band(Band("band_two", "", ""))
+        file_path = tmp_path / "openeo-pydrvr-xyz.save_result.zarr"
+        file_path.touch()
+
+        res = imagecollection.save_result(str(file_path), format="ZARR", format_options={"to_zip": False})
+
+        assert res == str(file_path) + ".zip"
+        assert zipfile.is_zipfile(res)
+        extract_dir = tmp_path / "extracted.zarr"
+        with zipfile.ZipFile(res) as zf:
+            zf.extractall(extract_dir)
+        ds = xr.open_zarr(str(extract_dir))
+        assert "band_one" in ds.variables
+        assert "band_two" in ds.variables
+        assert ds.band_one.dims == ("time", "y", "x")
