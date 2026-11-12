@@ -1883,7 +1883,7 @@ class GpsBatchJobs(backend.BatchJobs):
             process_graph=job_process_graph, api_version=api_version, user_id=user_id, logger_adapter=log
         )
 
-        if any(k not in job_options for k in options_class.performance_options()):
+        if not any(k in job_options for k in options_class.performance_options()):
             small_job_options = self._determine_small_job_options(
                 process_graph=job_process_graph, api_version=api_version, dry_run=dry_run, logger_adapter=log
             )
@@ -2743,7 +2743,7 @@ class GpsBatchJobs(backend.BatchJobs):
             create_time=job_info.created,
             offset=offset,
             level=level,
-            audience=audience or AUDIENCE_USER,
+            audience=audience or AUDIENCE_ALL,
         )
 
     def cancel_job(self, job_id: str, user_id: str):

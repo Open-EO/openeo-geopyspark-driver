@@ -63,7 +63,10 @@ def get_jar_version_info(path: PathLike, na_value="n/a") -> str:
             m.group("key", "value")
             for m in re.finditer(r"^(?P<key>[\w-]+):\s*(?P<value>.*?)\s*$", manifest_data, flags=re.MULTILINE)
         )
-        version = [manifest_data.get("Implementation-Version"), manifest_data.get("SCM-Revision")]
+        version = [
+            manifest_data.get("Implementation-Version") or manifest_data.get("Specification-Version"),
+            manifest_data.get("SCM-Revision"),
+        ]
         return " ".join(v for v in version if v) or na_value
     except Exception:
         _log.warning("Failed to extract jar version info", exc_info=True)
