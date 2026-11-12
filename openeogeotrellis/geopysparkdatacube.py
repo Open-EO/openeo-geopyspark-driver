@@ -151,8 +151,8 @@ class GeopysparkDataCube(DriverDataCube):
             """
             if isinstance(value, GeopysparkDataCube):
                 if level is None:
-                    return value.get_max_level().srdd.rdd()
-                return value.pyramid.levels[level].srdd.rdd()
+                    return value._wrap_with_band_names(value.get_max_level().srdd.rdd())
+                return value._wrap_with_band_names(value.pyramid.levels[level].srdd.rdd())
             if isinstance(value, dict):
                 return {k: _cube_args_to_rdds(v, level) for k, v in value.items()}
             if isinstance(value, (list, tuple)):
@@ -190,6 +190,14 @@ class GeopysparkDataCube(DriverDataCube):
 
         if added:
             _log.info("Added %d dynamic method(s) from CubeProcessRegistry to %s: %s", len(added), cls.__name__, added)
+
+    def _wrap_with_band_names(self, geotrellis_cube):
+        """Wrap a Scala ContextRDD with this cube's band names (if any), before passing it to Scala code."""
+        if self.metadata.has_band_dimension():
+            wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(geotrellis_cube)
+            wrapped.openEOMetadata().setBandNames(self.metadata.band_names)
+            return wrapped
+        return geotrellis_cube
 
     def _is_spatial(self):
         return self.get_max_level().layer_type == gps.LayerType.SPATIAL
@@ -230,21 +238,8 @@ class GeopysparkDataCube(DriverDataCube):
         :return:
         """
 
-        jvm = get_jvm()
-        bandNames = None
-        if self.metadata.has_band_dimension():
-            bandNames = self.metadata.band_names
-
-        def add_band_metadata(geotrellis_cube):
-            if bandNames is not None:
-                wrapped = jvm.org.openeo.geotrellis.OpenEOProcesses().wrapCube(geotrellis_cube)
-                wrapped.openEOMetadata().setBandNames(bandNames)
-                return wrapped
-            else:
-                return geotrellis_cube
-
         pyramid = Pyramid({
-            k: self._create_tilelayer(func(add_band_metadata(l.srdd.rdd()), k), l.layer_type if target_type==None else target_type , k)
+            k: self._create_tilelayer(func(self._wrap_with_band_names(l.srdd.rdd()), k), l.layer_type if target_type==None else target_type , k)
             for k, l in self.pyramid.levels.items()
         })
         return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
@@ -1556,7 +1551,7 @@ class GeopysparkDataCube(DriverDataCube):
         target_max_level: TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
 
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
-            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
+            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(self._wrap_with_band_names(max_level.srdd.rdd()),target_max_level.srdd.rdd(),resample_method)
         elif self.pyramid.layer_type == gps.LayerType.SPATIAL:
             partitioner = target_max_level.srdd.rdd().partitioner()
             if target.pyramid.layer_type == gps.LayerType.SPACETIME or partitioner.isEmpty():
@@ -1568,12 +1563,12 @@ class GeopysparkDataCube(DriverDataCube):
             layout = target_max_level.srdd.rdd().metadata().layout()
             crs = target_max_level.srdd.rdd().metadata().crs()
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
-                max_level.srdd.rdd(), crs, layout, resample_method, partitioner)
+                self._wrap_with_band_names(max_level.srdd.rdd()), crs, layout, resample_method, partitioner)
         else:
             layout = target_max_level.srdd.rdd().metadata().layout()
             crs = target_max_level.srdd.rdd().metadata().crs()
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spacetime(
-                max_level.srdd.rdd(), crs, layout, resample_method, None)
+                self._wrap_with_band_names(max_level.srdd.rdd()), crs, layout, resample_method, None)
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
@@ -2253,6 +2248,7 @@ class GeopysparkDataCube(DriverDataCube):
                 nodata=asset.nodata(),  # py4j takes care of the conversion from java.lang.Number
             )
 
+
         if format in ["GTIFF", "PNG"]:
             def get_color_cmap():
                 if (colormap is not None):
@@ -2405,7 +2401,7 @@ class GeopysparkDataCube(DriverDataCube):
                             0,
                             0,
                         )
-
+                    max_level_rdd = self._wrap_with_band_names(max_level_rdd)
 
                     if batch_mode and is_temporal_layer:
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
@@ -2527,9 +2523,9 @@ class GeopysparkDataCube(DriverDataCube):
                     png_options.setColorMap(color_cmap)
                 if crop_bounds:
                     crop_extent = get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
-                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, crop_extent, png_options)
+                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(self._wrap_with_band_names(max_level.srdd.rdd()), save_filename, crop_extent, png_options)
                 else:
-                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
+                    get_jvm().org.openeo.geotrellis.png.package.saveStitched(self._wrap_with_band_names(max_level.srdd.rdd()), save_filename, png_options)
 
                 return job_items.single_asset_item(
                     asset_key="openEO", asset={"href": save_filename, "type": "image/png", "roles": ["data"]}
@@ -2585,7 +2581,7 @@ class GeopysparkDataCube(DriverDataCube):
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
-                        max_level.srdd.rdd(),
+                        self._wrap_with_band_names(max_level.srdd.rdd()),
                         save_directory,
                         projected_polygons,
                         labels,
@@ -2594,7 +2590,7 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                 else:
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
-                        max_level.srdd.rdd(),
+                        self._wrap_with_band_names(max_level.srdd.rdd()),
                         save_directory,
                         projected_polygons,
                         labels,
@@ -2619,19 +2615,19 @@ class GeopysparkDataCube(DriverDataCube):
                     if strict_cropping:
                         netcdf_options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
-                            max_level.srdd.rdd(),
+                            self._wrap_with_band_names(max_level.srdd.rdd()),
                             filename,netcdf_options
                         )
                     else:
                         if max_level.layer_type != gps.LayerType.SPATIAL:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
-                                max_level.srdd.rdd(),
+                                self._wrap_with_band_names(max_level.srdd.rdd()),
                                 filename,
                                 netcdf_options,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
-                                max_level.srdd.rdd(),
+                                self._wrap_with_band_names(max_level.srdd.rdd()),
                                 filename,
                                 netcdf_options,
                             )
@@ -2690,7 +2686,7 @@ class GeopysparkDataCube(DriverDataCube):
                 temp_dir = tempfile.mkdtemp(prefix="openeo-zarr-")
                 write_zarr_path = os.path.join(temp_dir, os.path.basename(output_zarr_path))
             try:
-                self._save_zarr_executors(max_level.srdd.rdd(), write_zarr_path, zarr_options)
+                self._save_zarr_executors(max_level, write_zarr_path, zarr_options)
                 if to_zip:
                     shutil.make_archive(write_zarr_path, "zip", write_zarr_path)
                     href = output_zarr_path + ".zip"
@@ -2951,12 +2947,13 @@ class GeopysparkDataCube(DriverDataCube):
                 spatial_rdd.srdd.rdd(), save_directory, tile_grid, max_compression, gtiff_options
             )
 
-    def _save_zarr_executors(self,spatial_rdd, path, zarr_options):
+    def _save_zarr_executors(self, layer: TiledRasterLayer, path, zarr_options):
         jvm = get_jvm()
-        if (spatial_rdd.layer_type != gps.LayerType.SPATIAL):
-            jvm.org.openeo.geotrellis.zarr.ZarrWriter.saveZarr(spatial_rdd,path,zarr_options)
+        wrapped = self._wrap_with_band_names(layer.srdd.rdd())
+        if layer.layer_type != gps.LayerType.SPATIAL:
+            jvm.org.openeo.geotrellis.zarr.ZarrWriter.saveZarr(wrapped, path, zarr_options)
         else:
-            jvm.org.openeo.geotrellis.zarr.ZarrWriter.saveZarrSpatial(spatial_rdd,path,zarr_options)
+            jvm.org.openeo.geotrellis.zarr.ZarrWriter.saveZarrSpatial(wrapped, path, zarr_options)
 
     @callsite
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
