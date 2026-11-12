@@ -1,8 +1,8 @@
 # Simple Dockerfile to package this example STAC collection as a Docker image.
 # For example to be used in a dummy CWL workflow that produces a STAC collection.
-# docker build -t openeo-geopyspark-driver-example-stac-catalog:1.9 .
-# docker tag openeo-geopyspark-driver-example-stac-catalog:1.9 openeo-docker-local-prod.repo.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.9
-# docker push openeo-docker-local-prod.repo.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.9
+# docker build -t openeo-geopyspark-driver-example-stac-catalog:1.10 .
+# docker tag openeo-geopyspark-driver-example-stac-catalog:1.10 openeo-docker-local-prod.repo.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.10
+# docker push openeo-docker-local-prod.repo.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.10
 
 FROM python:3.11
 
