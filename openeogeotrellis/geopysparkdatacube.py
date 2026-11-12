@@ -2662,13 +2662,6 @@ class GeopysparkDataCube(DriverDataCube):
             XarrayIO.to_json_file(array=result, path=filename)
 
         elif format == "ZARR":
-            zarr_file = save_filename
-            if not zarr_file.endswith(".zarr"):
-                zarr_file = zarr_file + ".zarr"
-            if filename_prefix and filename_prefix.isDefined():
-                p = pathlib.Path(zarr_file)
-                ext = p.name[p.name.index("."):]
-                zarr_file = str(p.parent / (filename_prefix.get() + ext))
             zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
             if self.metadata.has_band_dimension():
                 band_names = self.metadata.band_names
@@ -2676,23 +2669,41 @@ class GeopysparkDataCube(DriverDataCube):
                 zarr_options.setBands(number_bands, band_names)
             else:
                 zarr_options.setBands(1)
+            to_zip = format_opts.to_zip or not batch_mode
 
-            self._save_zarr_executors(max_level, zarr_file, zarr_options)
-            to_zip = format_opts.to_zip
-            if to_zip:
-                shutil.make_archive(zarr_file, 'zip', zarr_file)
-                return {str(os.path.basename(zarr_file + ".zip")):{
-                    "href": zarr_file + ".zip",
-                    "roles": ["data"],
-                    "type": "application/zip",
-                }}
-            return {
-                str(save_filename):{
-                    "href": zarr_file,
-                    "roles": ["data"],
-                    "type": "application/x-zarr",
-                }
-            }
+            output_zarr_path = save_filename
+            if not output_zarr_path.endswith(".zarr"):
+                output_zarr_path = output_zarr_path + ".zarr"
+            if filename_prefix and filename_prefix.isDefined():
+                p = pathlib.Path(output_zarr_path)
+                ext = p.name[p.name.index(".") :]
+                output_zarr_path = str(p.parent / (filename_prefix.get() + ext))
+
+            if batch_mode:
+                temp_dir = None
+                write_zarr_path = output_zarr_path
+            else:
+                temp_dir = tempfile.mkdtemp(prefix="openeo-zarr-")
+                write_zarr_path = os.path.join(temp_dir, os.path.basename(output_zarr_path))
+            try:
+                self._save_zarr_executors(max_level, write_zarr_path, zarr_options)
+                if to_zip:
+                    shutil.make_archive(write_zarr_path, "zip", write_zarr_path)
+                    href = output_zarr_path + ".zip"
+                    if temp_dir:
+                        shutil.move(write_zarr_path + ".zip", href)
+                    media_type = "application/zip"
+                else:
+                    href = write_zarr_path
+                    media_type = "application/vnd.zarr"
+            finally:
+                if temp_dir:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+
+            return job_items.single_asset_item(
+                asset_key=os.path.basename(href),
+                asset={"href": href, "roles": ["data"], "type": media_type},
+            )
 
         elif format == "DEBUG_GENERAL":
             # Write debug information to a json file without going through spark.
