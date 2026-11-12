@@ -1,0 +1,3 @@
+# These files are copied into a Docker image; CRLF breaks the shebang lines.
+*.py text eol=lf
+*.json text eol=lf
