@@ -63,7 +63,7 @@ class JobResultsHooks(Protocol):
         ...
 
     def detailed_metrics(self) -> Optional[dict]:
-        """Return detailed application metrics to log at the end of the job, or ``None`` if not enabled/available."""
+        """Return detailed application metrics to log and store (linked from the job metadata) at the end of the job, or ``None`` if not enabled/available."""
         ...
 
     def prepare_result_options(self, result: SaveResult) -> None:

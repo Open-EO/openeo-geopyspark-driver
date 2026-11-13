@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ## In progress: 0.74.0
 
+- Batch job metadata: store the detailed metrics (`detailed_metrics` job option) as a separate `detailed-metrics.json` document and link to it (`rel`: `related`, title "Detailed metrics") from the job results metadata, instead of only logging them
 - Job logs: support `audience` (`user` (default), `developer` or `all`) in `get_log_entries`, e.g. through `GET /jobs/{job_id}/logs?audience=all`, other values are rejected with HTTP 400 ([openeo-geotrellis-extensions#872](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/872))
 - Add support for the `resample_cube_temporal` process, backed by the implementation in openeo-geotrellis-extensions (`CubeProcessRegistry`)
 - Require at least Python 3.11 (drop support for Python 3.8, 3.9 and 3.10, [#1060](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1060))
