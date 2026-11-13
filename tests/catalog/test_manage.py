@@ -6,7 +6,7 @@ from typing import Optional, Iterable
 import dirty_equals
 import pytest
 
-from openeogeotrellis.catalog.enrich import LinksList
+from openeogeotrellis.catalog import LinksList
 
 
 from openeo.testing.stac import StacDummyBuilder
