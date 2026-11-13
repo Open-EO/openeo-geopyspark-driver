@@ -902,15 +902,30 @@ class LayerCatalogManagerCliApp:
     Generic command line app for layer catalog management
     """
 
-    def __init__(self, *, registry: CollectionMetadataBuilderRegistry):
-        self.collection_metadata_builder_registry = registry
+    def __init__(self, *, registry: CollectionMetadataBuilderRegistry | None = None):
+        # TODO: eliminate deprecated usage of passing the registry at `__init__` time
+        if registry:
+            _log.warning(
+                "Passing registry at LayerCatalogManagerCliApp.__init__() time is deprecated, pass to main() instead"
+            )
 
-    def main(self, argv: Optional[Iterable[str]] = None) -> None:
+        self._collection_metadata_builder_registry = registry
+
+    def main(
+        self,
+        argv: Optional[Iterable[str]] = None,
+        registry: CollectionMetadataBuilderRegistry | None = None,
+        do_logging_setup: bool = True,
+    ) -> None:
         argument_parser = self.build_argument_parser()
         args = argument_parser.parse_args(argv)
-        self.setup_logging(args=args)
+        if do_logging_setup:
+            self.setup_logging(args=args)
+
         with TimingLogger(title=f"LayerCatalogManagerCliApp.main: {args.subcommand}", logger=_log):
-            args.handler(args=args)
+            registry = registry or self._collection_metadata_builder_registry
+            assert registry is not None
+            args.handler(args=args, registry=registry)
 
     def build_argument_parser(self) -> argparse.ArgumentParser:
         cli = argparse.ArgumentParser()
@@ -972,7 +987,7 @@ class LayerCatalogManagerCliApp:
             handlers=log_handlers,
         )
 
-    def handle_generate(self, args: argparse.Namespace) -> List[Path]:
+    def handle_generate(self, args: argparse.Namespace, *, registry: CollectionMetadataBuilderRegistry) -> List[Path]:
 
         partitions: Dict[Optional[str], Tuple[LayerCatalog, Path]] = {}
         # Base/default layer catalog partition (at key `None`)
@@ -998,7 +1013,7 @@ class LayerCatalogManagerCliApp:
         else:
             collection_id_filter = None
 
-        for metadata, build_item in self.collection_metadata_builder_registry.call_builders(
+        for metadata, build_item in registry.call_builders(
             collection_id_filter=collection_id_filter,
             include_build_item=True,
         ):
@@ -1007,7 +1022,7 @@ class LayerCatalogManagerCliApp:
             layer_catalog = partitions.get(partition_key)[0]
             layer_catalog.set_collection_metadata(metadata=metadata)
 
-        _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
+        _log.info(f"{registry.get_stats()=}")
 
         for layer_catalog, output_path in partitions.values():
             layer_catalog.write_json_file(output_path)
@@ -1026,11 +1041,11 @@ class LayerCatalogManagerCliApp:
             msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
         )
 
-    def handle_list(self, args: argparse.Namespace) -> None:
+    def handle_list(self, args: argparse.Namespace, *, registry: CollectionMetadataBuilderRegistry) -> None:
         # TODO: add collection counter
         # TODO: (option to) render in Markdown format
         for item in sorted(
-            self.collection_metadata_builder_registry.get_builders(),
+            registry.get_builders(),
             key=lambda item: item.collection_id,
         ):
             if args.show_extended:

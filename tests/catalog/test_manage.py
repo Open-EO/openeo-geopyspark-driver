@@ -1079,7 +1079,7 @@ class TestLayerCatalogManagerCliApp:
 
     @pytest.fixture()
     def cli_app(self, registry) -> LayerCatalogManagerCliApp:
-        return LayerCatalogManagerCliApp(registry=registry)
+        return LayerCatalogManagerCliApp()
 
     @pytest.mark.parametrize(
         ["args", "expected"],
@@ -1126,14 +1126,20 @@ class TestLayerCatalogManagerCliApp:
         assert args.subcommand == "list"
         assert {k: getattr(args, k) for k in expected.keys()} == expected
 
-    def test_handle_list(self, cli_app: LayerCatalogManagerCliApp, capsys) -> None:
+    def test_handle_list(self, cli_app: LayerCatalogManagerCliApp, registry, capsys) -> None:
+        cli_app.main(["list"], registry=registry)
+        stdout = capsys.readouterr().out
+        assert stdout.strip().split("\n") == ["BAR", "FOO"]
+
+    def test_handle_list_legacy(self, registry, capsys) -> None:
+        cli_app = LayerCatalogManagerCliApp(registry=registry)
         cli_app.main(["list"])
         stdout = capsys.readouterr().out
         assert stdout.strip().split("\n") == ["BAR", "FOO"]
 
-    def test_handle_generate_no_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+    def test_handle_generate_no_existing(self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog) -> None:
         catalog_path = tmp_path / "catalog.json"
-        cli_app.main(["generate", str(catalog_path)])
+        cli_app.main(["generate", str(catalog_path)], registry=registry)
         catalog = json.loads(catalog_path.read_text())
         assert catalog == [
             {"id": "FOO", "description": "Dummy 'FOO' collection"},
@@ -1143,14 +1149,16 @@ class TestLayerCatalogManagerCliApp:
         assert "Building metadata for collection_id='FOO'" in caplog.text
         assert caplog.text == dirty_equals.IsStr(regex=r".*registry\.get_stats.*register\W+2.*", regex_flags=re.DOTALL)
 
-    def test_handle_generate_with_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+    def test_handle_generate_with_existing(
+        self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog
+    ) -> None:
         catalog_path = tmp_path / "catalog.json"
         pre_existing = [
             {"id": "FOO", "description": "Original 'FOO'"},
             {"id": "UNMANAGED", "description": "Some unmanaged collection"},
         ]
         catalog_path.write_text(json.dumps(pre_existing))
-        cli_app.main(["generate", str(catalog_path)])
+        cli_app.main(["generate", str(catalog_path)], registry=registry)
         catalog = json.loads(catalog_path.read_text())
         assert catalog == [
             {"id": "FOO", "description": "Dummy 'FOO' collection"},
@@ -1160,7 +1168,7 @@ class TestLayerCatalogManagerCliApp:
 
         assert "Unmanaged collections: ['UNMANAGED']" in caplog.text
 
-    def test_handle_generate_partitioning(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+    def test_handle_generate_partitioning(self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog) -> None:
         default_catalog_path = tmp_path / "catalog.json"
         dev_catalog_path = tmp_path / "dev" / "catalogue.json"
         foo_catalog_path = tmp_path / "foo" / "catafoo.json"
@@ -1172,7 +1180,8 @@ class TestLayerCatalogManagerCliApp:
                 f"dev:{dev_catalog_path}",
                 "--label-partition",
                 f"foo:{foo_catalog_path}",
-            ]
+            ],
+            registry=registry,
         )
         default_catalog = json.loads(default_catalog_path.read_text())
         dev_catalog = json.loads(dev_catalog_path.read_text())
@@ -1184,7 +1193,7 @@ class TestLayerCatalogManagerCliApp:
         )
 
     def test_handle_generate_partitioning_with_existing(
-        self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog
+        self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog
     ) -> None:
         default_catalog_path = tmp_path / "catalog.json"
         default_catalog_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1201,7 +1210,8 @@ class TestLayerCatalogManagerCliApp:
                 f"dev:{dev_catalog_path}",
                 "--label-partition",
                 f"foo:{foo_catalog_path}",
-            ]
+            ],
+            registry=registry,
         )
         default_catalog = json.loads(default_catalog_path.read_text())
         dev_catalog = json.loads(dev_catalog_path.read_text())
