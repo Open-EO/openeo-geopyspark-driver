@@ -1,25 +1,23 @@
 import collections
 import functools
 import logging
-from typing import Callable, Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from openeo.util import deep_get
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
+from openeogeotrellis.catalog import (
+    DATA_SOURCE_PROPERTIES,
+    CatalogDict,
+    CollectionId,
+    LinksFilter,
+)
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
 from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.utils import dict_merge_recursive
 
 logger = logging.getLogger(__name__)
-
-# Type annotation aliases (mirrors layercatalog.py)
-CollectionId = str
-CollectionMetadataDict = Dict[str, Union[str, dict, list]]
-CatalogDict = Dict[CollectionId, CollectionMetadataDict]
-LinksList = List[dict]
-LinksFilter = Callable[[LinksList], LinksList]
 
 
 def enrich_catalog_metadata(

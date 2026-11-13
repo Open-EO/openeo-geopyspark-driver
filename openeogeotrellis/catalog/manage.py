@@ -28,16 +28,15 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
+from typing import Callable, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
-
-from openeo.util import dict_no_none, TimingLogger
+from openeo.util import TimingLogger, dict_no_none
 from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
+from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES, CollectionId, CollectionMetadataDict, LinksFilter
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
 from openeogeotrellis.util.compat import function_supports_kwargs
 
 _log = logging.getLogger(__name__)
@@ -100,6 +99,9 @@ class LayerCatalog:
             raise ValueError(path)
 
         return cls(collections=collections)
+
+    def iter_metadata(self) -> Iterator[CollectionMetadataDict]:
+        return iter(self._collections)
 
     def write_json_file(
         self,
@@ -959,8 +961,8 @@ class LayerCatalogManagerCliApp:
         # TODO: option to not do rich logging (or detect when inappropriate)?
         try:
             # Use fancy logging if `rich` is available in environment.
-            import rich.logging
             import rich.console
+            import rich.logging
 
             log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
         except ImportError:
@@ -1005,19 +1007,24 @@ class LayerCatalogManagerCliApp:
             layer_catalog = partitions.get(partition_key)[0]
             layer_catalog.set_collection_metadata(metadata=metadata)
 
+        _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
+
         for layer_catalog, output_path in partitions.values():
             layer_catalog.write_json_file(output_path)
-
-            # Some stats
-            _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
-            _log.info(f"{layer_catalog.get_stats()=}")
-            unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
-            _log.log(
-                level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
-                msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
-            )
+            self.postprocess_generated_layer_catalog(layer_catalog=layer_catalog, output_path=output_path)
 
         return [p for _, p in partitions.values()]
+
+    def postprocess_generated_layer_catalog(self, layer_catalog: LayerCatalog, *, output_path: Path) -> None:
+        # Some basic stats
+        _log.info(f"{layer_catalog.get_stats()=}")
+
+        # Report on "unmanaged" collections
+        unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
+        _log.log(
+            level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
+            msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
+        )
 
     def handle_list(self, args: argparse.Namespace) -> None:
         # TODO: add collection counter
