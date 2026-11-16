@@ -8,6 +8,7 @@ happens once the process graph has been evaluated (or failed to evaluate).
 import concurrent.futures
 import json
 import logging
+import tempfile
 import uuid
 from copy import deepcopy
 from functools import partial
@@ -33,6 +34,8 @@ from .workspace_export import export_result_to_workspaces
 from .wrapping import wrap_evaluation_result
 
 logger = logging.getLogger(__name__)
+
+DETAILED_METRICS_FILENAME = "detailed-metrics.json"
 
 
 def finalize_job(
@@ -284,13 +287,40 @@ def finalize_job(
     finally:
         if len(tracker_metadata) == 0:
             tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
+        detailed_metrics = hooks.detailed_metrics()
+        if detailed_metrics:
+            logger.info(f"Detailed metrics of job {settings.job_id}: {json.dumps(detailed_metrics, default=json_default)}")
+            if metrics_link := _store_detailed_metrics(detailed_metrics, job_dir=job_dir, settings=settings, hooks=hooks):
+                tracker_metadata = {**tracker_metadata, "links": [*tracker_metadata.get("links", []), metrics_link]}
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
-        detailed_metrics = hooks.detailed_metrics()
-        if detailed_metrics:
-            logger.info(f"Detailed metrics of job {settings.job_id}: {json.dumps(detailed_metrics, default=json_default)}")
+
+
+def _store_detailed_metrics(
+    detailed_metrics: dict, *, job_dir: Path, settings: JobResultsSettings, hooks: JobResultsHooks
+) -> Optional[dict]:
+    """Store the detailed metrics as a separate document in the job dir and return a link to it."""
+    try:
+        # Written outside the job dir first: publishing copies/uploads it to the job dir.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            metrics_path = Path(tmp_dir) / DETAILED_METRICS_FILENAME
+            with open(metrics_path, "w") as f:
+                json.dump(detailed_metrics, f, default=json_default)
+            href = hooks.publish_auxiliary_file(metrics_path, Path(job_dir), for_export_workspace=False)
+        return AnnotatedDict(
+            {
+                "rel": "related",
+                "href": href,
+                "type": "application/json",
+                "title": "Detailed metrics",
+                ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+            }
+        ).annotate(copy_to_item=True)
+    except Exception:
+        logger.exception("Failed to store detailed metrics document")
+        return None
 
 
 def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings, hooks: JobResultsHooks) -> None:
