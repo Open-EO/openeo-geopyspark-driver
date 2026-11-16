@@ -2676,6 +2676,8 @@ class GeopysparkDataCube(DriverDataCube):
                 zarr_options.setBands(number_bands, band_names)
             else:
                 zarr_options.setBands(1)
+            if crop_extent is not None:
+                zarr_options.setCropBounds(crop_extent)
 
             self._save_zarr_executors(max_level, zarr_file, zarr_options)
             to_zip = format_opts.to_zip
