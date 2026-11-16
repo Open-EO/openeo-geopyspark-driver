@@ -67,6 +67,10 @@ CRS_AUTO_42001 = {
     "id": {"authority": "OGC", "version": "1.3", "code": "Auto42001"},
 }
 
+DIMENSION_X_AUTO42001_STEP10 = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
+DIMENSION_Y_AUTO42001_STEP10 = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10}
+
+
 GUESS_BANDS_FROM_UPSTREAM = "guess_bands_from_upstream"
 
 
@@ -378,9 +382,6 @@ def get_upstream_stac_metadata(stac_url: str) -> dict:
     return metadata
 
 
-# Legacy alias
-_get_upstream_stac_metadata = get_upstream_stac_metadata
-
 
 class ENRICHMENT_MODE:
     NONE = "none"
@@ -446,13 +447,16 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
+
     if not x_dim:
-        x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
+        _log.warning("No x-dimension information giving: blindly assuming AUTO 42001.")
+        x_dim = DIMENSION_X_AUTO42001_STEP10
 
     if not y_dim:
-        y_dim = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10}
+        _log.warning("No y-dimension information giving: blindly assuming AUTO 42001.")
+        y_dim = DIMENSION_Y_AUTO42001_STEP10
 
-    upstream_metadata = _get_upstream_stac_metadata(stac_url)
+    upstream_metadata = get_upstream_stac_metadata(stac_url)
 
     stac_version = upstream_metadata.get("stac_version", stac_version)
 
