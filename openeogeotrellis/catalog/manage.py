@@ -26,8 +26,13 @@ import difflib
 import functools
 import json
 import logging
+import pystac
 import re
 from pathlib import Path
+
+from openeo_driver.util.utm import is_utm_epsg_code
+from openeogeotrellis.stac.assets import is_band_asset
+from openeogeotrellis.stac.projection import ProjectionMetadata
 from typing import Callable, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 from openeo.util import TimingLogger, dict_no_none
@@ -447,13 +452,16 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
+    if x_dim is None or y_dim is None:
+        _log.warning(
+            f"No explicit x/y-dimension information given for {id=} ({stac_url=}): "
+            f"blindly falling back to AUTO 42001 (with step=10) for legacy reasons, but this is often not correct."
+        )
 
     if not x_dim:
-        _log.warning("No x-dimension information giving: blindly assuming AUTO 42001.")
         x_dim = DIMENSION_X_AUTO42001_STEP10
 
     if not y_dim:
-        _log.warning("No y-dimension information giving: blindly assuming AUTO 42001.")
         y_dim = DIMENSION_Y_AUTO42001_STEP10
 
     upstream_metadata = get_upstream_stac_metadata(stac_url)
@@ -1067,3 +1075,54 @@ def normalize_openeo_collection_id(collection_id: str) -> str:
     normalized = collection_id.strip().upper().replace("-", "_")
     normalized = re.sub(r"[^A-Z0-9_]+", "_", normalized)
     return normalized
+
+
+def guess_x_and_y_dimensions_from_items(collection_url: str) -> Tuple[dict, dict]:
+    """
+    Guess x and y cube:dimension snippet from given STAC url
+    (by inspecting a naive batch of items at '{collection_url}/items'
+    """
+    try:
+        resp = requests_with_retry().get(f"{collection_url}/items")
+        resp.raise_for_status()
+        items = resp.json().get("features", [])
+
+        projection_metadata = [
+            ProjectionMetadata.from_asset(asset=a, item=item)
+            for item in (pystac.Item.from_dict(i) for i in items)
+            for a in item.assets.values()
+            if is_band_asset(a)
+        ]
+        proj_codes = set(m.code for m in projection_metadata if m.code)
+        assert len(proj_codes) > 0, "Expecting at least one proj:code in the STAC items"
+
+        if proj_codes == {"EPSG:4326"}:
+            # TODO: get extent from collection metadata?
+            # TODO: get step/resolution too?
+            x_dim = {"type": "spatial", "axis": "x", "reference_system": 4326}
+            y_dim = {"type": "spatial", "axis": "y", "reference_system": 4326}
+            if resolutions := set(m.resolution() for m in projection_metadata if m.resolution()):
+                # For simplicity, just take the finest resolution.
+                # TODO need for more advanced logic, e.g. most common, or smallest common divisor?
+                x_dim["step"], y_dim["step"] = min(resolutions)
+            return x_dim, y_dim
+        elif all(is_utm_epsg_code(m.epsg) for m in projection_metadata):
+            x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001}
+            y_dim = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001}
+            if resolutions := set(m.resolution() for m in projection_metadata if m.resolution()):
+                # For simplicity, just take the finest resolution.
+                # TODO need for more advanced logic, e.g. most common, or smallest common divisor?
+                x_dim["step"], y_dim["step"] = min(resolutions)
+            else:
+                _log.warning(f"Unhandled case of multiple asset resolutions: {resolutions=}")
+            return x_dim, y_dim
+        else:
+            _log.warning(f"Unhandled case of projection combinations: {proj_codes=}")
+    except Exception as e:
+        _log.warning(f"Failed to guess x/y-dimensions from {collection_url=}: {e=}")
+
+    return (
+        # Basic (but valid) fallback
+        {"type": "spatial", "axis": "x"},
+        {"type": "spatial", "axis": "y"},
+    )
