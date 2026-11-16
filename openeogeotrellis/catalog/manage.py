@@ -28,16 +28,15 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
+from typing import Callable, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
-
-from openeo.util import dict_no_none, TimingLogger
+from openeo.util import TimingLogger, dict_no_none
 from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
+from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES, CollectionId, CollectionMetadataDict, LinksFilter
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
 from openeogeotrellis.util.compat import function_supports_kwargs
 
 _log = logging.getLogger(__name__)
@@ -67,6 +66,10 @@ CRS_AUTO_42001 = {
     "bbox": {"south_latitude": -90, "west_longitude": -180, "north_latitude": 90, "east_longitude": 180},
     "id": {"authority": "OGC", "version": "1.3", "code": "Auto42001"},
 }
+
+DIMENSION_X_AUTO42001_STEP10 = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
+DIMENSION_Y_AUTO42001_STEP10 = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10}
+
 
 GUESS_BANDS_FROM_UPSTREAM = "guess_bands_from_upstream"
 
@@ -100,6 +103,9 @@ class LayerCatalog:
             raise ValueError(path)
 
         return cls(collections=collections)
+
+    def iter_metadata(self) -> Iterator[CollectionMetadataDict]:
+        return iter(self._collections)
 
     def write_json_file(
         self,
@@ -376,9 +382,6 @@ def get_upstream_stac_metadata(stac_url: str) -> dict:
     return metadata
 
 
-# Legacy alias
-_get_upstream_stac_metadata = get_upstream_stac_metadata
-
 
 class ENRICHMENT_MODE:
     NONE = "none"
@@ -444,13 +447,16 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
+
     if not x_dim:
-        x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
+        _log.warning("No x-dimension information giving: blindly assuming AUTO 42001.")
+        x_dim = DIMENSION_X_AUTO42001_STEP10
 
     if not y_dim:
-        y_dim = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10}
+        _log.warning("No y-dimension information giving: blindly assuming AUTO 42001.")
+        y_dim = DIMENSION_Y_AUTO42001_STEP10
 
-    upstream_metadata = _get_upstream_stac_metadata(stac_url)
+    upstream_metadata = get_upstream_stac_metadata(stac_url)
 
     stac_version = upstream_metadata.get("stac_version", stac_version)
 
@@ -900,15 +906,30 @@ class LayerCatalogManagerCliApp:
     Generic command line app for layer catalog management
     """
 
-    def __init__(self, *, registry: CollectionMetadataBuilderRegistry):
-        self.collection_metadata_builder_registry = registry
+    def __init__(self, *, registry: CollectionMetadataBuilderRegistry | None = None):
+        # TODO: eliminate deprecated usage of passing the registry at `__init__` time
+        if registry:
+            _log.warning(
+                "Passing registry at LayerCatalogManagerCliApp.__init__() time is deprecated, pass to main() instead"
+            )
 
-    def main(self, argv: Optional[Iterable[str]] = None) -> None:
+        self._collection_metadata_builder_registry = registry
+
+    def main(
+        self,
+        argv: Optional[Iterable[str]] = None,
+        registry: CollectionMetadataBuilderRegistry | None = None,
+        do_logging_setup: bool = True,
+    ) -> None:
         argument_parser = self.build_argument_parser()
         args = argument_parser.parse_args(argv)
-        self.setup_logging(args=args)
+        if do_logging_setup:
+            self.setup_logging(args=args)
+
         with TimingLogger(title=f"LayerCatalogManagerCliApp.main: {args.subcommand}", logger=_log):
-            args.handler(args=args)
+            registry = registry or self._collection_metadata_builder_registry
+            assert registry is not None
+            args.handler(args=args, registry=registry)
 
     def build_argument_parser(self) -> argparse.ArgumentParser:
         cli = argparse.ArgumentParser()
@@ -959,8 +980,8 @@ class LayerCatalogManagerCliApp:
         # TODO: option to not do rich logging (or detect when inappropriate)?
         try:
             # Use fancy logging if `rich` is available in environment.
-            import rich.logging
             import rich.console
+            import rich.logging
 
             log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
         except ImportError:
@@ -970,7 +991,7 @@ class LayerCatalogManagerCliApp:
             handlers=log_handlers,
         )
 
-    def handle_generate(self, args: argparse.Namespace) -> List[Path]:
+    def handle_generate(self, args: argparse.Namespace, *, registry: CollectionMetadataBuilderRegistry) -> List[Path]:
 
         partitions: Dict[Optional[str], Tuple[LayerCatalog, Path]] = {}
         # Base/default layer catalog partition (at key `None`)
@@ -996,7 +1017,7 @@ class LayerCatalogManagerCliApp:
         else:
             collection_id_filter = None
 
-        for metadata, build_item in self.collection_metadata_builder_registry.call_builders(
+        for metadata, build_item in registry.call_builders(
             collection_id_filter=collection_id_filter,
             include_build_item=True,
         ):
@@ -1005,25 +1026,30 @@ class LayerCatalogManagerCliApp:
             layer_catalog = partitions.get(partition_key)[0]
             layer_catalog.set_collection_metadata(metadata=metadata)
 
+        _log.info(f"{registry.get_stats()=}")
+
         for layer_catalog, output_path in partitions.values():
             layer_catalog.write_json_file(output_path)
-
-            # Some stats
-            _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
-            _log.info(f"{layer_catalog.get_stats()=}")
-            unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
-            _log.log(
-                level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
-                msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
-            )
+            self.postprocess_generated_layer_catalog(layer_catalog=layer_catalog, output_path=output_path)
 
         return [p for _, p in partitions.values()]
 
-    def handle_list(self, args: argparse.Namespace) -> None:
+    def postprocess_generated_layer_catalog(self, layer_catalog: LayerCatalog, *, output_path: Path) -> None:
+        # Some basic stats
+        _log.info(f"{layer_catalog.get_stats()=}")
+
+        # Report on "unmanaged" collections
+        unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
+        _log.log(
+            level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
+            msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
+        )
+
+    def handle_list(self, args: argparse.Namespace, *, registry: CollectionMetadataBuilderRegistry) -> None:
         # TODO: add collection counter
         # TODO: (option to) render in Markdown format
         for item in sorted(
-            self.collection_metadata_builder_registry.get_builders(),
+            registry.get_builders(),
             key=lambda item: item.collection_id,
         ):
             if args.show_extended:

@@ -302,6 +302,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_max_partition_size: Optional[int] = None
 
+    """
+    Default for retaining tiles that contain only NODATA when loading data (`load_collection`/`load_stac`).
+    Can be overridden by the "retain_nodata_tiles" feature flag.
+    """
+    default_retain_nodata_tiles: bool = False
+
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
