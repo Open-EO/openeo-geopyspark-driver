@@ -132,9 +132,10 @@ def patch_sar_backscatter_spec(backend_implementation) -> None:
     parameters["coefficient"]["description"] = (
         "Select the radiometric correction coefficient. The following options are available:\n\n"
         "* `sigma0-ellipsoid`: ground area computed with ellipsoid earth model\n"
+        "* `gamma0-terrain`: ground area computed with terrain earth model in sensor line of sight (unstable)\n"
     )
     parameters["coefficient"]["schema"] = [
-        {"type": "string", "enum": ["sigma0-ellipsoid"]},
+        {"type": "string", "enum": ["sigma0-ellipsoid", "gamma0-terrain"]},
         {"title": "Non-normalized backscatter", "type": "null"},
     ]
     backscatter_spec["links"].append(
