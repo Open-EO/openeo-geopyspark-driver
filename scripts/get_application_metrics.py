@@ -114,6 +114,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         metrics["load_pixel_total"] = _metric(prometheus.get_load_megapixel_total(args.job_id, at=at), "megapixel")
         metrics["udf_execution_time_avg"] = _metric(prometheus.get_avg_udf_execution_time_ms(args.job_id, at=at), "ms")
         metrics["udf_execution_time_max"] = _metric(prometheus.get_max_udf_execution_time_ms(args.job_id, at=at), "ms")
+        metrics["udf_execution_count"] = _metric(prometheus.get_udf_execution_count(args.job_id, at=at), "count")
         executor_run_times = prometheus.get_executor_run_time_ms(args.job_id, at=at)
         metrics["executor_run_time"] = _metric(executor_run_times, "ms")
         metrics["executor_cpu_utilization"] = _metric(

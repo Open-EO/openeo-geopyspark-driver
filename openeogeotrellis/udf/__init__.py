@@ -2,7 +2,6 @@ import collections
 import contextlib
 import logging
 import os
-import resource
 import shutil
 import subprocess
 import time
@@ -41,10 +40,14 @@ class _NoOpMetric:
     def set(self, value: float, **kwargs):
         pass
 
+    def inc(self, amount: float = 1, **kwargs):
+        pass
+
 
 try:
-    from prometheus_client import Gauge, start_http_server
+    from prometheus_client import Counter, Gauge, start_http_server
 except ImportError:
+    Counter = None
     Gauge = None
     start_http_server = None
 
@@ -52,12 +55,12 @@ except ImportError:
 _PROMETHEUS_METRICS_PORT = int(os.environ.get("OPENEO_OTEL_PROMETHEUS_METRICS_PORT_PYTHON", "9465"))
 _PROMETHEUS_METRICS_ENABLED = os.environ.get("OPENEO_OTEL_ENABLED", "False").lower() in ["true", "t", "1"]
 _udf_execution_time_ms = _NoOpMetric()
-_udf_max_rss_delta_bytes = _NoOpMetric()
+_udf_execution_count = _NoOpMetric()
 _metrics_initialized = False
 
 
 def _initialize_prometheus_metrics():
-    global _metrics_initialized, _udf_execution_time_ms, _udf_max_rss_delta_bytes
+    global _metrics_initialized, _udf_execution_time_ms, _udf_execution_count
 
     if _metrics_initialized or Gauge is None:
         return
@@ -75,9 +78,9 @@ def _initialize_prometheus_metrics():
         "Time spent executing a UDF in milliseconds.",
         labelnames=["node_id"],
     )
-    _udf_max_rss_delta_bytes = Gauge(
-        "openeo_udf_max_rss_delta_bytes",
-        "RSS delta for a UDF execution in bytes.",
+    _udf_execution_count = Counter(
+        "openeo_udf_execution",
+        "Number of times a UDF has been executed.",
         labelnames=["node_id"],
     )
 
@@ -97,29 +100,16 @@ def _start_udf_execution_gauge():
     yield _udf_execution_time_ms
 
 
-def _max_rss_to_bytes(max_rss: int) -> int:
-    # Linux reports ru_maxrss in KiB, macOS in bytes.
-    if sys.platform == "darwin":
-        return int(max_rss)
-    return int(max_rss) * 1024
-
-
-def _get_max_rss_bytes() -> int:
-    return _max_rss_to_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-
-
 def _record_udf_execution_gauge_metrics(
     gauge,
     *,
     duration_ms: float,
-    rss_before_bytes: int,
-    rss_after_bytes: int,
     node_id: Optional[str] = None,
     require_executor_context: bool = True,
 ):
     _initialize_prometheus_metrics()
     gauge.labels(node_id=node_id or "").set(duration_ms)
-    _udf_max_rss_delta_bytes.labels(node_id=node_id or "").set(rss_after_bytes - rss_before_bytes)
+    _udf_execution_count.labels(node_id=node_id or "").inc()
 
 
 class UdfDependencyHandlingFailure(OpenEOApiException):
@@ -168,7 +158,6 @@ def run_udf_code(
 
     with context:
         with _start_udf_execution_gauge() as gauge:
-            rss_before_bytes = _get_max_rss_bytes()
             t0 = time.perf_counter()
             try:
                 with user_facing_log_context():
@@ -177,8 +166,6 @@ def run_udf_code(
                 _record_udf_execution_gauge_metrics(
                     gauge=gauge,
                     duration_ms=(time.perf_counter() - t0) * 1000.0,
-                    rss_before_bytes=rss_before_bytes,
-                    rss_after_bytes=_get_max_rss_bytes(),
                     node_id=node_id,
                     require_executor_context=require_executor_context,
                 )
