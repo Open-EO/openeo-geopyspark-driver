@@ -171,8 +171,8 @@ class TestBuildMetadata:
             "cube:dimensions": {
                 "bands": {"type": "bands", "values": ["blue"]},
                 "t": {"type": "temporal"},
-                "x": {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10},
-                "y": {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10},
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
             },
             "extent": {
                 "spatial": {"bbox": [[3, 4, 5, 6]]},
@@ -214,8 +214,8 @@ class TestBuildMetadata:
             "cube:dimensions": {
                 "bands": {"type": "bands", "values": ["blue"]},
                 "t": {"type": "temporal"},
-                "x": {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10},
-                "y": {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10},
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
             },
             "extent": {
                 "spatial": {"bbox": [[3, 4, 5, 6]]},
