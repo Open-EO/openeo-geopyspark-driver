@@ -10,8 +10,9 @@ import textwrap
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 import importlib.resources
+from urllib.parse import urlsplit, urlunsplit
 
 import dateutil.parser
 import kubernetes.client
@@ -42,6 +43,12 @@ from openeogeotrellis.config.integrations.calrissian_config import (
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
+from openeogeotrellis.integrations.s3proxy.exceptions import (
+    CredentialsException,
+    S3ProxyDisabled,
+    S3ProxyUnsupportedBucketType,
+)
+from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
 from openeogeotrellis.util.audience_logging import AUDIENCE_USER
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
@@ -446,13 +453,9 @@ class CalrissianJobLauncher:
             "session_name": "calrissian-eodata-access",
         }
 
-        if get_job_id(default=None) is None:
-            # Synchronous request so we are on webappdriver
-            s3_credentials = sts.get_job_aws_credentials_for_proxy(
-                job_id=correlation_id, user_id=user_id, **credential_session_details
-            )
-        else:
-            s3_credentials = sts.get_aws_credentials_for_proxy_for_running_job(**credential_session_details)
+        s3_credentials = sts.get_aws_credentials_for_proxy_in_context(
+            job_id=correlation_id, user_id=user_id, **credential_session_details
+        )
 
         return {
             "AWS_ENDPOINT_URL_S3": s3_endpoint,
@@ -996,12 +999,46 @@ def find_stac_root(paths: set, stac_root_filename: Optional[str] = "catalog.json
     return None
 
 
-def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[str, dict], collection_id: str) -> str:
+def _write_stac_catalog_for_write_assets_result(
+    output_dir: Path,
+    items: Dict[str, dict],
+    collection_id: str,
+    presign: Optional[Callable[[List[str]], List[str]]] = None,
+) -> Tuple[str, List[str]]:
     """
     Build a minimal but valid STAC collection (collection.json + one Item file per output item)
     from the "items" dict as produced by `SaveResult.write_assets`/`GeopysparkDataCube.write_assets`.
+
+    Without `presign`, all links are relative and the returned hrefs are local paths.
+
+    With `presign` (maps local paths or s3:// URIs to presigned URLs, order preserved),
+    every link and asset href is an absolute presigned URL. A relative link resolved against
+    a presigned URL would lose the signature, so nothing relative is written in that mode.
+    The files are still written to `output_dir`.
+
+    :return: tuple of the catalog href and the item hrefs
     """
-    _log.info(f"_write_stac_catalog_for_write_assets_result({output_dir=}, ...)")
+    _log.info(f"_write_stac_catalog_for_write_assets_result({output_dir=}, presign={presign is not None}, ...)")
+    local_paths = {
+        "catalog": output_dir / "catalog.json",
+        "collection": output_dir / "collection.json",
+        **{f"item:{item_id}": output_dir / f"{item_id}.json" for item_id in items},
+    }
+    asset_sources = {
+        f"asset:{item_id}:{asset_id}": str(asset["href"])
+        for item_id, item in items.items()
+        for asset_id, asset in item.get("assets", {}).items()
+    }
+    if presign:
+        # Presigning is local and does not need the objects to exist yet,
+        # so sign everything up front, including upward (root/parent) link targets.
+        sources = {**{k: str(v) for k, v in local_paths.items()}, **asset_sources}
+        hrefs = dict(zip(sources.keys(), presign(list(sources.values()))))
+    else:
+        hrefs = {k: str(v) for k, v in local_paths.items()}
+        # All items are stored next to assets in current implementation.
+        hrefs.update({k: f"./{Path(v).name}" for k, v in asset_sources.items()})
+
     stac_items = []
     item_asset_definitions = {}
     bboxes = []
@@ -1041,12 +1078,10 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
         for asset_id, asset in item.get("assets", {}).items():
             # STAC 1.1 unifies "eo:bands"/"raster:bands" into a single "bands" field.
             bands = asset.get("bands") or asset.get("raster:bands")
-            # All items are stored next to assets in current implementation.
-            asset_href = f"./{Path(str(asset['href'])).name}"
             stac_item.add_asset(
                 asset_id,
                 pystac.Asset(
-                    href=asset_href,
+                    href=hrefs[f"asset:{item_id}:{asset_id}"],
                     roles=asset.get("roles"),
                     media_type=asset.get("type"),
                     extra_fields=dict_no_none(bands=bands) or None,
@@ -1059,7 +1094,7 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
                 roles=asset.get("roles"),
             )
 
-        stac_item.set_self_href(str(output_dir / f"{item_id}.json"))
+        stac_item.set_self_href(hrefs[f"item:{item_id}"])
         stac_items.append(stac_item)
 
     if bboxes:
@@ -1083,32 +1118,109 @@ def _write_stac_catalog_for_write_assets_result(output_dir: Path, items: Dict[st
         pystac.extensions.item_assets.ItemAssetsExtension.ext(collection, add_if_missing=True).item_assets = (
             item_asset_definitions
         )
-    collection.set_self_href(str(output_dir / "collection.json"))
+    collection.set_self_href(hrefs["collection"])
 
     catalog = pystac.Catalog(id="catalog", description=f"STAC metadata for openEO CWL input {collection_id!r}")
     catalog.add_child(collection)
-    catalog.set_self_href(str(output_dir / "catalog.json"))
-    # Use relative hierarchical links (root/parent/child/item) instead of absolute paths/URLs.
-    catalog.catalog_type = pystac.CatalogType.SELF_CONTAINED
+    catalog.set_self_href(hrefs["catalog"])
+    if presign:
+        # Hierarchical links (root/parent/child/item) become the absolute (presigned) self href of their target.
+        catalog.catalog_type = pystac.CatalogType.ABSOLUTE_PUBLISHED
+    else:
+        # Use relative hierarchical links (root/parent/child/item) instead of absolute paths/URLs.
+        catalog.catalog_type = pystac.CatalogType.SELF_CONTAINED
 
     for stac_item in stac_items:
-        stac_item.save_object(include_self_link=False)
-    collection.save_object(include_self_link=False)
-    catalog.save_object(include_self_link=False)
+        stac_item.save_object(include_self_link=False, dest_href=str(local_paths[f"item:{stac_item.id}"]))
+    collection.save_object(include_self_link=False, dest_href=str(local_paths["collection"]))
+    catalog.save_object(include_self_link=False, dest_href=str(local_paths["catalog"]))
 
     if ConfigParams().is_ci_context:  # TODO: Move this to unit test
-        catalog.validate_all()
-        collection.validate_all()
-    root_path = catalog.get_self_href()
-    assert root_path
-    return root_path
+        if presign:
+            # validate_all() would follow the presigned links over HTTP.
+            for stac_object in [catalog, collection, *stac_items]:
+                stac_object.validate()
+        else:
+            catalog.validate_all()
+            collection.validate_all()
+    return hrefs["catalog"], [hrefs[f"item:{item_id}"] for item_id in items]
 
 
-def _get_stac_item_urls(stac_root: str) -> List[str]:
-    """Fetch the (self) URLs/paths of all STAC items found under the given STAC root (catalog/collection)."""
-    catalog = pystac.Catalog.from_file(stac_root)
-    item_urls = [item.get_self_href() for item in catalog.get_all_items()]
-    return item_urls
+# Presigned CWL input links stay valid this long after signing. Must outlive the CWL job timeout
+# (see `CalrissianJobLauncher.launch_job_and_wait`). This is longer than the 12h STS credentials used to sign:
+# the S3 proxy accepts presigned URLs up to `signedURLGraceTimeSeconds` past the credential expiry
+# (7 days on CDSE), so X-Amz-Expires is the effective limit.
+CWL_INPUT_PRESIGNED_URL_EXPIRATION = 24 * 3600
+
+
+def _cwl_input_presigner(job_id: str, user_id: str) -> Optional[Callable[[List[str]], List[str]]]:
+    """
+    Build a function that presigns CWL input hrefs (local paths or s3:// URIs) against the internal S3 proxy,
+    so that CWL pods can read them without credentials.
+
+    Returns None when the S3 proxy can not be used for the job bucket (e.g. local development),
+    in which case the CWL input is passed as local paths, as before.
+    """
+    bucket = get_backend_config().s3_bucket_name
+
+    def to_s3_uri(href: str) -> str:
+        # With the FUSE mounted job bucket, the local job dir is the bucket prefix mounted at the same path.
+        return href if href.startswith("s3://") else f"s3://{bucket}/{href.lstrip('/')}"
+
+    def presign(hrefs: List[str]) -> List[str]:
+        return presign_s3_urls_for_internal_usage(
+            [to_s3_uri(h) for h in hrefs],
+            job_id=job_id,
+            user_id=user_id,
+            expiration=CWL_INPUT_PRESIGNED_URL_EXPIRATION,
+        )
+
+    try:
+        # Signing is local, only the (cached) STS credential exchange does a request: fail fast here.
+        presign([f"/{job_id}/cwl_input"])
+    except (S3ProxyDisabled, S3ProxyUnsupportedBucketType) as e:
+        _log.warning(f"Not presigning CWL input STAC links: {e!r}")
+        return None
+    except CredentialsException as e:
+        raise RuntimeError(
+            "Could not get S3 proxy credentials to presign CWL input links."
+            " Is the batch job token missing or older than 48 hours?"
+        ) from e
+    return presign
+
+
+def _without_query(url: str) -> str:
+    """Strip the query string, e.g. to log a presigned URL without its signature and session token."""
+    return urlunsplit(urlsplit(url)._replace(query=""))
+
+
+def _redact_presigned_urls(value: Any) -> Any:
+    if isinstance(value, str) and value.startswith("http"):
+        return _without_query(value)
+    if isinstance(value, list):
+        return [_redact_presigned_urls(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _redact_presigned_urls(v) for k, v in value.items()}
+    return value
+
+
+def _check_presigned_urls_reachable(urls: List[str], *, not_found_timeout: float = 60, poll_interval: float = 2):
+    """
+    HEAD each presigned URL before handing them to CWL, so signing problems fail the job early.
+    404 is retried for a while to cover FUSE upload lag.
+    """
+    for url in urls:
+        deadline = time.monotonic() + not_found_timeout
+        while True:
+            resp = requests.head(url, timeout=30)
+            if resp.status_code == 404 and time.monotonic() < deadline:
+                time.sleep(poll_interval)
+                continue
+            if resp.status_code >= 400:
+                raise RuntimeError(
+                    f"Presigned CWL input URL for {urlsplit(url).path!r} is not reachable: HTTP {resp.status_code}"
+                )
+            break
 
 
 def cwl_to_stac(
@@ -1130,6 +1242,8 @@ def cwl_to_stac(
         #       to avoid risk on conflict with "regular" load_stac code flows?
         return "dummy"
 
+    presign: Optional[Callable[[List[str]], List[str]]] = None
+    presign_resolved = False
     for key in cwl_arguments:
         val = cwl_arguments[key]
         from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -1155,19 +1269,35 @@ def cwl_to_stac(
             output_dir = Path(get_backend_config().batch_job_work_dir_root) / correlation_id / "cwl_input" / str(key)
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            items = save_result.write_assets(output_dir / "out")
-            collection_file = _write_stac_catalog_for_write_assets_result(
-                output_dir=output_dir, items=items, collection_id=f"{correlation_id}_{key}"
-            )
+            if not presign_resolved:
+                user_id = getattr(env.get("user"), "user_id", "unknown") if env else "unknown"
+                presign = _cwl_input_presigner(job_id=correlation_id, user_id=user_id)
+                presign_resolved = True
 
-            res_url = str(collection_file)
+            signed_urls = []
+
+            def presign_and_record(hrefs: List[str]) -> List[str]:
+                urls = presign(hrefs)
+                signed_urls.extend(urls)
+                return urls
+
+            items = save_result.write_assets(output_dir / "out")
+            catalog_href, item_hrefs = _write_stac_catalog_for_write_assets_result(
+                output_dir=output_dir,
+                items=items,
+                collection_id=f"{correlation_id}_{key}",
+                presign=presign_and_record if presign else None,
+            )
+            if signed_urls:
+                _check_presigned_urls_reachable(signed_urls)
+
             if cwl_source.is_string_array_input(key):
                 # Parameter expects an array of strings: pass the individual STAC item URLs
                 # instead of the STAC root/catalog URL.
-                cwl_arguments[key] = _get_stac_item_urls(res_url)
+                cwl_arguments[key] = item_hrefs
             else:
-                cwl_arguments[key] = res_url
-    _log.info("CWL arguments: " + json.dumps(cwl_arguments))
+                cwl_arguments[key] = catalog_href
+    _log.info("CWL arguments: " + json.dumps(_redact_presigned_urls(cwl_arguments)))
     ensure_kubernetes_config()
 
     _log.info(f"Loading CWL from {cwl_source=}")

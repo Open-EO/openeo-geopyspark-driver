@@ -9,9 +9,11 @@ from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3
 from openeogeotrellis.integrations.s3proxy import s3_shared_context
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
 from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri, split_s3_uri_and_alias
+from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 
 
@@ -62,7 +64,7 @@ class TestPresignS3UrlsForInternalUsage:
 
     @pytest.fixture
     def mock_job_credentials(self, aws_credentials):
-        """Mock get_job_aws_credentials_for_proxy to return the moto test credentials."""
+        """Mock the proxy credential exchange to return the moto test credentials."""
         creds = STSCredentials(
             access_key_id="testing",
             secret_access_key="testing",
@@ -70,7 +72,7 @@ class TestPresignS3UrlsForInternalUsage:
             expiration=datetime(2099, 1, 1, tzinfo=timezone.utc),
         )
         with mock.patch(
-            "openeogeotrellis.integrations.s3proxy.s3_shared_context.get_job_aws_credentials_for_proxy",
+            "openeogeotrellis.integrations.s3proxy.s3_shared_context.get_aws_credentials_for_proxy_in_context",
             return_value=creds,
         ):
             yield
@@ -188,3 +190,66 @@ class TestPresignS3UrlsForInternalUsage:
                     user_id="alice",
                     expiration=3600,
                 )
+
+
+_TEST_CREDS = STSCredentials(
+    access_key_id="testing",
+    secret_access_key="testing",
+    session_token="testing",
+    expiration=datetime(2099, 1, 1, tzinfo=timezone.utc),
+)
+
+
+class TestGetAwsCredentialsForProxyInContext:
+    def test_webapp_issues_token(self, monkeypatch):
+        monkeypatch.delenv(ENV_VAR_OPENEO_BATCH_JOB_ID, raising=False)
+        with mock.patch.object(sts, "get_job_aws_credentials_for_proxy", return_value=_TEST_CREDS) as webapp, mock.patch.object(
+            sts, "get_aws_credentials_for_proxy_for_running_job"
+        ) as running_job:
+            creds = sts.get_aws_credentials_for_proxy_in_context(
+                job_id="j-123", user_id="alice", role_arn="arn:openeows:iam:::role/ws", session_name="test"
+            )
+        assert creds == _TEST_CREDS
+        webapp.assert_called_once_with(
+            job_id="j-123", user_id="alice", role_arn="arn:openeows:iam:::role/ws", session_name="test"
+        )
+        running_job.assert_not_called()
+
+    def test_batch_job_uses_mounted_job_token(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-123")
+        (tmp_path / "token").write_text("the-job-token")
+        with gps_config_overrides(batch_job_config_dir=tmp_path), mock.patch.object(
+            sts, "_get_aws_credentials_for_proxy", return_value=_TEST_CREDS
+        ) as exchange, mock.patch.object(sts, "get_job_aws_credentials_for_proxy") as webapp:
+            creds = sts.get_aws_credentials_for_proxy_in_context(
+                job_id="j-123", user_id="alice", role_arn="arn:openeows:iam:::role/ws", session_name="test"
+            )
+        assert creds == _TEST_CREDS
+        exchange.assert_called_once_with(
+            token="the-job-token", role_arn="arn:openeows:iam:::role/ws", session_name="test"
+        )
+        webapp.assert_not_called()
+
+
+class TestProxyS3ClientInBatchJob:
+    @pytest.fixture(autouse=True)
+    def clean_proxy_client_cache(self):
+        s3_shared_context._client_cache.flush()
+        yield
+        s3_shared_context._client_cache.flush()
+
+    def test_client_without_idp_key(self, monkeypatch, tmp_path):
+        """A batch job driver has no IDP private key, but can build a proxy client from its job token."""
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-123")
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        (tmp_path / "token").write_text("the-job-token")
+        with gps_config_overrides(
+            batch_job_config_dir=tmp_path,
+            openeo_idp_details_file=tmp_path / "missing_idp_details.json",
+        ), mock.patch.object(sts, "_get_aws_credentials_for_proxy", return_value=_TEST_CREDS) as exchange:
+            client = s3_shared_context.get_proxy_s3_client_for_job("openeo-fake-bucketname", "j-123", "alice", internal=True)
+
+        assert client.meta.endpoint_url == "https://s3proxy.test"
+        exchange.assert_called_once_with(
+            token="the-job-token", role_arn="arn:openeows:iam:::role/s3_workspace", session_name="openeo-geopyspark-driver"
+        )
