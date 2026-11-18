@@ -694,6 +694,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return create_pyramid(factory)
 
 
+        if layer_source_type == "creodias-s1-backscatter":
+            #TODO future: gradually replace orfeo by stac based implementation, migrate away from special case handling
+            _sar_args = _get_sar_backscatter_arguments(load_params=load_params, env=env)
+            if (
+                "gamma0" in (_sar_args.coefficient or "")
+                or _sar_args.local_incidence_angle
+                or str(_sar_args.options.get("implementation_version", "2")) == "3"
+            ):
+                layer_source_type = "stac"
+
         if layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'file-probav':
