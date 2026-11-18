@@ -47,7 +47,7 @@ without compromising stable operations.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 - `load_collection`/`load_stac`: make retaining NODATA tiles by default configurable (defaults to `False`) ([#1949](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1949))
-- `load_stac`: fall back to 10m (approximately) resolution for EPSG:4326 ([#1952](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952))
+- `load_stac`: fall back to 10m (approximately) resolution for EPSG:4326 and improve resolution detection when `proj:shape` is missing ([#1952](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952))
 
 
 ## 0.73.0
