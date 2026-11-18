@@ -46,6 +46,20 @@ class TestProjectionMetadata:
         metadata = ProjectionMetadata(shape=(10, 20), transform=[1, 0, 500000, 0, -1, 5600000])
         assert metadata.bbox == (500000, 5600000 - 10, 500000 + 20, 5600000)
 
+    @pytest.mark.parametrize(
+        ["kwargs", "expected"],
+        [
+            ({"shape": (1000, 1000), "bbox": (500000, 5600000, 510000, 5610000)}, (10, 10)),
+            ({"shape": [10, 20], "bbox": [1, 2, 3, 4]}, (0.1, 0.2)),
+            ({"transform": [0.1, 0, 3, 0, 0.2, 50]}, (0.1, 0.2)),
+            ({"transform": [-0.1, 0, 3, 0, -0.2, 50]}, (0.1, 0.2)),
+            ({"transform": [0, 0.1, 3, 0.2, 0, 50]}, (0.1, 0.2)),
+        ],
+    )
+    def test_resolution(self, kwargs, expected):
+        metadata = ProjectionMetadata(**kwargs)
+        assert metadata.resolution() == expected
+
     def test_resolution_fail_on_miss(self):
         metadata = ProjectionMetadata()
         with pytest.raises(ValueError):

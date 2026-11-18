@@ -393,6 +393,18 @@ class TestBuildAssetTable:
                 ({4326}, (0.01, 0.01)),
                 {(4326, 0.01)},
             ),
+            (
+                # proj:shape + proj:transform in YX orientation (exotic case)
+                {"proj:code": "EPSG:4326", "proj:shape": [100, 100], "proj:transform": [0, 0.01, 3, -0.02, 0, 46]},
+                ({4326}, (0.01, 0.02)),
+                {(4326, 0.01)},
+            ),
+            (
+                # resolution info but no proj:code (which renders the resolution info meaningless)
+                {"proj:bbox": [3, 45, 4, 46], "proj:shape": [100, 100]},
+                (set(), None),
+                {(None, None)},
+            ),
         ],
     )
     def test_resolution_tracker_from_projection_info(

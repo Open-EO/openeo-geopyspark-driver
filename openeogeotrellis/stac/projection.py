@@ -168,8 +168,13 @@ class ProjectionMetadata:
             yn, xn = self.shape
             return float(xmax - xmin) / xn, float(ymax - ymin) / yn
         elif self._transform:
-            a0, _, _, _, a4, _ = self._transform[:6]
-            return abs(a0), abs(a4)
+            a0, a1, _, a3, a4, _ = self._transform[:6]
+            # Normally, the resolution can be directly extracted from the diagonal (a0 and a4),
+            # but in exotic cases the matrix might be YX-oriented:
+            if a0 or a4:
+                return abs(a0), abs(a4)
+            else:
+                return abs(a1), abs(a3)
 
         if fail_on_miss:
             raise ValueError(

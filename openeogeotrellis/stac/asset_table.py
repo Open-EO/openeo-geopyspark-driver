@@ -413,7 +413,7 @@ def build_asset_table(
                 # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                 continue
 
-            if asset_cell_size := asset_proj_metadata.resolution(fail_on_miss=False):
+            if proj_epsg and (asset_cell_size := asset_proj_metadata.resolution(fail_on_miss=False)):
                 for asset_band_name in asset_band_names:
                     overall_resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
                     item_resolution_tracker.track(epsg=proj_epsg, res=asset_cell_size)
