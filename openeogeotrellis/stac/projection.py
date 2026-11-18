@@ -302,15 +302,3 @@ class ProjectionMetadata:
             )
         else:
             return intersection
-
-
-def compute_cellsize(
-    proj_bbox: Tuple[float, float, float, float],
-    proj_shape: Tuple[float, float],
-) -> Tuple[float, float]:
-    # TODO: replace usage with ProjectionMetadata.resolution()?
-    xmin, ymin, xmax, ymax = proj_bbox
-    rows, cols = proj_shape
-    cell_width = (xmax - xmin) / cols
-    cell_height = (ymax - ymin) / rows
-    return cell_width, cell_height

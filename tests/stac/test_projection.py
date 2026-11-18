@@ -9,7 +9,7 @@ import pystac
 import pytest
 
 from openeo.testing.stac import StacDummyBuilder
-from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize, get_asset_property
+from openeogeotrellis.stac.projection import ProjectionMetadata, get_asset_property
 
 SOME_DATETIME = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
 
@@ -161,7 +161,3 @@ class TestGetAssetProperty:
     def test_missing(self):
         asset = pystac.Asset(href="asset.tif")
         assert get_asset_property(asset, "nodata") is None
-
-
-def test_compute_cellsize():
-    assert compute_cellsize((0, 0, 100, 200), (20, 10)) == (10.0, 10.0)

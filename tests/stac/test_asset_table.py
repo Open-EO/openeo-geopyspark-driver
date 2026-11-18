@@ -360,6 +360,57 @@ class TestBuildAssetTable:
         assert item_result.raster_extent == (500000.0, 4990200.0, 509800.0, 5000000.0)
         assert item_result.resolution == 10.0
 
+    @pytest.mark.parametrize(
+        ["item_properties", "expected_finest_for", "expected_items_resolution"],
+        [
+            (
+                # No proj metadata
+                {},
+                (set(), None),
+                {(None, None)},
+            ),
+            (
+                # Just proj:code, no proj:bbox/shape/transform
+                {"proj:code": "EPSG:4326"},
+                (set(), None),
+                {(4326, None)},
+            ),
+            (
+                # proj:bbox + proj:shape
+                {"proj:code": "EPSG:4326", "proj:bbox": [3, 45, 4, 46], "proj:shape": [100, 100]},
+                ({4326}, (0.01, 0.01)),
+                {(4326, 0.01)},
+            ),
+            (
+                # proj:bbox + proj:transform
+                {"proj:code": "EPSG:4326", "proj:bbox": [3, 45, 4, 46], "proj:transform": [0.01, 0, 3, 0, -0.01, 46]},
+                ({4326}, (0.01, 0.01)),
+                {(4326, 0.01)},
+            ),
+            (
+                # proj:shape + proj:transform
+                {"proj:code": "EPSG:4326", "proj:shape": [100, 100], "proj:transform": [0.01, 0, 3, 0, -0.01, 46]},
+                ({4326}, (0.01, 0.01)),
+                {(4326, 0.01)},
+            ),
+        ],
+    )
+    def test_resolution_tracker_from_projection_info(
+        self, item_properties, expected_finest_for, expected_items_resolution
+    ):
+        """
+        Test proper resolution extraction from different combinations of proj:bbox, proj:shape and proj:transform.
+        """
+        item = _item(
+            bbox=(3, 45, 4, 46),
+            properties=item_properties,
+            assets={"B02": {"href": "https://stac.test/B02.tif", "roles": ["data"], "bands": [{"name": "B02"}]}},
+        )
+        asset_table = _build(item)
+        assert asset_table.resolution_tracker.finest_for(["B02"]) == expected_finest_for
+
+        assert set((i.crs_epsg, i.resolution) for i in asset_table.items) == expected_items_resolution
+
     def test_projection_metadata_conflicting_epsgs_across_assets(self):
         item = _item(
             bbox=(3, 45, 3.1, 45.1),
