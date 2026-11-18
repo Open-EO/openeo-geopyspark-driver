@@ -98,6 +98,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # Intermediate file format of `aggregate_spatial` results: "csv" (default) or "parquet".
     aggregate_spatial_output_format: str = "csv"
 
+    # `aggregate_spatial` with at most this number of polygons collects the result in memory
+    # instead of writing files (0 disables).
+    aggregate_spatial_in_memory_max_polygons: int = 0
+
     setup_kerberos_auth: bool = not _is_kube_deploy
 
     # TODO: possible to disable enrichment by default?
