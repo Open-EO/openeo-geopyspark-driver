@@ -47,8 +47,6 @@ without compromising stable operations.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 - `load_collection`/`load_stac`: make retaining NODATA tiles by default configurable (defaults to `False`) ([#1949](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1949))
-- Document the `retain_nodata_tiles` load feature flag, which retains all-NoData tiles such as pure Sentinel-2 angle placeholders; this is separate from the `save_result` format option of the same name.
-- Sentinel-2 per-pixel angle bands: configure `granule_metadata##4` to `##7` through `granule_metadata_band_map` (gapless from `##0`) for sun and B05 viewing angles per pixel; GML detector masks give NoData viewing angles (see `docs/layercatalog.md`).
 
 
 ## 0.73.0
