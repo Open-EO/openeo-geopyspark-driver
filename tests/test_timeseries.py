@@ -197,6 +197,26 @@ def test_zonal_statistics(imagecollection_with_two_bands_and_one_date):
     }
 
 
+def test_zonal_statistics_parquet_output(imagecollection_with_two_bands_and_one_date, monkeypatch):
+    from unittest import mock
+
+    from openeogeotrellis.testing import gps_config_overrides
+    from openeogeotrellis.vectorcube import AggregateSpatialResultParquet
+
+    cube = imagecollection_with_two_bands_and_one_date
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    jvm_adapter = mock.MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, AggregateSpatialResultParquet)
+    args = jvm_adapter.compute_generic_timeseries_from_datacube.call_args.args
+    assert args[0] == "mean"
+    assert args[-2:] == ("parquet", "file")
+
+
 def get_near_and_far_polygon_geometry_collection():
     polygon1 = Polygon(shell=[
         (0.0, 0.0),

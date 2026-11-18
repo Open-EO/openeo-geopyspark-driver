@@ -1,5 +1,7 @@
+import glob
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Callable, List, Tuple
 
@@ -222,3 +224,40 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             return processed
 
         return callback
+
+
+class AggregateSpatialResultParquet(AggregateSpatialResultCSV):
+    """
+    `aggregate_spatial` result (with time dimension) written as Parquet by the JVM.
+
+    The Parquet files are converted once to a CSV file in the same directory,
+    so all CSV based functionality (data access, save_result, run_udf) is reused.
+    """
+
+    def __init__(self, parquet_dir, regions, metadata=None):
+        super().__init__(parquet_dir, regions=regions, metadata=metadata)
+        self._converted = False
+
+    def _convert_to_csv(self):
+        if self._converted:
+            return
+        parquet_paths = sorted(glob.glob(os.path.join(self._csv_dir, "*.parquet")))
+        _log.info(f"{type(self).__name__}: converting {len(parquet_paths)} parquet file(s) in {self._csv_dir}")
+        if parquet_paths:
+            df = pd.concat(map(pd.read_parquet, parquet_paths))
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"], utc=True)
+            df.to_csv(os.path.join(self._csv_dir, "converted.csv"), index=False)
+        self._converted = True
+
+    def get_data(self):
+        self._convert_to_csv()
+        return super().get_data()
+
+    def to_csv(self, destination=None):
+        self._convert_to_csv()
+        return super().to_csv(destination)
+
+    def run_udf(self, udf: str, *, runtime: str = "Python", context: Optional[dict] = None, env: EvalEnv):
+        self._convert_to_csv()
+        return super().run_udf(udf, runtime=runtime, context=context, env=env)

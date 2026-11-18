@@ -95,6 +95,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False
 
+    # Intermediate file format of `aggregate_spatial` results: "csv" (default) or "parquet".
+    aggregate_spatial_output_format: str = "csv"
+
     setup_kerberos_auth: bool = not _is_kube_deploy
 
     # TODO: possible to disable enrichment by default?
