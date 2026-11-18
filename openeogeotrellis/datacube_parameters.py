@@ -102,4 +102,8 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         )
         datacubeParams.setSyntheticDataOverride(syntheticDataOverride)
 
+    if load_params.sar_backscatter is not None:
+        params = jvm.org.openeo.sar.SarBackscatterParameters.fromMap(load_params.sar_backscatter._asdict())
+        datacubeParams.setExtraProcessingParameters(params)
+
     return datacubeParams, single_level

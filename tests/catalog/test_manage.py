@@ -26,6 +26,7 @@ from openeogeotrellis.catalog.manage import (
     BandMetadataList,
     _find_common_prefix,
     normalize_openeo_collection_id,
+    guess_x_and_y_dimensions_from_items,
 )
 
 
@@ -170,8 +171,8 @@ class TestBuildMetadata:
             "cube:dimensions": {
                 "bands": {"type": "bands", "values": ["blue"]},
                 "t": {"type": "temporal"},
-                "x": {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10},
-                "y": {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10},
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
             },
             "extent": {
                 "spatial": {"bbox": [[3, 4, 5, 6]]},
@@ -213,8 +214,8 @@ class TestBuildMetadata:
             "cube:dimensions": {
                 "bands": {"type": "bands", "values": ["blue"]},
                 "t": {"type": "temporal"},
-                "x": {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10},
-                "y": {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10},
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
             },
             "extent": {
                 "spatial": {"bbox": [[3, 4, 5, 6]]},
@@ -1233,3 +1234,103 @@ def test_normalize_collection_id():
     assert normalize_openeo_collection_id("s2-toc-v2") == "S2_TOC_V2"
     assert normalize_openeo_collection_id("s2% toc +V2") == "S2_TOC_V2"
     assert normalize_openeo_collection_id("  s2% toc +V2 ") == "S2_TOC_V2"
+
+
+class TestDimensionGuessing:
+    @pytest.mark.parametrize(
+        ["items"],
+        [
+            (None,),  # trigger 404
+            ("invalid",),
+            ([],),
+            ([StacDummyBuilder.item()],),
+            ([StacDummyBuilder.item(assets={"a": StacDummyBuilder.asset(proj_code="invalid")})],),
+        ],
+    )
+    def test_guess_x_and_y_dimensions_from_items_fallback(self, requests_mock, items):
+        collection_url = "https://stac.test/c123"
+        if items is not None:
+            requests_mock.get(f"{collection_url}/items", json={"features": items})
+        else:
+            requests_mock.get(f"{collection_url}/items", status_code=404)
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x"},
+            {"type": "spatial", "axis": "y"},
+        )
+
+    def test_guess_x_and_y_dimensions_from_items_epsg4326_basic(self, requests_mock):
+        collection_url = "https://stac.test/c123"
+
+        asset1 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/1.tif",
+            proj_bbox=[3, 50, 4, 51],
+        )
+        item1 = StacDummyBuilder.item(
+            properties={
+                "proj:code": "EPSG:4326",
+                "proj:shape": [200, 400],
+            },
+            assets={"a1": asset1},
+        )
+        requests_mock.get(
+            f"{collection_url}/items",
+            json={"features": [item1]},
+        )
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x", "reference_system": 4326, "step": 1 / 400},
+            {"type": "spatial", "axis": "y", "reference_system": 4326, "step": 1 / 200},
+        )
+
+    def test_guess_x_and_y_dimensions_from_items_utm_basic(self, requests_mock):
+        collection_url = "https://stac.test/c123"
+        asset1 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/1.tif",
+            proj_bbox=[600_000, 5_500_000, 700_000, 5_800_000],
+        )
+        item1 = StacDummyBuilder.item(
+            properties={
+                "proj:code": "EPSG:32630",
+                "proj:shape": [3000, 1000],
+            },
+            assets={"a1": asset1},
+        )
+        requests_mock.get(
+            f"{collection_url}/items",
+            json={"features": [item1]},
+        )
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 100},
+            {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 100},
+        )
+
+    @pytest.mark.parametrize(
+        ["shape1", "shape2", "expected_step"],
+        [
+            ([1000, 1000], [500, 500], [100, 100]),
+            ([2000, 2000], [500, 500], [50, 50]),
+            ([1000, 1000], [5000, 5000], [20, 20]),
+            ([1000, 2000], [400, 800], [50, 100]),
+        ],
+    )
+    def test_guess_x_and_y_dimensions_from_items_utm_multi_resolution(
+        self, requests_mock, shape1, shape2, expected_step
+    ):
+        collection_url = "https://stac.test/c123"
+        asset1 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/1.tif", proj_bbox=[600_000, 5_500_000, 700_000, 5_600_000], proj_shape=shape1
+        )
+        asset2 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/2.tif", proj_bbox=[600_000, 5_500_000, 700_000, 5_600_000], proj_shape=shape2
+        )
+        item1 = StacDummyBuilder.item(
+            properties={"proj:code": "EPSG:32630"},
+            assets={"a1": asset1, "a2": asset2},
+        )
+        requests_mock.get(
+            f"{collection_url}/items",
+            json={"features": [item1]},
+        )
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": expected_step[0]},
+            {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": expected_step[1]},
+        )
