@@ -80,6 +80,30 @@ def _bbox_to_geojson(bbox: Union[Tuple, List]) -> dict:
     return shapely.geometry.mapping(geometry)
 
 
+def _extend_spatial_extent_from_items(metadata: dict, stac_items: List[dict]) -> None:
+    item_bounds = []
+    for item in stac_items:
+        bbox = item.get("bbox")
+        if bbox and len(bbox) in (4, 6):
+            # Item `bbox` is already in WGS 84, unlike `proj:bbox`.
+            max_index = len(bbox) // 2
+            item_bounds.append((bbox[0], bbox[1], bbox[max_index], bbox[max_index + 1]))
+    if not item_bounds:
+        return
+
+    bbox = metadata["bbox"]
+    if bbox:
+        item_bounds.append(bbox)
+    west, south, east, north = zip(*item_bounds)
+    bounds = [min(west), min(south), max(east), max(north)]
+    if any(w > e for w, e in zip(west, east)):
+        # Use an enclosing longitude range when an input crosses the antimeridian.
+        bounds[0], bounds[2] = -180, 180
+    if bounds != bbox:
+        metadata["bbox"] = bounds
+        metadata["geometry"] = _bbox_to_geojson(bounds)
+
+
 def _extract_temporal_extent_from_items(stac_items: List[dict]) -> Tuple[Optional[dt.datetime], Optional[dt.datetime]]:
     def _parse(dt_str: Optional[str]):
         if not dt_str:
@@ -236,8 +260,11 @@ def assemble_result_metadata(
     ml_model_metadata: Optional[Dict] = None,
     is_item: bool = False,
     result_items: Optional[List[dict]] = None,
+    extend_spatial_extent: bool = False,
 ) -> dict:
     metadata = extract_result_metadata(tracer, stac_items=result_items)
+    if extend_spatial_extent and result_items:
+        _extend_spatial_extent_from_items(metadata, result_items)
 
     cube_metadata = result_cube_metadata(result)
     epsg = cube_metadata.epsg

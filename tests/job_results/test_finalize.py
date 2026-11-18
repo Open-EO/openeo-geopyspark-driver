@@ -6,8 +6,10 @@ from typing import List, Optional
 import pytest
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, SaveResult
+from shapely.geometry import shape
 
 from openeogeotrellis.job_results.finalize import finalize_job, write_failure_metadata
+from openeogeotrellis.job_results.items import WrittenAsset, WrittenItem, build_items
 from openeogeotrellis.job_results.settings import JobResultsSettings, ResultCubeMetadata
 
 
@@ -278,6 +280,51 @@ def test_stac11_mode(tmp_path):
     assert len(metadata["items"]) == 1
     item = metadata["items"][0]
     assert list(item["assets"].keys()) == ["result.json"]
+
+
+@pytest.mark.parametrize("stac11_mode", [False, True])
+@pytest.mark.parametrize("tile_grid", [None, "one_degree"])
+def test_result_extent_accounts_for_tile_grid_padding(tmp_path, stac11_mode, tile_grid):
+    class _TiledResult(SaveResult):
+        def write_assets(self, directory):
+            bounds = [(2, 51, 3, 52), (4, 53, 5, 54)]
+            return build_items(
+                [
+                    WrittenItem(
+                        id=f"tile-{i}",
+                        crs=4326,
+                        bbox=bbox,
+                        assets=[WrittenAsset(key="data", path=f"tile-{i}.tif", proj_bbox=bbox, proj_epsg=4326)],
+                    )
+                    for i, bbox in enumerate(bounds)
+                ],
+                format_type="image/tiff",
+            )
+
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+    tracer = DryRunDataTracer()
+    tracer.load_collection(
+        collection_id="Sentinel2",
+        arguments={"spatial_extent": {"west": 2.5, "south": 51.5, "east": 4.5, "north": 53.5}},
+    )
+
+    finalize_job(
+        _TiledResult(options={"tile_grid": tile_grid}),
+        tracer=tracer,
+        process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+        job_specification={"process_graph": {}},
+        job_dir=job_dir,
+        output_file=output_file,
+        metadata_file=metadata_file,
+        settings=_settings(stac11_mode=stac11_mode, detailed_asset_metadata=False),
+        hooks=_RecordingHooks(),
+        workspace_repository=None,
+    )
+
+    metadata = _read_metadata(metadata_file)
+    expected_bbox = [2, 51, 5, 54] if tile_grid else [2.5, 51.5, 4.5, 53.5]
+    assert metadata["bbox"] == expected_bbox
+    assert shape(metadata["geometry"]).bounds == tuple(expected_bbox)
 
 
 def test_sample_by_feature_with_geometry(tmp_path):
