@@ -150,10 +150,16 @@ def _determine_cell_size(
             target_bbox_center = target_bbox.as_polygon().centroid
             # TODO: GeometryBufferer.transform_meter_to_crs doesn't work properly in y-dimension
             cell_width = GeometryBufferer.transform_meter_to_crs(
-                cell_width, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+                cell_width,
+                f"EPSG:{target_epsg}",
+                loi=(target_bbox_center.x, target_bbox_center.y),
+                loi_crs=pyproj.CRS.from_user_input(target_bbox.crs) if target_bbox.crs is not None else None,
             )
             cell_height = GeometryBufferer.transform_meter_to_crs(
-                cell_height, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+                cell_height,
+                f"EPSG:{target_epsg}",
+                loi=(target_bbox_center.x, target_bbox_center.y),
+                loi_crs=pyproj.CRS.from_user_input(target_bbox.crs) if target_bbox.crs is not None else None,
             )
     else:
         logger.warning("cellsize: fallback on hardcoded 10m assumption")
@@ -207,4 +213,3 @@ def _apply_load_params_overrides(
                     )
 
     return cell_width, cell_height, target_epsg
-
