@@ -92,7 +92,13 @@ class TestDetermineCellSize:
         "target_bbox",
         [
             BoundingBox(west=339960.0, south=6159960.0, east=360030.0, north=6180030.0, crs=32734),
-            BoundingBox(west=19.25, south=-34.69, east=19.48, north=-34.51, crs=4326),
+            BoundingBox(
+                west=19.252831864490275,
+                south=-34.692807464034416,
+                east=19.475174871670575,
+                north=-34.508955786249906,
+                crs=4326,
+            ),
         ],
     )
     def test_hardcoded_10m_fallback_for_lonlat_converted_at_bbox_location(self, target_bbox):
@@ -106,7 +112,7 @@ class TestDetermineCellSize:
             feature_flags={},
         )
         # 10m in degrees of longitude at latitude ~-34.6
-        expected = 10.0 / (111_320 * math.cos(math.radians(34.6)))
+        expected = 10.0 / (111_320 * math.cos(math.radians(34.6)))  # TODO: clarify constant (= earth_radius * π / 180)
         assert cell_width == pytest.approx(expected, rel=0.01)
         assert cell_height == pytest.approx(expected, rel=0.01)
 
