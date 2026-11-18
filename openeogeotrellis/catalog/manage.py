@@ -978,13 +978,18 @@ class LayerCatalogManagerCliApp:
         return cli
 
     def setup_logging(self, args: argparse.Namespace) -> None:
-        # TODO: option to not do rich logging (or detect when inappropriate)?
+        # TODO: option to disable/force rich logging?
         try:
             # Use fancy logging if `rich` is available in environment.
             import rich.console
             import rich.logging
 
-            log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+            console = rich.console.Console(stderr=True)
+            # Only do rich logging to an interactive terminal (not when piping to a file/grep/...)
+            if console.is_terminal:
+                log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+            else:
+                log_handlers = None
         except ImportError:
             log_handlers = None
         logging.basicConfig(
