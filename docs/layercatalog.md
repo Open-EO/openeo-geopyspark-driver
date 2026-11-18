@@ -85,6 +85,43 @@ nested fields "_vito" > "data_source" in the collection object, e.g.:
         ...
 ```
 
+### Required property filters
+
+Some collections contain alternatives, such as climate prediction scenarios,
+that should not be mixed when loading data. Set `_vito.required_properties` to
+a list of property names that users must explicitly filter in `load_collection`:
+
+```json
+{
+  "id": "CLIMTAG_PRECIPITATION_ANNUAL",
+  "_vito": {
+    "required_properties": ["scenario"],
+    "data_source": {
+      "type": "stac",
+      "url": "https://stac.terrascope.be/collections/climtag-precipitation-annual"
+    }
+  }
+}
+```
+
+For example, with the Python client:
+
+```python
+cube = connection.load_collection(
+    "CLIMTAG_PRECIPITATION_ANNUAL",
+    properties={"scenario": lambda value: value == "ssp585"},
+)
+```
+
+Omitting a required filter results in a `MissingPropertyFilter` error (HTTP 400)
+identifying the collection and property. Process-graph validation also reports
+missing filters. Every listed property must be filtered; `_vito.properties`
+defaults do not replace the required explicit user filters. An omitted or empty
+`required_properties` list preserves the existing behavior.
+
+This setting applies to all `load_collection` source types, including STAC-backed
+collections. It does not impose requirements on direct `load_stac` calls.
+
 ## STAC source type
 
 The easiest data source type is the "stac" type,

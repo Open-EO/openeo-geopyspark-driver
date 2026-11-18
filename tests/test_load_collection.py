@@ -20,7 +20,7 @@ from py4j.java_gateway import JavaGateway
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, extra_validation_load_collection, get_layer_catalog
 from tests.data import get_test_data_file
 
 
@@ -48,6 +48,86 @@ def catalog(vault):
     catalog = get_layer_catalog(vault)
     catalog.set_default_sentinel_hub_credentials(client_id="???", client_secret="!!!")
     return catalog
+
+
+@pytest.mark.parametrize("do_extent_check", [True, False])
+@pytest.mark.parametrize("properties", [None, {}, {"other": {}}])
+def test_load_collection_required_properties_missing(do_extent_check, properties):
+    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario"]}}])
+    load_params = LoadParameters(properties=properties)
+    with mock.patch.object(catalog, "_load_collection_cached") as load:
+        with pytest.raises(OpenEOApiException) as exc_info:
+            catalog.load_collection("CLIMTAG", load_params, EvalEnv({"do_extent_check": do_extent_check}))
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "MissingPropertyFilter"
+    assert exc_info.value.message == (
+        "Collection 'CLIMTAG' requires a property filter for 'scenario' "
+        "in the 'properties' argument of 'load_collection'."
+    )
+    load.assert_not_called()
+
+
+@pytest.mark.parametrize("required_properties", [None, [], ["scenario"], ["scenario", "model"]])
+def test_load_collection_required_properties_satisfied(required_properties):
+    metadata = {"id": "CLIMTAG"}
+    if required_properties is not None:
+        metadata["_vito"] = {"required_properties": required_properties}
+    catalog = GeoPySparkLayerCatalog([metadata])
+    predicate = {
+        "process_graph": {
+            "eq1": {
+                "process_id": "eq",
+                "arguments": {"x": {"from_parameter": "value"}, "y": "ssp585"},
+                "result": True,
+            }
+        }
+    }
+    load_params = LoadParameters(properties={"scenario": predicate, "model": predicate})
+    env = EvalEnv({"do_extent_check": False})
+    with mock.patch.object(catalog, "_load_collection_cached") as load:
+        assert catalog.load_collection("CLIMTAG", load_params, env) is load.return_value
+    assert load.call_args.args[1] is load_params
+
+
+def test_load_collection_required_properties_not_configured():
+    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG"}])
+    with mock.patch.object(catalog, "_load_collection_cached") as load:
+        assert (
+            catalog.load_collection("CLIMTAG", LoadParameters(), EvalEnv({"do_extent_check": False}))
+            is load.return_value
+        )
+
+
+def test_extra_validation_required_properties():
+    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario", "model"]}}])
+    env = EvalEnv({"backend_implementation": mock.Mock(catalog=catalog)})
+    issues = list(extra_validation_load_collection("CLIMTAG", LoadParameters(), env))
+    assert issues == [
+        {
+            "code": "MissingPropertyFilter",
+            "message": (
+                f"Collection 'CLIMTAG' requires a property filter for {name!r} "
+                "in the 'properties' argument of 'load_collection'."
+            ),
+        }
+        for name in ["scenario", "model"]
+    ]
+
+
+def test_load_collection_required_properties_partial():
+    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario", "model"]}}])
+    with pytest.raises(OpenEOApiException, match="requires a property filter for 'model'"):
+        catalog.load_collection(
+            "CLIMTAG", LoadParameters(properties={"scenario": {}}), EvalEnv({"do_extent_check": False})
+        )
+
+
+def test_load_collection_required_properties_not_satisfied_by_defaults():
+    catalog = GeoPySparkLayerCatalog(
+        [{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario"], "properties": {"scenario": {}}}}]
+    )
+    with pytest.raises(OpenEOApiException, match="requires a property filter for 'scenario'"):
+        catalog.load_collection("CLIMTAG", LoadParameters(), EvalEnv({"do_extent_check": False}))
 
 
 def test_load_collection_bands_missing_required_extent(catalog):
