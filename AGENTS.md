@@ -11,6 +11,10 @@ please follow the guidance below.
   e.g. `black`-compatible formatting, import sorting, whitespace cleanups, ...
   Make sure `pre-commit` is in the loop (e.g. by running `pre-commit run`)
   when constructing commits or pull requests.
+  Only let it touch the files of your change (e.g. `pre-commit run --from-ref origin/master --to-ref HEAD`
+  or on staged files), never `--all-files` followed by `git add -A`:
+  that commits unrelated whitespace/formatting changes (and can break tests that compare against reference files).
+  Review `git diff --stat` before committing.
 - The unit test suite is `pytest` based and lives under `tests/`.
   Add or update tests accordingly for newly added features, subcomponents or behavior changes.
 - User-facing and other non-trivial changes should get an entry in `CHANGELOG.md` under the
