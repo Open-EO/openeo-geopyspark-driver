@@ -93,10 +93,26 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
+    def _validate_required_properties(self, collection_id: str, load_params: LoadParameters) -> Iterable[dict]:
+        metadata = self.get_collection_metadata(collection_id)
+        required_properties = deep_get(metadata, "_vito", "required_properties", default=[])
+        for property_name in required_properties:
+            if property_name not in (load_params.properties or {}):
+                yield {
+                    "code": "MissingPropertyFilter",
+                    "message": (
+                        f"Collection {collection_id!r} requires a property filter for {property_name!r} "
+                        "in the 'properties' argument of 'load_collection'."
+                    ),
+                }
+
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(
         self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
     ) -> GeopysparkDataCube:
+
+        for issue in self._validate_required_properties(collection_id, load_params):
+            raise OpenEOApiException(status_code=400, **issue)
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
@@ -1411,6 +1427,12 @@ def estimate_load_collection_pixels(
 
 
 def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+    if "backend_implementation" in env:
+        catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
+        issues = list(catalog._validate_required_properties(collection_id, load_params))
+        if issues:
+            yield from issues
+            return
     if collection_id == "TestCollection-LonLat4x4":
         # No need to check on artificial debug layer
         return

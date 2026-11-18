@@ -48,6 +48,7 @@ without compromising stable operations.
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 - `load_collection`/`load_stac`: make retaining NODATA tiles by default configurable (defaults to `False`) ([#1949](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1949))
 - `load_stac`: fall back to 10m (approximately) resolution for EPSG:4326 ([#1952](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952))
+- `load_collection`: support `_vito.required_properties` to require explicit property filters and report missing filters during loading and process-graph validation ([#1962](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1962))
 
 
 ## 0.73.0
