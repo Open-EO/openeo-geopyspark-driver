@@ -52,7 +52,11 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
-from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.aggregatespatialvectorcube import (
+    AggregateSpatialVectorCube,
+    AggregateSpatialVectorCubeInMemory,
+    AggregateSpatialVectorCubeParquet,
+)
 from openeogeotrellis.util.datetime import to_datetime_utc
 from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.job_results import items as job_items
@@ -2036,17 +2040,26 @@ class GeopysparkDataCube(DriverDataCube):
             geometry_wkts = regions_to_wkt(regions)
             geometries_srs = "EPSG:4326"
 
+            max_in_memory = get_backend_config().aggregate_spatial_in_memory_max_polygons
+            if max_in_memory > 0 and len(geometry_wkts) <= max_in_memory:
+                # Only reachable with an in-memory capable (#969) geotrellis-extensions jar.
+                jdf = self._compute_stats_geotrellis().compute_generic_timeseries_dataframe_from_spatial_datacube(
+                    func, wrapped, geometry_wkts, geometries_srs
+                )
+                return AggregateSpatialVectorCubeInMemory(jdf, regions=regions, metadata=self.metadata)
+
             temp_dir = temp_csv_dir(message=f"{type(self).__name__}.zonal_statistics (spatial)")
-
+            output_format = get_backend_config().aggregate_spatial_output_format
+            if output_format == "csv":
+                self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
+                    func, wrapped, geometry_wkts, geometries_srs, temp_dir
+                )
+                return AggregateSpatialVectorCube(temp_dir, regions=regions, metadata=self.metadata)
+            # Only reachable with a Parquet-capable (#969) geotrellis-extensions jar.
             self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
-                func,
-                wrapped,
-                geometry_wkts,
-                geometries_srs,
-                temp_dir
+                func, wrapped, geometry_wkts, geometries_srs, temp_dir, output_format, "file"
             )
-
-            return AggregateSpatialVectorCube(temp_dir, regions=regions, metadata=self.metadata)
+            return AggregateSpatialVectorCubeParquet(temp_dir, regions=regions, metadata=self.metadata)
         else:
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)

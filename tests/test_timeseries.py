@@ -258,6 +258,66 @@ def test_zonal_statistics_in_memory_with_jvm(imagecollection_with_two_bands_and_
     assert result.get_data() == expected == {"2017-09-25T11:37:00Z": [[1.0, 2.0]]}
 
 
+def _spatial_cube(cube: GeopysparkDataCube) -> GeopysparkDataCube:
+    import geopyspark as gps
+
+    layer = cube.get_max_level().to_spatial_layer()
+    return GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}), metadata=cube.metadata)
+
+
+def _jvm_adapter_has(method_name: str) -> bool:
+    from openeogeotrellis.utils import get_jvm
+
+    loader = get_jvm().java.lang.Thread.currentThread().getContextClassLoader()
+    adapter_class = loader.loadClass("org.openeo.geotrellis.ComputeStatsGeotrellisAdapter")
+    return method_name in [m.getName() for m in adapter_class.getMethods()]
+
+
+def test_zonal_statistics_spatial_parquet_output(imagecollection_with_two_bands_and_one_date, monkeypatch):
+    from unittest import mock
+
+    from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCubeParquet
+    from openeogeotrellis.testing import gps_config_overrides
+
+    cube = _spatial_cube(imagecollection_with_two_bands_and_one_date)
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    jvm_adapter = mock.MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, AggregateSpatialVectorCubeParquet)
+    args = jvm_adapter.compute_generic_timeseries_from_spatial_datacube.call_args.args
+    assert args[0] == "mean"
+    assert args[-2:] == ("parquet", "file")
+
+
+@pytest.mark.parametrize("variant", ["parquet", "in_memory"])
+def test_zonal_statistics_spatial_with_jvm(imagecollection_with_two_bands_and_one_date, variant):
+    from openeogeotrellis.ml.aggregatespatialvectorcube import (
+        AggregateSpatialVectorCubeInMemory,
+        AggregateSpatialVectorCubeParquet,
+    )
+    from openeogeotrellis.testing import gps_config_overrides
+
+    if not _jvm_adapter_has("compute_generic_timeseries_dataframe_from_spatial_datacube"):
+        pytest.skip("geotrellis-extensions jar without spatial cube output options (#969)")
+
+    cube = _spatial_cube(imagecollection_with_two_bands_and_one_date)
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    expected = cube.zonal_statistics(polygon, "mean").prepare_for_json()
+    if variant == "parquet":
+        overrides, expected_type = {"aggregate_spatial_output_format": "parquet"}, AggregateSpatialVectorCubeParquet
+    else:
+        overrides, expected_type = {"aggregate_spatial_in_memory_max_polygons": 10}, AggregateSpatialVectorCubeInMemory
+    with gps_config_overrides(**overrides):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, expected_type)
+    assert result.prepare_for_json() == expected == [[1.0, 2.0]]
+
+
 def get_near_and_far_polygon_geometry_collection():
     polygon1 = Polygon(shell=[
         (0.0, 0.0),
