@@ -217,6 +217,27 @@ def test_zonal_statistics_parquet_output(imagecollection_with_two_bands_and_one_
     assert args[-2:] == ("parquet", "file")
 
 
+def test_zonal_statistics_parquet_output_with_jvm(imagecollection_with_two_bands_and_one_date):
+    from py4j.java_gateway import JavaClass
+
+    from openeogeotrellis.testing import gps_config_overrides
+    from openeogeotrellis.utils import get_jvm
+    from openeogeotrellis.vectorcube import AggregateSpatialResultParquet
+
+    output_options = get_jvm().org.openeo.geotrellis.aggregate_polygon.AggregateOutputOptions
+    if not isinstance(output_options, JavaClass):
+        pytest.skip("geotrellis-extensions jar without AggregateOutputOptions (#671)")
+
+    cube = imagecollection_with_two_bands_and_one_date
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    expected = cube.zonal_statistics(polygon, "mean").get_data()
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, AggregateSpatialResultParquet)
+    assert result.get_data() == expected == {"2017-09-25T11:37:00Z": [[1.0, 2.0]]}
+
+
 def get_near_and_far_polygon_geometry_collection():
     polygon1 = Polygon(shell=[
         (0.0, 0.0),
