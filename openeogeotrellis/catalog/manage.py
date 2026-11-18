@@ -452,17 +452,10 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
-    if x_dim is None or y_dim is None:
-        _log.warning(
-            f"No explicit x/y-dimension information given for {id=} ({stac_url=}): "
-            f"blindly falling back to AUTO 42001 (with step=10) for legacy reasons, but this is often not correct."
-        )
-
     if not x_dim:
-        x_dim = DIMENSION_X_AUTO42001_STEP10
-
+        x_dim = {"type": "spatial", "axis": "x"}
     if not y_dim:
-        y_dim = DIMENSION_Y_AUTO42001_STEP10
+        y_dim = {"type": "spatial", "axis": "y"}
 
     upstream_metadata = get_upstream_stac_metadata(stac_url)
 
