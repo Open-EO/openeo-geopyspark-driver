@@ -15,6 +15,8 @@ without compromising stable operations.
 ## In progress: 0.74.0
 
 - CWL datacube inputs: pass a STAC catalog with absolute links presigned via the S3 proxy (valid for 24 hours), so CWL pods can read it without credentials.
+- `aggregate_spatial`: new backend config `aggregate_spatial_output_format` (`csv` (default) or `parquet`) for the intermediate JVM output, backed by the output options of openeo-geotrellis-extensions (requires a geotrellis-extensions build with [openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671) when set to `parquet`)
+- `aggregate_spatial`: new backend config `aggregate_spatial_in_memory_max_polygons` (default 0 = disabled): with at most that many polygons the result is collected in memory (no files on the shared volume). Requires a geotrellis-extensions build with in-memory aggregate_spatial ([openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671))
 - Batch job metadata: store the detailed metrics (`detailed_metrics` job option) as a separate `detailed-metrics.json` document and link to it (`rel`: `related`, title "Detailed metrics") from the job results metadata, instead of only logging them
 - Job logs: support `audience` (`user` (default), `developer` or `all`) in `get_log_entries`, e.g. through `GET /jobs/{job_id}/logs?audience=all`, other values are rejected with HTTP 400 ([openeo-geotrellis-extensions#872](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/872))
 - Add support for the `resample_cube_temporal` process, backed by the implementation in openeo-geotrellis-extensions (`CubeProcessRegistry`)
@@ -48,6 +50,7 @@ without compromising stable operations.
 - Calrissian: expose failed CWL job diagnostics in user-facing batch job logs.
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 - `load_collection`/`load_stac`: make retaining NODATA tiles by default configurable (defaults to `False`) ([#1949](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1949))
+- `load_stac`: fall back to 10m (approximately) resolution for EPSG:4326 and improve resolution detection when `proj:shape` is missing ([#1952](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952))
 
 
 ## 0.73.0

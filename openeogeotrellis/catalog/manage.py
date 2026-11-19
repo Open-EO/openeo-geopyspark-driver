@@ -296,6 +296,9 @@ class BandMetadataList:
     def __iter__(self) -> Iterator[BandMetadata]:
         return iter(self._bands)
 
+    def __len__(self) -> int:
+        return len(self._bands)
+
     def as_list(self) -> List[BandMetadata]:
         return list(self._bands)
 
@@ -452,17 +455,10 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
-    if x_dim is None or y_dim is None:
-        _log.warning(
-            f"No explicit x/y-dimension information given for {id=} ({stac_url=}): "
-            f"blindly falling back to AUTO 42001 (with step=10) for legacy reasons, but this is often not correct."
-        )
-
     if not x_dim:
-        x_dim = DIMENSION_X_AUTO42001_STEP10
-
+        x_dim = {"type": "spatial", "axis": "x"}
     if not y_dim:
-        y_dim = DIMENSION_Y_AUTO42001_STEP10
+        y_dim = {"type": "spatial", "axis": "y"}
 
     upstream_metadata = get_upstream_stac_metadata(stac_url)
 
@@ -478,10 +474,8 @@ def build_stac_collection_metadata(
 
     if bands == GUESS_BANDS_FROM_UPSTREAM:
         bands = extract_band_metadata_list(upstream_metadata)
-    elif isinstance(bands, (list, BandMetadataList)):
-        pass
-    else:
-        raise ValueError(bands)
+    if not (isinstance(bands, (list, BandMetadataList)) and len(bands) > 0):
+        raise ValueError(f"Empty {bands=} with {id=} {stac_url=}")
 
     if ComparableVersion("1.1.0").or_higher(stac_version):
         # Per https://github.com/radiantearth/stac-spec/issues/1346
@@ -985,13 +979,18 @@ class LayerCatalogManagerCliApp:
         return cli
 
     def setup_logging(self, args: argparse.Namespace) -> None:
-        # TODO: option to not do rich logging (or detect when inappropriate)?
+        # TODO: option to disable/force rich logging?
         try:
             # Use fancy logging if `rich` is available in environment.
             import rich.console
             import rich.logging
 
-            log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+            console = rich.console.Console(stderr=True)
+            # Only do rich logging to an interactive terminal (not when piping to a file/grep/...)
+            if console.is_terminal:
+                log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+            else:
+                log_handlers = None
         except ImportError:
             log_handlers = None
         logging.basicConfig(

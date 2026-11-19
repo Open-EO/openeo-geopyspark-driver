@@ -68,7 +68,11 @@ from openeogeotrellis.utils import (
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
-from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
+from openeogeotrellis.vectorcube import (
+    AggregateSpatialResultCSV,
+    AggregateSpatialResultInMemory,
+    AggregateSpatialResultParquet,
+)
 
 
 _log = logging.getLogger(__name__)
@@ -1992,6 +1996,8 @@ class GeopysparkDataCube(DriverDataCube):
         AggregatePolygonResult,
         AggregateSpatialVectorCube,
         AggregateSpatialResultCSV,
+        AggregateSpatialResultParquet,
+        AggregateSpatialResultInMemory,
     ]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
@@ -2054,19 +2060,36 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                     timeseries = self._as_python(stats)
                 else:
+                    max_in_memory = get_backend_config().aggregate_spatial_in_memory_max_polygons
+                    if max_in_memory > 0 and projected_polygons.polygons().size() <= max_in_memory:
+                        # Only reachable with an in-memory capable (#671) geotrellis-extensions jar.
+                        jdf = self._compute_stats_geotrellis().compute_generic_timeseries_dataframe_from_datacube(
+                            func, wrapped, projected_polygons
+                        )
+                        return AggregateSpatialResultInMemory(jdf, regions=regions, metadata=self.metadata)
                     temp_dir = temp_csv_dir(
                         message=f"{type(self).__name__}.zonal_statistics (projected_polygons)"
                     )
                     # TODO: We lose band names while these can be useful in for example "vector_to_raster".
+                    output_format = get_backend_config().aggregate_spatial_output_format
+                    if output_format == "csv":
+                        self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+                            func,
+                            wrapped,
+                            projected_polygons,
+                            temp_dir,
+                        )
+                        return AggregateSpatialResultCSV(temp_dir, regions=regions, metadata=self.metadata)
+                    # Only reachable with a Parquet-capable (#671) geotrellis-extensions jar.
                     self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                         func,
                         wrapped,
                         projected_polygons,
                         temp_dir,
+                        output_format,
+                        "file",
                     )
-                    return AggregateSpatialResultCSV(
-                        temp_dir, regions=regions, metadata=self.metadata
-                    )
+                    return AggregateSpatialResultParquet(temp_dir, regions=regions, metadata=self.metadata)
             else:
                 geometry_wkts = regions_to_wkt(regions)
                 geometries_srs = "EPSG:4326"

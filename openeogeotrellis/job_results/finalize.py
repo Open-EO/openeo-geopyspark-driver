@@ -289,8 +289,12 @@ def finalize_job(
             tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
         detailed_metrics = hooks.detailed_metrics()
         if detailed_metrics:
-            logger.info(f"Detailed metrics of job {settings.job_id}: {json.dumps(detailed_metrics, default=json_default)}")
-            if metrics_link := _store_detailed_metrics(detailed_metrics, job_dir=job_dir, settings=settings, hooks=hooks):
+            logger.info(
+                f"Detailed metrics of job {settings.job_id}: {json.dumps(detailed_metrics, default=json_default)}"
+            )
+            if metrics_link := _store_detailed_metrics(
+                detailed_metrics, job_dir=job_dir, settings=settings, hooks=hooks
+            ):
                 tracker_metadata = {**tracker_metadata, "links": [*tracker_metadata.get("links", []), metrics_link]}
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
