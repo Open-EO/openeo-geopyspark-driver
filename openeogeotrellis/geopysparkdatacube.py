@@ -2061,7 +2061,7 @@ class GeopysparkDataCube(DriverDataCube):
                     timeseries = self._as_python(stats)
                 else:
                     max_in_memory = get_backend_config().aggregate_spatial_in_memory_max_polygons
-                    if max_in_memory > 0 and projected_polygons.polygons().size() <= max_in_memory:
+                    if max_in_memory > 0 and len(projected_polygons.polygons()) <= max_in_memory:
                         # Only reachable with an in-memory capable (#671) geotrellis-extensions jar.
                         jdf = self._compute_stats_geotrellis().compute_generic_timeseries_dataframe_from_datacube(
                             func, wrapped, projected_polygons
