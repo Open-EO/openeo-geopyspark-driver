@@ -152,12 +152,9 @@ def main(argv: List[str]) -> None:
 
     if ConfigParams().is_kube_deploy:
         if not get_backend_config().fuse_mount_batchjob_s3_bucket:
-            from openeogeotrellis.utils import S3ClientBuilder
+            from openeogeotrellis.integrations.job_storage import get_job_storage
 
-            bucket = os.environ.get("SWIFT_BUCKET")
-            s3_instance = S3ClientBuilder.from_bucket(bucket)
-
-            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file)
+            get_job_storage(job_dict=None).download_file(job_specification_file.strip("/"), job_specification_file)
 
     job_specification = _parse(job_specification_file)
     load_custom_processes()

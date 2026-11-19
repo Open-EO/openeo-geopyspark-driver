@@ -120,10 +120,11 @@ def test_metrics_are_initialized_lazily(monkeypatch):
             pass
 
     monkeypatch.setattr(udf_module, "Gauge", DummyGauge)
+    monkeypatch.setattr(udf_module, "Counter", DummyGauge)
     monkeypatch.setattr(udf_module, "start_http_server", lambda port: started_ports.append(port))
     monkeypatch.setattr(udf_module, "_metrics_initialized", False)
     monkeypatch.setattr(udf_module, "_udf_execution_time_ms", udf_module._NoOpMetric())
-    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", udf_module._NoOpMetric())
+    monkeypatch.setattr(udf_module, "_udf_execution_count", udf_module._NoOpMetric())
     monkeypatch.setattr(udf_module, "_PROMETHEUS_METRICS_PORT", 9465)
     monkeypatch.setattr(udf_module, "_PROMETHEUS_METRICS_ENABLED", True)
 
@@ -137,7 +138,7 @@ def test_metrics_are_initialized_lazily(monkeypatch):
 def test_run_udf_code_records_execution_gauge_metrics(monkeypatch, node_id, fails):
     data = UdfData(structured_data_list=[StructuredData([1])])
     captured_duration_measurements = []
-    captured_rss_delta_measurements = []
+    captured_counts = []
     captured_labels = []
 
     class DummyGauge:
@@ -150,19 +151,17 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch, node_id, fail
 
     gauge = DummyGauge()
 
-    class DummyRssGauge:
+    class DummyCounter:
         def labels(self, **kwargs):
-            captured_labels.append(("rss", kwargs))
+            captured_labels.append(("count", kwargs))
             return self
 
-        def set(self, value, **kwargs):
-            captured_rss_delta_measurements.append((value, kwargs))
+        def inc(self, amount=1, **kwargs):
+            captured_counts.append((amount, kwargs))
 
     @contextlib.contextmanager
     def fake_gauge():
         yield gauge
-
-    rss_values = iter([1000, 1256])
 
     tracker_calls = []
 
@@ -171,8 +170,7 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch, node_id, fail
             tracker_calls.append((name, value, kwargs))
 
     monkeypatch.setattr(udf_module, "_start_udf_execution_gauge", fake_gauge)
-    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", DummyRssGauge())
-    monkeypatch.setattr(udf_module, "_get_max_rss_bytes", lambda: next(rss_values))
+    monkeypatch.setattr(udf_module, "_udf_execution_count", DummyCounter())
 
     def execute(code, data):
         if fails:
@@ -187,7 +185,7 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch, node_id, fail
     # `_record_udf_execution_gauge_metrics` also calls `_initialize_prometheus_metrics()` directly
     # (on top of `_start_udf_execution_gauge`, which is mocked away above with `fake_gauge`).
     # Mark metrics as already initialized so that this direct call doesn't run the real
-    # initialization logic and clobber the mocked `_udf_max_rss_delta_bytes` with a real Gauge.
+    # initialization logic and clobber the mocked `_udf_execution_count` with a real Counter.
     monkeypatch.setattr(udf_module, "_metrics_initialized", True)
 
     def run():
@@ -205,10 +203,10 @@ def test_run_udf_code_records_execution_gauge_metrics(monkeypatch, node_id, fail
         assert run() is data
     assert captured_duration_measurements
     assert captured_duration_measurements[0][0] >= 0
-    assert captured_rss_delta_measurements == [(256, {})]
+    assert captured_counts == [(1, {})]
     assert captured_labels == [
         ("duration", {"node_id": node_id or ""}),
-        ("rss", {"node_id": node_id or ""}),
+        ("count", {"node_id": node_id or ""}),
     ]
 
 
@@ -234,24 +232,22 @@ def test_run_udf_code_exposes_prometheus_metrics_endpoint(monkeypatch):
 
     assert response.status_code == 200
     assert 'openeo_udf_execution_time_ms{node_id="runudf1"}' in response.text
-    assert 'openeo_udf_max_rss_delta_bytes{node_id="runudf1"}' in response.text
+    assert 'openeo_udf_execution_total{node_id="runudf1"}' in response.text
 
 
 def test_udf_metrics_keep_nodes_separate(monkeypatch):
-    from prometheus_client import CollectorRegistry, Gauge
+    from prometheus_client import CollectorRegistry, Counter, Gauge
 
     registry = CollectorRegistry()
     duration = Gauge("test_udf_duration", "Duration", ["node_id"], registry=registry)
-    rss = Gauge("test_udf_rss", "RSS", ["node_id"], registry=registry)
+    count = Counter("test_udf_count", "Count", ["node_id"], registry=registry)
     monkeypatch.setattr(udf_module, "_metrics_initialized", True)
-    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", rss)
+    monkeypatch.setattr(udf_module, "_udf_execution_count", count)
     for node_id, value in [("runudf1", 10), ("runudf2", 20), ("runudf1", 30)]:
-        udf_module._record_udf_execution_gauge_metrics(
-            duration, duration_ms=value, rss_before_bytes=100, rss_after_bytes=100 + value, node_id=node_id
-        )
-    for node_id, value in [("runudf1", 30), ("runudf2", 20)]:
+        udf_module._record_udf_execution_gauge_metrics(duration, duration_ms=value, node_id=node_id)
+    for node_id, value, calls in [("runudf1", 30, 2), ("runudf2", 20, 1)]:
         assert registry.get_sample_value("test_udf_duration", {"node_id": node_id}) == value
-        assert registry.get_sample_value("test_udf_rss", {"node_id": node_id}) == value
+        assert registry.get_sample_value("test_udf_count_total", {"node_id": node_id}) == calls
 
 
 def test_udf_visitor_preserves_node_id():
@@ -298,10 +294,8 @@ def test_raster_udf_passes_node_id(imagecollection_with_two_bands_and_three_date
 
 def test_noop_udf_metrics_accept_node_id(monkeypatch):
     monkeypatch.setattr(udf_module, "_metrics_initialized", True)
-    monkeypatch.setattr(udf_module, "_udf_max_rss_delta_bytes", udf_module._NoOpMetric())
-    udf_module._record_udf_execution_gauge_metrics(
-        udf_module._NoOpMetric(), duration_ms=10, rss_before_bytes=0, rss_after_bytes=100, node_id="my_udf"
-    )
+    monkeypatch.setattr(udf_module, "_udf_execution_count", udf_module._NoOpMetric())
+    udf_module._record_udf_execution_gauge_metrics(udf_module._NoOpMetric(), duration_ms=10, node_id="my_udf")
 
 
 class TestUdfCollection:

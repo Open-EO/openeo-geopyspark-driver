@@ -154,6 +154,7 @@ def get_detailed_metrics(
             "load_pixel_total": metric(prometheus.get_load_megapixel_total(job_id, at=at), "megapixel"),
             "udf_execution_time_avg": metric(prometheus.get_avg_udf_execution_time_ms(job_id, at=at), "ms"),
             "udf_execution_time_max": metric(prometheus.get_max_udf_execution_time_ms(job_id, at=at), "ms"),
+            "udf_execution_count": metric(prometheus.get_udf_execution_count(job_id, at=at), "count"),
         }
     )
     executor_run_times = prometheus.get_executor_run_time_ms(job_id, at=at)

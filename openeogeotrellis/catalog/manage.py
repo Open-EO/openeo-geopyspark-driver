@@ -26,18 +26,22 @@ import difflib
 import functools
 import json
 import logging
+import pystac
 import re
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
 
+from openeo_driver.util.utm import is_utm_epsg_code
+from openeogeotrellis.stac.assets import is_band_asset
+from openeogeotrellis.stac.projection import ProjectionMetadata
+from typing import Callable, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
-from openeo.util import dict_no_none, TimingLogger
+from openeo.util import TimingLogger, dict_no_none
 from openeo.utils.version import ComparableVersion
 from openeo_driver.util.compat import function_has_argument
 from openeo_driver.util.http import requests_with_retry
 
-from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId, CollectionMetadataDict
+from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES, CollectionId, CollectionMetadataDict, LinksFilter
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
 from openeogeotrellis.util.compat import function_supports_kwargs
 
 _log = logging.getLogger(__name__)
@@ -67,6 +71,10 @@ CRS_AUTO_42001 = {
     "bbox": {"south_latitude": -90, "west_longitude": -180, "north_latitude": 90, "east_longitude": 180},
     "id": {"authority": "OGC", "version": "1.3", "code": "Auto42001"},
 }
+
+DIMENSION_X_AUTO42001_STEP10 = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
+DIMENSION_Y_AUTO42001_STEP10 = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10}
+
 
 GUESS_BANDS_FROM_UPSTREAM = "guess_bands_from_upstream"
 
@@ -100,6 +108,9 @@ class LayerCatalog:
             raise ValueError(path)
 
         return cls(collections=collections)
+
+    def iter_metadata(self) -> Iterator[CollectionMetadataDict]:
+        return iter(self._collections)
 
     def write_json_file(
         self,
@@ -285,6 +296,9 @@ class BandMetadataList:
     def __iter__(self) -> Iterator[BandMetadata]:
         return iter(self._bands)
 
+    def __len__(self) -> int:
+        return len(self._bands)
+
     def as_list(self) -> List[BandMetadata]:
         return list(self._bands)
 
@@ -376,9 +390,6 @@ def get_upstream_stac_metadata(stac_url: str) -> dict:
     return metadata
 
 
-# Legacy alias
-_get_upstream_stac_metadata = get_upstream_stac_metadata
-
 
 class ENRICHMENT_MODE:
     NONE = "none"
@@ -420,6 +431,7 @@ def build_stac_collection_metadata(
     debug_enrichment: bool = False,
     stac_version: str = "1.0.0",
     stac_extensions: Union[None, List[str], Callable[[List[str]], List[str]]] = None,
+    management_info: dict | None = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -444,12 +456,11 @@ def build_stac_collection_metadata(
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
     if not x_dim:
-        x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
-
+        x_dim = {"type": "spatial", "axis": "x"}
     if not y_dim:
-        y_dim = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10}
+        y_dim = {"type": "spatial", "axis": "y"}
 
-    upstream_metadata = _get_upstream_stac_metadata(stac_url)
+    upstream_metadata = get_upstream_stac_metadata(stac_url)
 
     stac_version = upstream_metadata.get("stac_version", stac_version)
 
@@ -463,10 +474,8 @@ def build_stac_collection_metadata(
 
     if bands == GUESS_BANDS_FROM_UPSTREAM:
         bands = extract_band_metadata_list(upstream_metadata)
-    elif isinstance(bands, (list, BandMetadataList)):
-        pass
-    else:
-        raise ValueError(bands)
+    if not (isinstance(bands, (list, BandMetadataList)) and len(bands) > 0):
+        raise ValueError(f"Empty {bands=} with {id=} {stac_url=}")
 
     if ComparableVersion("1.1.0").or_higher(stac_version):
         # Per https://github.com/radiantearth/stac-spec/issues/1346
@@ -488,7 +497,8 @@ def build_stac_collection_metadata(
     vito = {
         "data_source": data_source,
         "management_info": {
-            "enrichment_mode": enrichment_mode,
+            **{"enrichment_mode": enrichment_mode},
+            **(management_info or {}),
         },
     }
     if properties:
@@ -898,15 +908,30 @@ class LayerCatalogManagerCliApp:
     Generic command line app for layer catalog management
     """
 
-    def __init__(self, *, registry: CollectionMetadataBuilderRegistry):
-        self.collection_metadata_builder_registry = registry
+    def __init__(self, *, registry: CollectionMetadataBuilderRegistry | None = None):
+        # TODO: eliminate deprecated usage of passing the registry at `__init__` time
+        if registry:
+            _log.warning(
+                "Passing registry at LayerCatalogManagerCliApp.__init__() time is deprecated, pass to main() instead"
+            )
 
-    def main(self, argv: Optional[Iterable[str]] = None) -> None:
+        self._collection_metadata_builder_registry = registry
+
+    def main(
+        self,
+        argv: Optional[Iterable[str]] = None,
+        registry: CollectionMetadataBuilderRegistry | None = None,
+        do_logging_setup: bool = True,
+    ) -> None:
         argument_parser = self.build_argument_parser()
         args = argument_parser.parse_args(argv)
-        self.setup_logging(args=args)
+        if do_logging_setup:
+            self.setup_logging(args=args)
+
         with TimingLogger(title=f"LayerCatalogManagerCliApp.main: {args.subcommand}", logger=_log):
-            args.handler(args=args)
+            registry = registry or self._collection_metadata_builder_registry
+            assert registry is not None
+            args.handler(args=args, registry=registry)
 
     def build_argument_parser(self) -> argparse.ArgumentParser:
         cli = argparse.ArgumentParser()
@@ -954,13 +979,18 @@ class LayerCatalogManagerCliApp:
         return cli
 
     def setup_logging(self, args: argparse.Namespace) -> None:
-        # TODO: option to not do rich logging (or detect when inappropriate)?
+        # TODO: option to disable/force rich logging?
         try:
             # Use fancy logging if `rich` is available in environment.
-            import rich.logging
             import rich.console
+            import rich.logging
 
-            log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+            console = rich.console.Console(stderr=True)
+            # Only do rich logging to an interactive terminal (not when piping to a file/grep/...)
+            if console.is_terminal:
+                log_handlers = [rich.logging.RichHandler(console=rich.console.Console(stderr=True))]
+            else:
+                log_handlers = None
         except ImportError:
             log_handlers = None
         logging.basicConfig(
@@ -968,7 +998,7 @@ class LayerCatalogManagerCliApp:
             handlers=log_handlers,
         )
 
-    def handle_generate(self, args: argparse.Namespace) -> List[Path]:
+    def handle_generate(self, args: argparse.Namespace, *, registry: CollectionMetadataBuilderRegistry) -> List[Path]:
 
         partitions: Dict[Optional[str], Tuple[LayerCatalog, Path]] = {}
         # Base/default layer catalog partition (at key `None`)
@@ -994,7 +1024,7 @@ class LayerCatalogManagerCliApp:
         else:
             collection_id_filter = None
 
-        for metadata, build_item in self.collection_metadata_builder_registry.call_builders(
+        for metadata, build_item in registry.call_builders(
             collection_id_filter=collection_id_filter,
             include_build_item=True,
         ):
@@ -1003,25 +1033,30 @@ class LayerCatalogManagerCliApp:
             layer_catalog = partitions.get(partition_key)[0]
             layer_catalog.set_collection_metadata(metadata=metadata)
 
+        _log.info(f"{registry.get_stats()=}")
+
         for layer_catalog, output_path in partitions.values():
             layer_catalog.write_json_file(output_path)
-
-            # Some stats
-            _log.info(f"{self.collection_metadata_builder_registry.get_stats()=}")
-            _log.info(f"{layer_catalog.get_stats()=}")
-            unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
-            _log.log(
-                level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
-                msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
-            )
+            self.postprocess_generated_layer_catalog(layer_catalog=layer_catalog, output_path=output_path)
 
         return [p for _, p in partitions.values()]
 
-    def handle_list(self, args: argparse.Namespace) -> None:
+    def postprocess_generated_layer_catalog(self, layer_catalog: LayerCatalog, *, output_path: Path) -> None:
+        # Some basic stats
+        _log.info(f"{layer_catalog.get_stats()=}")
+
+        # Report on "unmanaged" collections
+        unmanaged_collection_ids = layer_catalog.get_unmanaged_collection_ids()
+        _log.log(
+            level=logging.WARNING if unmanaged_collection_ids else logging.INFO,
+            msg=f"{len(unmanaged_collection_ids)} Unmanaged collections: {sorted(unmanaged_collection_ids)}",
+        )
+
+    def handle_list(self, args: argparse.Namespace, *, registry: CollectionMetadataBuilderRegistry) -> None:
         # TODO: add collection counter
         # TODO: (option to) render in Markdown format
         for item in sorted(
-            self.collection_metadata_builder_registry.get_builders(),
+            registry.get_builders(),
             key=lambda item: item.collection_id,
         ):
             if args.show_extended:
@@ -1039,3 +1074,54 @@ def normalize_openeo_collection_id(collection_id: str) -> str:
     normalized = collection_id.strip().upper().replace("-", "_")
     normalized = re.sub(r"[^A-Z0-9_]+", "_", normalized)
     return normalized
+
+
+def guess_x_and_y_dimensions_from_items(collection_url: str) -> Tuple[dict, dict]:
+    """
+    Guess x and y cube:dimension snippet from given STAC url
+    (by inspecting a naive batch of items at '{collection_url}/items'
+    """
+    try:
+        resp = requests_with_retry().get(f"{collection_url}/items")
+        resp.raise_for_status()
+        items = resp.json().get("features", [])
+
+        projection_metadata = [
+            ProjectionMetadata.from_asset(asset=a, item=item)
+            for item in (pystac.Item.from_dict(i) for i in items)
+            for a in item.assets.values()
+            if is_band_asset(a)
+        ]
+        proj_codes = set(m.code for m in projection_metadata if m.code)
+        assert len(proj_codes) > 0, "Expecting at least one proj:code in the STAC items"
+
+        if proj_codes == {"EPSG:4326"}:
+            # TODO: get extent from collection metadata?
+            # TODO: get step/resolution too?
+            x_dim = {"type": "spatial", "axis": "x", "reference_system": 4326}
+            y_dim = {"type": "spatial", "axis": "y", "reference_system": 4326}
+            if resolutions := set(m.resolution() for m in projection_metadata if m.resolution()):
+                # For simplicity, just take the finest resolution.
+                # TODO need for more advanced logic, e.g. most common, or smallest common divisor?
+                x_dim["step"], y_dim["step"] = min(resolutions)
+            return x_dim, y_dim
+        elif all(is_utm_epsg_code(m.epsg) for m in projection_metadata):
+            x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001}
+            y_dim = {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001}
+            if resolutions := set(m.resolution() for m in projection_metadata if m.resolution()):
+                # For simplicity, just take the finest resolution.
+                # TODO need for more advanced logic, e.g. most common, or smallest common divisor?
+                x_dim["step"], y_dim["step"] = min(resolutions)
+            else:
+                _log.warning(f"Unhandled case of multiple asset resolutions: {resolutions=}")
+            return x_dim, y_dim
+        else:
+            _log.warning(f"Unhandled case of projection combinations: {proj_codes=}")
+    except Exception as e:
+        _log.warning(f"Failed to guess x/y-dimensions from {collection_url=}: {e=}")
+
+    return (
+        # Basic (but valid) fallback
+        {"type": "spatial", "axis": "x"},
+        {"type": "spatial", "axis": "y"},
+    )

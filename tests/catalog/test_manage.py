@@ -6,7 +6,7 @@ from typing import Optional, Iterable
 import dirty_equals
 import pytest
 
-from openeogeotrellis.catalog.enrich import LinksList
+from openeogeotrellis.catalog import LinksList
 
 
 from openeo.testing.stac import StacDummyBuilder
@@ -26,6 +26,7 @@ from openeogeotrellis.catalog.manage import (
     BandMetadataList,
     _find_common_prefix,
     normalize_openeo_collection_id,
+    guess_x_and_y_dimensions_from_items,
 )
 
 
@@ -170,8 +171,8 @@ class TestBuildMetadata:
             "cube:dimensions": {
                 "bands": {"type": "bands", "values": ["blue"]},
                 "t": {"type": "temporal"},
-                "x": {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10},
-                "y": {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10},
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
             },
             "extent": {
                 "spatial": {"bbox": [[3, 4, 5, 6]]},
@@ -191,6 +192,7 @@ class TestBuildMetadata:
             id="FOOBAR",
             stac_url="https://stac.test/c/foobar1",
             bands=[BandMetadata(name="blue", description="Not red")],
+            management_info={"manager": "alice"},
             enrichment_mode=ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME,
         )
         assert metadata == {
@@ -206,14 +208,14 @@ class TestBuildMetadata:
                     "url": "https://stac.test/c/foobar1",
                     "enrich": False,
                 },
-                "management_info": {"enrichment_mode": "legacy_at_build_time"},
+                "management_info": {"manager": "alice", "enrichment_mode": "legacy_at_build_time"},
             },
             "bands": [{"name": "blue", "description": "Not red"}],
             "cube:dimensions": {
                 "bands": {"type": "bands", "values": ["blue"]},
                 "t": {"type": "temporal"},
-                "x": {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10},
-                "y": {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 10},
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
             },
             "extent": {
                 "spatial": {"bbox": [[3, 4, 5, 6]]},
@@ -1078,7 +1080,7 @@ class TestLayerCatalogManagerCliApp:
 
     @pytest.fixture()
     def cli_app(self, registry) -> LayerCatalogManagerCliApp:
-        return LayerCatalogManagerCliApp(registry=registry)
+        return LayerCatalogManagerCliApp()
 
     @pytest.mark.parametrize(
         ["args", "expected"],
@@ -1125,14 +1127,20 @@ class TestLayerCatalogManagerCliApp:
         assert args.subcommand == "list"
         assert {k: getattr(args, k) for k in expected.keys()} == expected
 
-    def test_handle_list(self, cli_app: LayerCatalogManagerCliApp, capsys) -> None:
+    def test_handle_list(self, cli_app: LayerCatalogManagerCliApp, registry, capsys) -> None:
+        cli_app.main(["list"], registry=registry)
+        stdout = capsys.readouterr().out
+        assert stdout.strip().split("\n") == ["BAR", "FOO"]
+
+    def test_handle_list_legacy(self, registry, capsys) -> None:
+        cli_app = LayerCatalogManagerCliApp(registry=registry)
         cli_app.main(["list"])
         stdout = capsys.readouterr().out
         assert stdout.strip().split("\n") == ["BAR", "FOO"]
 
-    def test_handle_generate_no_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+    def test_handle_generate_no_existing(self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog) -> None:
         catalog_path = tmp_path / "catalog.json"
-        cli_app.main(["generate", str(catalog_path)])
+        cli_app.main(["generate", str(catalog_path)], registry=registry)
         catalog = json.loads(catalog_path.read_text())
         assert catalog == [
             {"id": "FOO", "description": "Dummy 'FOO' collection"},
@@ -1142,14 +1150,16 @@ class TestLayerCatalogManagerCliApp:
         assert "Building metadata for collection_id='FOO'" in caplog.text
         assert caplog.text == dirty_equals.IsStr(regex=r".*registry\.get_stats.*register\W+2.*", regex_flags=re.DOTALL)
 
-    def test_handle_generate_with_existing(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+    def test_handle_generate_with_existing(
+        self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog
+    ) -> None:
         catalog_path = tmp_path / "catalog.json"
         pre_existing = [
             {"id": "FOO", "description": "Original 'FOO'"},
             {"id": "UNMANAGED", "description": "Some unmanaged collection"},
         ]
         catalog_path.write_text(json.dumps(pre_existing))
-        cli_app.main(["generate", str(catalog_path)])
+        cli_app.main(["generate", str(catalog_path)], registry=registry)
         catalog = json.loads(catalog_path.read_text())
         assert catalog == [
             {"id": "FOO", "description": "Dummy 'FOO' collection"},
@@ -1159,7 +1169,7 @@ class TestLayerCatalogManagerCliApp:
 
         assert "Unmanaged collections: ['UNMANAGED']" in caplog.text
 
-    def test_handle_generate_partitioning(self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog) -> None:
+    def test_handle_generate_partitioning(self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog) -> None:
         default_catalog_path = tmp_path / "catalog.json"
         dev_catalog_path = tmp_path / "dev" / "catalogue.json"
         foo_catalog_path = tmp_path / "foo" / "catafoo.json"
@@ -1171,7 +1181,8 @@ class TestLayerCatalogManagerCliApp:
                 f"dev:{dev_catalog_path}",
                 "--label-partition",
                 f"foo:{foo_catalog_path}",
-            ]
+            ],
+            registry=registry,
         )
         default_catalog = json.loads(default_catalog_path.read_text())
         dev_catalog = json.loads(dev_catalog_path.read_text())
@@ -1183,7 +1194,7 @@ class TestLayerCatalogManagerCliApp:
         )
 
     def test_handle_generate_partitioning_with_existing(
-        self, cli_app: LayerCatalogManagerCliApp, tmp_path, caplog
+        self, cli_app: LayerCatalogManagerCliApp, registry, tmp_path, caplog
     ) -> None:
         default_catalog_path = tmp_path / "catalog.json"
         default_catalog_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1200,7 +1211,8 @@ class TestLayerCatalogManagerCliApp:
                 f"dev:{dev_catalog_path}",
                 "--label-partition",
                 f"foo:{foo_catalog_path}",
-            ]
+            ],
+            registry=registry,
         )
         default_catalog = json.loads(default_catalog_path.read_text())
         dev_catalog = json.loads(dev_catalog_path.read_text())
@@ -1222,3 +1234,103 @@ def test_normalize_collection_id():
     assert normalize_openeo_collection_id("s2-toc-v2") == "S2_TOC_V2"
     assert normalize_openeo_collection_id("s2% toc +V2") == "S2_TOC_V2"
     assert normalize_openeo_collection_id("  s2% toc +V2 ") == "S2_TOC_V2"
+
+
+class TestDimensionGuessing:
+    @pytest.mark.parametrize(
+        ["items"],
+        [
+            (None,),  # trigger 404
+            ("invalid",),
+            ([],),
+            ([StacDummyBuilder.item()],),
+            ([StacDummyBuilder.item(assets={"a": StacDummyBuilder.asset(proj_code="invalid")})],),
+        ],
+    )
+    def test_guess_x_and_y_dimensions_from_items_fallback(self, requests_mock, items):
+        collection_url = "https://stac.test/c123"
+        if items is not None:
+            requests_mock.get(f"{collection_url}/items", json={"features": items})
+        else:
+            requests_mock.get(f"{collection_url}/items", status_code=404)
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x"},
+            {"type": "spatial", "axis": "y"},
+        )
+
+    def test_guess_x_and_y_dimensions_from_items_epsg4326_basic(self, requests_mock):
+        collection_url = "https://stac.test/c123"
+
+        asset1 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/1.tif",
+            proj_bbox=[3, 50, 4, 51],
+        )
+        item1 = StacDummyBuilder.item(
+            properties={
+                "proj:code": "EPSG:4326",
+                "proj:shape": [200, 400],
+            },
+            assets={"a1": asset1},
+        )
+        requests_mock.get(
+            f"{collection_url}/items",
+            json={"features": [item1]},
+        )
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x", "reference_system": 4326, "step": 1 / 400},
+            {"type": "spatial", "axis": "y", "reference_system": 4326, "step": 1 / 200},
+        )
+
+    def test_guess_x_and_y_dimensions_from_items_utm_basic(self, requests_mock):
+        collection_url = "https://stac.test/c123"
+        asset1 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/1.tif",
+            proj_bbox=[600_000, 5_500_000, 700_000, 5_800_000],
+        )
+        item1 = StacDummyBuilder.item(
+            properties={
+                "proj:code": "EPSG:32630",
+                "proj:shape": [3000, 1000],
+            },
+            assets={"a1": asset1},
+        )
+        requests_mock.get(
+            f"{collection_url}/items",
+            json={"features": [item1]},
+        )
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 100},
+            {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": 100},
+        )
+
+    @pytest.mark.parametrize(
+        ["shape1", "shape2", "expected_step"],
+        [
+            ([1000, 1000], [500, 500], [100, 100]),
+            ([2000, 2000], [500, 500], [50, 50]),
+            ([1000, 1000], [5000, 5000], [20, 20]),
+            ([1000, 2000], [400, 800], [50, 100]),
+        ],
+    )
+    def test_guess_x_and_y_dimensions_from_items_utm_multi_resolution(
+        self, requests_mock, shape1, shape2, expected_step
+    ):
+        collection_url = "https://stac.test/c123"
+        asset1 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/1.tif", proj_bbox=[600_000, 5_500_000, 700_000, 5_600_000], proj_shape=shape1
+        )
+        asset2 = StacDummyBuilder.asset(
+            href="https://stac.test/c123/2.tif", proj_bbox=[600_000, 5_500_000, 700_000, 5_600_000], proj_shape=shape2
+        )
+        item1 = StacDummyBuilder.item(
+            properties={"proj:code": "EPSG:32630"},
+            assets={"a1": asset1, "a2": asset2},
+        )
+        requests_mock.get(
+            f"{collection_url}/items",
+            json={"features": [item1]},
+        )
+        assert guess_x_and_y_dimensions_from_items(collection_url) == (
+            {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": expected_step[0]},
+            {"type": "spatial", "axis": "y", "reference_system": CRS_AUTO_42001, "step": expected_step[1]},
+        )

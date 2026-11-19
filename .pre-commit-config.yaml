@@ -12,6 +12,7 @@ repos:
       - id: check-yaml
         args: [ --allow-multiple-documents ]
       - id: check-toml
+      - id: mixed-line-ending
   - repo: https://github.com/akaihola/darker
     rev: v2.1.1
     hooks:

@@ -81,7 +81,9 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         )
         datacubeParams.setTimeDimensionFilter(labels_filter.builder)
 
-    datacubeParams.setRetainNoDataTiles(feature_flags.get("retain_nodata_tiles", False))
+    datacubeParams.setRetainNoDataTiles(
+        feature_flags.get("retain_nodata_tiles", get_backend_config().default_retain_nodata_tiles)
+    )
 
     use_raster_source_providers = feature_flags.get("use_raster_source_providers", False)
     datacubeParams.setUseRasterSourceProviders(use_raster_source_providers)
@@ -99,5 +101,9 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
             synthetic_data_override_celltype, option_synthetic_udf, udf_language
         )
         datacubeParams.setSyntheticDataOverride(syntheticDataOverride)
+
+    if load_params.sar_backscatter is not None:
+        params = jvm.org.openeo.sar.SarBackscatterParameters.fromMap(load_params.sar_backscatter._asdict())
+        datacubeParams.setExtraProcessingParameters(params)
 
     return datacubeParams, single_level

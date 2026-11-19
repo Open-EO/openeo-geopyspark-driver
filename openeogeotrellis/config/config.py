@@ -95,6 +95,13 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False
 
+    # Intermediate file format of `aggregate_spatial` results: "csv" (default) or "parquet".
+    aggregate_spatial_output_format: str = "csv"
+
+    # `aggregate_spatial` with at most this number of polygons collects the result in memory
+    # instead of writing files (0 disables).
+    aggregate_spatial_in_memory_max_polygons: int = 0
+
     setup_kerberos_auth: bool = not _is_kube_deploy
 
     # TODO: possible to disable enrichment by default?
@@ -161,8 +168,29 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
+    """
+    Object storage bucket for batch job files.
+    """
     # TODO: generically named config for a single bucket: not future/feature-proof (support for multiple buckets)
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
+
+    """
+    Object storage type to exchange batch job files (currently: the job specification)
+    between web app driver and batch job driver (see `openeogeotrellis.integrations.job_storage`):
+
+    - "unspecified" (default, deprecated): legacy fallback to S3 bucket `s3_bucket_name`.
+      Will become invalid in the future: set an explicit type instead.
+    - "aws_s3": S3 bucket `job_aws_s3_bucket_name`.
+    - "azure_blob": Azure Blob Storage container `job_azure_storage_container_name`
+      in storage account `job_azure_storage_account_name`.
+    """
+    job_storage_type: str = attrs.field(
+        default="unspecified",
+        validator=attrs.validators.in_(["unspecified", "aws_s3", "azure_blob"]),
+    )
+    job_aws_s3_bucket_name: Optional[str] = None
+    job_azure_storage_account_name: Optional[str] = None
+    job_azure_storage_container_name: Optional[str] = None
 
     """
     S3 bucket to temporarily store ML models (e.g. random forest) in, so they can be loaded by executors
@@ -280,6 +308,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     The size is provided in megabytes.
     """
     default_max_partition_size: Optional[int] = None
+
+    """
+    Default for retaining tiles that contain only NODATA when loading data (`load_collection`/`load_stac`).
+    Can be overridden by the "retain_nodata_tiles" feature flag.
+    """
+    default_retain_nodata_tiles: bool = False
 
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds

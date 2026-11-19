@@ -308,15 +308,13 @@ class Prometheus:
         )
         return {result["metric"]["node_id"]: float(result["value"][1]) for result in self._query(query, at)}
 
-    def get_avg_udf_max_rss_delta_bytes(self, job_id: str, at: str = None) -> Optional[float]:
-        """Average each UDF high-water RSS delta gauge over 24 hours, then average across series."""
-        query = "avg(" f"avg_over_time(openeo_udf_max_rss_delta_bytes{{correlation_id={json.dumps(job_id)}}}[24h]))"
-        return self._query_for_float(query, at)
-
-    def get_max_udf_max_rss_delta_bytes(self, job_id: str, at: str = None) -> Optional[float]:
-        """Return the maximum sampled UDF high-water RSS delta over the preceding 24 hours."""
-        query = "max(" f"max_over_time(openeo_udf_max_rss_delta_bytes{{correlation_id={json.dumps(job_id)}}}[24h]))"
-        return self._query_for_float(query, at)
+    def get_udf_execution_count(self, job_id: str, at: str = None) -> Dict[str, float]:
+        """Return the total number of UDF executions per UDF node: the final value of each counter series, summed."""
+        query = (
+            "sum by (node_id) ("
+            f"max_over_time(openeo_udf_execution_total{{correlation_id={json.dumps(job_id)}}}[24h]))"
+        )
+        return {result["metric"]["node_id"]: float(result["value"][1]) for result in self._query(query, at)}
 
     def get_network_received_usage(self, application_id: str, at: str = None) -> Optional[float]:
         """Returns bytes received."""

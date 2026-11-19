@@ -32,7 +32,7 @@ from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.stac.extents import SpatioTemporalExtent
 from openeogeotrellis.stac.item_collection import ItemCollection
-from openeogeotrellis.stac.projection import ProjectionMetadata, compute_cellsize
+from openeogeotrellis.stac.projection import ProjectionMetadata
 from openeogeotrellis.util.datastructures import NoveltyTracker
 from openeogeotrellis.util.projection import is_utm_epsg_code
 
@@ -324,7 +324,7 @@ def build_asset_table(
     asset_table_items: List[AssetTableItem] = []
 
     stac_metadata_parser = _StacMetadataParser(logger=logger)
-    resolution_tracker = ResolutionTracker()
+    overall_resolution_tracker = ResolutionTracker()
     observed_epsgs: Set[int] = set()
     collected_link_band_names: Set[str] = set()
 
@@ -353,6 +353,7 @@ def build_asset_table(
         item_nominal_date = itm.properties.get("datetime") or itm.properties["start_datetime"]
         links: List[AssetLink] = []
         metadata_links: List[MetadataAssetLink] = []
+        item_resolution_tracker = ResolutionTracker()
 
         band_names_tracker = NoveltyTracker()
         for asset_id, asset in sorted(
@@ -412,10 +413,10 @@ def build_asset_table(
                 # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                 continue
 
-            if proj_epsg and proj_bbox and proj_shape:
-                asset_cell_size = compute_cellsize(proj_bbox, proj_shape)
+            if proj_epsg and (asset_cell_size := asset_proj_metadata.resolution(fail_on_miss=False)):
                 for asset_band_name in asset_band_names:
-                    resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
+                    overall_resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
+                    item_resolution_tracker.track(epsg=proj_epsg, res=asset_cell_size)
 
             pixel_value_scale, pixel_value_offset = _get_pixel_value_scale_and_offset(
                 asset=asset, item=itm, pixel_value_scaling_mode=pixel_value_scaling_mode
@@ -534,10 +535,13 @@ def build_asset_table(
 
         raster_extent = tuple(float(b) for b in proj_bbox) if proj_bbox else None
 
-        resolution = None
-        if proj_bbox and proj_shape:
-            cell_width, cell_height = cellsize_override or compute_cellsize(proj_bbox, proj_shape)
-            resolution = cell_width
+        # TODO: this "resolution" value a bit ill-defined: only x-dimension is kept, and CRS reference is lost too
+        if cellsize_override:
+            resolution = cellsize_override[0]
+        elif item_resolution := item_resolution_tracker.finest_for()[1]:
+            resolution = item_resolution[0]
+        else:
+            resolution = None
 
         if proj_bbox and proj_epsg:
             item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
@@ -599,7 +603,7 @@ def build_asset_table(
     return AssetTable(
         items=asset_table_items,
         opensearch_link_titles_map=opensearch_link_titles_map,
-        resolution_tracker=resolution_tracker,
+        resolution_tracker=overall_resolution_tracker,
         observed_epsgs=observed_epsgs,
         stac_bbox=stac_bbox,
         asset_band_names=asset_band_names,

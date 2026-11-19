@@ -168,9 +168,18 @@ def test_detailed_metrics_logged(tmp_path, caplog, detailed_metrics):
     caplog.set_level(logging.INFO)
     job_dir, output_file, metadata_file = _job_paths(tmp_path)
 
+    stored_documents = []
+
     class _MetricsHooks(_RecordingHooks):
         def detailed_metrics(self) -> Optional[dict]:
             return detailed_metrics
+
+        def publish_auxiliary_file(self, path: Path, job_dir: Path, *, for_export_workspace: bool) -> str:
+            # the document is in a temp dir that is cleaned up afterwards
+            stored_documents.append(json.loads(path.read_text()))
+            return super().publish_auxiliary_file(path, job_dir, for_export_workspace=for_export_workspace)
+
+    hooks = _MetricsHooks()
 
     finalize_job(
         JSONResult({"a": 1}),
@@ -181,15 +190,29 @@ def test_detailed_metrics_logged(tmp_path, caplog, detailed_metrics):
         output_file=output_file,
         metadata_file=metadata_file,
         settings=_settings(),
-        hooks=_MetricsHooks(),
+        hooks=hooks,
         workspace_repository=None,
     )
 
     messages = [m for m in caplog.messages if m.startswith("Detailed metrics of job")]
+    metrics_links = [
+        link for link in _read_metadata(metadata_file).get("links", []) if link.get("title") == "Detailed metrics"
+    ]
+    published = [c for c in hooks.calls if c[0] == "publish_auxiliary_file"]
     if detailed_metrics:
         assert messages == [f"Detailed metrics of job {_settings().job_id}: {json.dumps(detailed_metrics)}"]
+        assert len(metrics_links) == 1
+        assert metrics_links[0]["rel"] == "related"
+        assert metrics_links[0]["type"] == "application/json"
+        assert metrics_links[0]["href"].endswith("detailed-metrics.json")
+        assert len(published) == 1
+        assert published[0][1].name == "detailed-metrics.json"
+        assert published[0][2] == job_dir
+        assert stored_documents == [detailed_metrics]
     else:
         assert messages == []
+        assert metrics_links == []
+        assert published == []
 
 
 def test_multiple_results(tmp_path):

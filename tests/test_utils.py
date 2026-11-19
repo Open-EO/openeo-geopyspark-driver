@@ -25,8 +25,7 @@ from openeogeotrellis.utils import (
     FileChangeWatcher,
     get_jvm,
     to_tuple,
-    partition,
-    get_s3_file_contents,
+    partition
 )
 
 
@@ -216,23 +215,6 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
     assert bytes(buffer) == TIFF_DUMMY_DATA
 
 
-@pytest.mark.parametrize(
-    ["args", "expectation"],
-    [
-        ([Path("/batch_jobs/j-abc123/text.txt")], nullcontext()),
-        ([Path("/batch_jobs/j-abc123/text.txt"), "openeo-fake-bucketname"], nullcontext()),
-        (
-            [Path("/batch_jobs/j-abc123/text.txt"), "unknown-bucket"],
-            pytest.raises(botocore.exceptions.ClientError, match="NoSuchBucket"),
-        ),
-    ],
-)
-def test_get_s3_file_contents(mock_s3_bucket, args, expectation):
-    text = "some text"
-    mock_s3_bucket.put_object(Key="batch_jobs/j-abc123/text.txt", Body=text.encode("utf-8"))
-
-    with expectation:
-        assert get_s3_file_contents(*args) == text
 
 
 @pytest.mark.parametrize(

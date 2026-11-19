@@ -451,14 +451,8 @@ class TestDownload:
             if filename_prefix:
                 assert filename_prefix in asset['href']
             else:
-                if (tile_grid and stitch and format_arg == "GTIFF") \
-                        or (tile_grid and not (batch_mode and space_type != "spatial") and not stitch
-                            and format_arg == "GTIFF"):
-                    # special case for _save_stitched_tile_grid
-                    assert "/test_download_result" in asset['href']
-                else:
-                    assert "/openEO" in asset['href']
-        assert Path(asset['href']).parent == tmp_path
+                assert "/openEO" in asset["href"]
+        assert Path(asset["href"]).parent == tmp_path
 
     #skipped because gdal_merge.py is not available on jenkins
     @skip

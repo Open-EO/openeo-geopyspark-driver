@@ -128,6 +128,8 @@ setup(
             "PyYAML",
         ],
         "yarn": yarn_require,
+        # Azure Blob Storage support (see `openeogeotrellis.integrations.job_storage`)
+        "azure": ["azure-storage-blob>=12.19.0", "azure-identity>=1.15.0"],
         "spark35": ["pyspark>=3.5.0,<4.0.0"],
         "spark4": ["pyspark>=4.0.0,<5.0.0"],
         # "extras" trick to allow pinning down on pyspark 4.0.x for particular CI contexts

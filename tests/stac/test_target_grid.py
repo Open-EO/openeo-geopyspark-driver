@@ -3,8 +3,11 @@ Focused unit tests for `openeogeotrellis.stac.target_grid`, exercised
 through its own public surface (no JVM/GeoPySpark dependency), independent of
 `test_load_stac.py`'s end-to-end JVM-backed checks.
 """
+
+import math
 from types import SimpleNamespace
 
+import pytest
 from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.stac.asset_table import ResolutionTracker
@@ -84,6 +87,35 @@ class TestDetermineCellSize:
             feature_flags={},
         )
         assert (cell_width, cell_height) == (10.0, 10.0)
+
+    @pytest.mark.parametrize(
+        "target_bbox",
+        [
+            BoundingBox(west=339960.0, south=6159960.0, east=360030.0, north=6180030.0, crs=32734),
+            BoundingBox(
+                west=19.252831864490275,
+                south=-34.692807464034416,
+                east=19.475174871670575,
+                north=-34.508955786249906,
+                crs=4326,
+            ),
+        ],
+    )
+    def test_hardcoded_10m_fallback_for_lonlat_converted_at_bbox_location(self, target_bbox):
+        # https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952
+        cell_width, cell_height = _determine_cell_size(
+            resolution_tracker=ResolutionTracker(),
+            observed_epsgs={4326},
+            source_band_names=["band1"],
+            target_epsg=4326,
+            target_bbox=target_bbox,
+            feature_flags={},
+        )
+        # 10m in degrees of longitude at latitude ~-34.6
+        one_degree_lon_in_meters_at_equator = 111_320
+        expected_degrees = 10.0 / (one_degree_lon_in_meters_at_equator * math.cos(math.radians(34.6)))
+        assert cell_width == pytest.approx(expected_degrees, rel=0.01)
+        assert cell_height == pytest.approx(expected_degrees, rel=0.01)
 
 
 class TestApplyLoadParamsOverrides:
