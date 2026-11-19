@@ -119,37 +119,18 @@ cube = connection.load_collection(
 )
 ```
 
-Each property's options can contain:
+An empty options object (`"scenario": {}`) requires a filter by property name.
+The shorthand list `["scenario"]` is also supported. Optionally, `enum` lists
+possible values to include in the error message when the filter is missing.
+This check only verifies that the property is present in the user's filter
+listing; it does not inspect the filter's operators or values.
 
-- `enum`: allowed values for an `eq` filter or an `array_contains` selection.
-  Other values or operators result in an `InvalidPropertyFilter` error (HTTP 400).
-  If omitted, no additional restrictions on filter values are imposed.
-- `default`: a value used to construct an equality filter when the user omits
-  this property. An explicit user filter takes precedence. If `enum` is also
-  configured, the default must be one of its values.
-
-For example, to load `ssp245` by default while allowing users to select another
-scenario:
-
-```json
-"required_properties": {
-  "scenario": {
-    "enum": ["ssp126", "ssp245", "ssp585"],
-    "default": "ssp245"
-  }
-}
-```
-
-An empty options object (`"scenario": {}`) requires a filter without restricting
-its values. The shorthand list `["scenario"]` is also supported.
-
-Omitting a required filter without a configured `default` results in a
-`MissingPropertyFilter` error (HTTP 400) identifying the collection and property.
-Loading reports all property issues together. Process-graph validation reports
+Omitting a required filter results in a `MissingPropertyFilter` error (HTTP 400)
+identifying the collection and property, with enum hints when configured.
+Loading reports all missing filters together. Process-graph validation reports
 these alongside other validation issues. `_vito.properties` defaults do not
-replace required user filters; use the per-property `default` option to make a
-selection optional. An omitted or empty `required_properties` preserves the
-existing behavior.
+replace required user filters. An omitted or empty `required_properties`
+preserves the existing behavior.
 
 This setting applies to all `load_collection` source types, including STAC-backed
 collections. It does not impose requirements on direct `load_stac` calls.
