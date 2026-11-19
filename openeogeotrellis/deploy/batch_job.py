@@ -43,6 +43,7 @@ from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy import batch_job_metadata
 from openeogeotrellis.integrations.gdal import localize_s3_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.integrations.job_storage import get_job_storage
 from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.job_results import finalize
@@ -377,8 +378,7 @@ def _build_job_results_settings(
         processing_facility="VITO - SPARK",  # TODO make configurable
         processing_software="openeo-geotrellis-" + __version__,
         provider={},  # filled in once the process graph is available, see run_job
-        job_local_href_format=backend_config.job_local_href_format,
-        s3_bucket_name=backend_config.s3_bucket_name,
+        job_storage=get_job_storage(),
         gdalinfo_from_file=backend_config.gdalinfo_from_file,
         gdalinfo_use_subprocess=backend_config.gdalinfo_use_subprocess,
         item_collection_glob=get_stac_item_collection_filename(pg_node_id="*"),
@@ -561,8 +561,9 @@ class GeoPySparkJobResultsHooks:
         return localize_s3_asset(href, job_dir)
 
     def output_href(self, href: str) -> str:
-        if self._is_kube_deploy:
-            return to_s3_url(str(href).strip("/"))
+        if ConfigParams().use_object_storage:
+            from openeogeotrellis.integrations.job_storage import get_job_storage
+            return get_job_storage().uri(str(href).strip("/"))
         return href
 
     def publish_metadata_file(self, metadata_file: Path) -> None:

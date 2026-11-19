@@ -3,6 +3,7 @@ from pathlib import Path
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, NullResult
 
+from openeogeotrellis.integrations.job_storage import AzureBlobJobStorage, S3JobStorage
 from openeogeotrellis.job_results.result_metadata import (
     CollectNodesVisitor,
     assemble_result_metadata,
@@ -26,8 +27,6 @@ def _settings(**overrides) -> JobResultsSettings:
         processing_facility="VITO - SPARK",
         processing_software="openeo-geotrellis-dummy-version",
         provider={},
-        job_local_href_format="file",
-        s3_bucket_name="openeo-test-bucket",
         gdalinfo_from_file=True,
         gdalinfo_use_subprocess=False,
         item_collection_glob="items_*.json",
@@ -142,14 +141,17 @@ def test_convert_asset_outputs_to_s3_urls():
 
 
 def test_href_from_job_local_path_file():
-    assert href_from_job_local_path("/tmp/aux.txt", job_local_href_format="file", s3_bucket_name=None) == (
-        "file:///tmp/aux.txt"
-    )
+    assert href_from_job_local_path("/tmp/aux.txt") == "file:///tmp/aux.txt"
 
 
 def test_href_from_job_local_path_s3():
-    href = href_from_job_local_path("/tmp/aux.txt", job_local_href_format="s3", s3_bucket_name="my-bucket")
+    href = href_from_job_local_path("/tmp/aux.txt", job_storage=S3JobStorage(bucket="my-bucket"))
     assert href == "s3://my-bucket/tmp/aux.txt"
+
+
+def test_href_from_job_local_path_azure():
+    href = href_from_job_local_path("/tmp/aux.txt", job_storage=AzureBlobJobStorage("acc", "cont"))
+    assert href == "https://acc.blob.core.windows.net/cont/tmp/aux.txt"
 
 
 def test_collect_nodes():

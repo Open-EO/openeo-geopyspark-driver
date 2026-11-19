@@ -4235,13 +4235,13 @@ def test_predict_onnx_reduce_sum(tmp_path):
     ["config_overrides", "expected_href"],
     [
         (
-            {"job_local_href_format": None},
+            {},
             "file://{expected_item_collection_path}",
         ),
         (
             {
-                "job_local_href_format": "s3",
-                "s3_bucket_name": "openeo-batch-job-data",
+                "job_storage_type": "aws_s3",
+                "job_aws_s3_bucket_name": "openeo-batch-job-data",
             },
             "s3://openeo-batch-job-data{expected_item_collection_path}",
         ),
@@ -4311,13 +4311,13 @@ def test_load_stac_serialize_item_collection(
     ["config_overrides", "expected_href"],
     [
         (
-            {"job_local_href_format": None},
+            {},
             "file://{expected_item_collection_path}",
         ),
         (
             {
-                "job_local_href_format": "s3",
-                "s3_bucket_name": "openeo-batch-job-data",
+                "job_storage_type": "aws_s3",
+                "job_aws_s3_bucket_name": "openeo-batch-job-data",
             },
             "s3://openeo-batch-job-data{expected_item_collection_path}",
         ),

@@ -13,6 +13,13 @@ from typing import List, Optional, Protocol
 
 from openeo_driver.save_result import SaveResult
 
+class JobStorage(Protocol):
+    """Where job files live (e.g. S3, Azure Blob), as far as this package needs to know."""
+
+    def uri(self, key: str) -> str:
+        """URI of the object with given key."""
+        ...
+
 
 @dataclass(frozen=True)
 class JobResultsSettings:
@@ -29,12 +36,11 @@ class JobResultsSettings:
     processing_facility: str
     processing_software: str
     provider: dict  # a STAC Item/Collection `providers[]` entry
-    job_local_href_format: str
-    s3_bucket_name: Optional[str]
     gdalinfo_from_file: bool
     gdalinfo_use_subprocess: bool
     item_collection_glob: str  # filename pattern for derived_from item collections (load_stac coupling)
     spark_context_cleanup: str = "none"  # job option, default "stop"; one of "stop", "kill-executors", "none"
+    job_storage: Optional[JobStorage] = None  # if set, used to build job-local hrefs (format "s3")
 
 
 @dataclass(frozen=True)
