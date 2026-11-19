@@ -14,7 +14,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3ProxyUnsupportedBucketType
 from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri, split_s3_uri_and_alias
-from openeogeotrellis.integrations.s3proxy.sts import get_aws_credentials_for_proxy_in_context
+from openeogeotrellis.integrations.s3proxy.sts import get_job_aws_credentials_for_proxy
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket
 from openeo_driver.integrations.s3.presigned_url import create_presigned_url
@@ -69,12 +69,7 @@ def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id: str, interna
         endpoint_url = get_backend_config().s3_region_proxy_endpoints.get(region_name)
         if not endpoint_url:
             raise S3ProxyDisabled(f"No S3 proxy endpoint configured for region {region_name!r}.")
-    creds = get_aws_credentials_for_proxy_in_context(
-        job_id=job_id,
-        user_id=user_id,
-        role_arn=_get_role_arn(bucket_details),
-        session_name="openeo-geopyspark-driver",
-    )
+    creds = get_job_aws_credentials_for_proxy(job_id, user_id, _get_role_arn(bucket_details))
     return boto3.client(
         "s3",
         endpoint_url=endpoint_url,

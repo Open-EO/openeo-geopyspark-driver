@@ -18,7 +18,6 @@ from openeogeotrellis.integrations.s3proxy.exceptions import (
 )
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.util.runtime import in_batch_job_context
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -119,20 +118,3 @@ def get_aws_credentials_for_proxy_for_running_job(*, role_arn: str, session_name
     except Exception as e:
         _log.warning("Could not get credentials from proxy", exc_info=e)
         raise CredentialsException() from e
-
-
-def get_aws_credentials_for_proxy_in_context(
-    *, job_id: str, user_id: str, role_arn: str, session_name: str
-) -> STSCredentials:
-    """
-    Get credentials for the S3 proxy in the current runtime context.
-
-    On the webapp driver a job token is issued with the IDP private key.
-    Inside a batch job the job token mounted in the job config dir is used instead.
-    That token already carries the user and job id, so `job_id` and `user_id` are ignored there.
-    """
-    if in_batch_job_context():
-        return get_aws_credentials_for_proxy_for_running_job(role_arn=role_arn, session_name=session_name)
-    return get_job_aws_credentials_for_proxy(
-        job_id=job_id, user_id=user_id, role_arn=role_arn, session_name=session_name
-    )

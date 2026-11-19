@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 import importlib.resources
 from urllib.parse import urlsplit, urlunsplit
 
+import boto3
+import botocore.config
 import dateutil.parser
 import kubernetes.client
 import pystac
@@ -21,6 +23,8 @@ import pystac.extensions.item_assets
 import requests
 import yaml
 from openeo.util import ContextTimer, deep_get, dict_no_none
+from openeo_driver.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket
+from openeo_driver.integrations.s3.presigned_url import create_presigned_url
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, ENV_SAVE_RESULT
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
@@ -43,15 +47,11 @@ from openeogeotrellis.config.integrations.calrissian_config import (
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
-from openeogeotrellis.integrations.s3proxy.exceptions import (
-    CredentialsException,
-    S3ProxyDisabled,
-    S3ProxyUnsupportedBucketType,
-)
-from openeogeotrellis.integrations.s3proxy.s3_shared_context import presign_s3_urls_for_internal_usage
+from openeogeotrellis.integrations.s3proxy.exceptions import CredentialsException, S3ProxyDisabled
+from openeogeotrellis.integrations.s3proxy.s3_uris import get_bucket_key_from_uri
 from openeogeotrellis.util.audience_logging import AUDIENCE_USER
 from openeogeotrellis.util.byteunit import byte_string_as
-from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
+from openeogeotrellis.util.runtime import get_job_id, get_request_id, in_batch_job_context, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import S3ClientBuilder
 
 
@@ -453,9 +453,13 @@ class CalrissianJobLauncher:
             "session_name": "calrissian-eodata-access",
         }
 
-        s3_credentials = sts.get_aws_credentials_for_proxy_in_context(
-            job_id=correlation_id, user_id=user_id, **credential_session_details
-        )
+        if get_job_id(default=None) is None:
+            # Synchronous request so we are on webappdriver
+            s3_credentials = sts.get_job_aws_credentials_for_proxy(
+                job_id=correlation_id, user_id=user_id, **credential_session_details
+            )
+        else:
+            s3_credentials = sts.get_aws_credentials_for_proxy_for_running_job(**credential_session_details)
 
         return {
             "AWS_ENDPOINT_URL_S3": s3_endpoint,
@@ -1153,32 +1157,36 @@ def _write_stac_catalog_for_write_assets_result(
 CWL_INPUT_PRESIGNED_URL_EXPIRATION = 24 * 3600
 
 
-def _cwl_input_presigner(job_id: str, user_id: str) -> Optional[Callable[[List[str]], List[str]]]:
+def _cwl_input_presigner(job_id: str) -> Optional[Callable[[List[str]], List[str]]]:
     """
-    Build a function that presigns CWL input hrefs (local paths or s3:// URIs) against the internal S3 proxy,
-    so that CWL pods can read them without credentials.
+    Build a function that presigns CWL input hrefs (local paths or s3:// URIs of the job bucket)
+    against the internal S3 proxy, so that CWL pods can read them without credentials.
 
-    Returns None when the S3 proxy can not be used for the job bucket (e.g. local development),
+    Only for the batch job driver: the S3 proxy credentials are obtained once with the mounted job token
+    and the workspace role of the job bucket. Signing itself is local and does not hit the S3 proxy.
+
+    Returns None when the S3 proxy can not be used (e.g. not in a batch job, local development),
     in which case the CWL input is passed as local paths, as before.
     """
+    if not in_batch_job_context():
+        _log.info("Not presigning CWL input STAC links: not in a batch job context.")
+        return None
     bucket = get_backend_config().s3_bucket_name
-
-    def to_s3_uri(href: str) -> str:
-        # With the FUSE mounted job bucket, the local job dir is the bucket prefix mounted at the same path.
-        return href if href.startswith("s3://") else f"s3://{bucket}/{href.lstrip('/')}"
-
-    def presign(hrefs: List[str]) -> List[str]:
-        return presign_s3_urls_for_internal_usage(
-            [to_s3_uri(h) for h in hrefs],
-            job_id=job_id,
-            user_id=user_id,
-            expiration=CWL_INPUT_PRESIGNED_URL_EXPIRATION,
-        )
+    bucket_details = BucketDetails.from_name(bucket)
+    if not is_workspace_bucket(bucket_details):
+        _log.warning(f"Not presigning CWL input STAC links: job bucket {bucket!r} is not a known workspace bucket.")
+        return None
+    endpoint_url = os.environ.get(s3_config.AWSConfig.S3PROXY_S3_ENDPOINT_URL)
+    if not endpoint_url:
+        _log.warning("Not presigning CWL input STAC links: no internal S3 proxy endpoint configured.")
+        return None
 
     try:
-        # Signing is local, only the (cached) STS credential exchange does a request: fail fast here.
-        presign([f"/{job_id}/cwl_input"])
-    except (S3ProxyDisabled, S3ProxyUnsupportedBucketType) as e:
+        creds = sts.get_aws_credentials_for_proxy_for_running_job(
+            role_arn=f"arn:openeows:iam:::role/{bucket_details.type_id}",
+            session_name="calrissian-cwl-input",
+        )
+    except S3ProxyDisabled as e:
         _log.warning(f"Not presigning CWL input STAC links: {e!r}")
         return None
     except CredentialsException as e:
@@ -1186,6 +1194,35 @@ def _cwl_input_presigner(job_id: str, user_id: str) -> Optional[Callable[[List[s
             "Could not get S3 proxy credentials to presign CWL input links."
             " Is the batch job token missing or older than 48 hours?"
         ) from e
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        region_name=bucket_details.region,
+        config=botocore.config.Config(signature_version="s3v4"),
+        **creds.as_client_kwargs(),
+    )
+
+    def presign_one(href: str) -> str:
+        # With the FUSE mounted job bucket, the local job dir is the bucket prefix mounted at the same path.
+        s3_uri = href if href.startswith("s3://") else f"s3://{bucket}/{href.lstrip('/')}"
+        href_bucket, key = get_bucket_key_from_uri(s3_uri)
+        if href_bucket != bucket or not key:
+            raise ValueError(f"Can only presign CWL input in job bucket {bucket!r}, got {s3_uri!r}")
+        url = create_presigned_url(
+            s3_client,
+            bucket_name=bucket,
+            object_name=key,
+            expiration=CWL_INPUT_PRESIGNED_URL_EXPIRATION,
+            parameters={"X-Proxy-Head-As-Get": "true"},
+        )
+        if not url:
+            raise RuntimeError(f"Could not presign CWL input {s3_uri!r}")
+        return url
+
+    def presign(hrefs: List[str]) -> List[str]:
+        return [presign_one(h) for h in hrefs]
+
     return presign
 
 
@@ -1202,25 +1239,6 @@ def _redact_presigned_urls(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _redact_presigned_urls(v) for k, v in value.items()}
     return value
-
-
-def _check_presigned_urls_reachable(urls: List[str], *, not_found_timeout: float = 60, poll_interval: float = 2):
-    """
-    HEAD each presigned URL before handing them to CWL, so signing problems fail the job early.
-    404 is retried for a while to cover FUSE upload lag.
-    """
-    for url in urls:
-        deadline = time.monotonic() + not_found_timeout
-        while True:
-            resp = requests.head(url, timeout=30)
-            if resp.status_code == 404 and time.monotonic() < deadline:
-                time.sleep(poll_interval)
-                continue
-            if resp.status_code >= 400:
-                raise RuntimeError(
-                    f"Presigned CWL input URL for {urlsplit(url).path!r} is not reachable: HTTP {resp.status_code}"
-                )
-            break
 
 
 def cwl_to_stac(
@@ -1270,26 +1288,16 @@ def cwl_to_stac(
             output_dir.mkdir(parents=True, exist_ok=True)
 
             if not presign_resolved:
-                user_id = getattr(env.get("user"), "user_id", "unknown") if env else "unknown"
-                presign = _cwl_input_presigner(job_id=correlation_id, user_id=user_id)
+                presign = _cwl_input_presigner(job_id=correlation_id)
                 presign_resolved = True
-
-            signed_urls = []
-
-            def presign_and_record(hrefs: List[str]) -> List[str]:
-                urls = presign(hrefs)
-                signed_urls.extend(urls)
-                return urls
 
             items = save_result.write_assets(output_dir / "out")
             catalog_href, item_hrefs = _write_stac_catalog_for_write_assets_result(
                 output_dir=output_dir,
                 items=items,
                 collection_id=f"{correlation_id}_{key}",
-                presign=presign_and_record if presign else None,
+                presign=presign,
             )
-            if signed_urls:
-                _check_presigned_urls_reachable(signed_urls)
 
             if cwl_source.is_string_array_input(key):
                 # Parameter expects an array of strings: pass the individual STAC item URLs

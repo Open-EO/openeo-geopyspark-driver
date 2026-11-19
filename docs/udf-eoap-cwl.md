@@ -62,7 +62,7 @@ Do not build relative paths from them: a path resolved against a presigned URL l
 GDAL may probe unsigned sidecar files (e.g. `.aux.xml`) next to an asset and get a 403.
 That is harmless, and `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` avoids it.
 
-Without an S3 proxy (e.g. local development), the CWL input receives local paths and the catalog uses relative links.
+Without an S3 proxy (e.g. local development) or outside a batch job, the CWL input receives local paths and the catalog uses relative links.
 
 ## CWL Output
 

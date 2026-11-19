@@ -30,13 +30,12 @@ from openeogeotrellis.integrations.calrissian import (
     find_stac_root,
     cwl_to_stac,
     CWL_INPUT_PRESIGNED_URL_EXPIRATION,
-    _check_presigned_urls_reachable,
     _cwl_input_presigner,
     _redact_presigned_urls,
     _write_stac_catalog_for_write_assets_result,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
-from openeogeotrellis.integrations.s3proxy import s3_shared_context
+from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
@@ -987,12 +986,6 @@ def _write_assets_items(asset_href: str) -> dict:
 
 
 class TestCwlInputPresigning:
-    @pytest.fixture(autouse=True)
-    def clean_proxy_client_cache(self):
-        s3_shared_context._client_cache.flush()
-        yield
-        s3_shared_context._client_cache.flush()
-
     @pytest.mark.parametrize("asset_href", ["/batch_jobs/j-1/cwl_input/cube/out/openEO.tif", "s3://openeo-fake-bucketname/k/openEO.tif"])
     def test_write_stac_catalog_presigned(self, tmp_path, asset_href):
         catalog_href, item_hrefs = _write_stac_catalog_for_write_assets_result(
@@ -1010,17 +1003,23 @@ class TestCwlInputPresigning:
             assert href.endswith("?X-Amz-Expires=86400&X-Amz-Signature=abc"), href
         assert docs["item1.json"]["assets"]["openEO"]["href"] == _fake_presign([asset_href])[0]
 
+    def test_presigner_not_in_batch_job(self, monkeypatch):
+        monkeypatch.delenv(ENV_VAR_OPENEO_BATCH_JOB_ID, raising=False)
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        with gps_config_overrides(s3_bucket_name="openeo-fake-bucketname"):
+            assert _cwl_input_presigner(job_id="j-1") is None
+
     def test_presigner_without_proxy_endpoint(self, monkeypatch):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
         monkeypatch.delenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, raising=False)
-        with gps_config_overrides(
-            s3_bucket_name="openeo-fake-bucketname",
-        ):
-            assert _cwl_input_presigner(job_id="j-1", user_id="alice") is None
+        with gps_config_overrides(s3_bucket_name="openeo-fake-bucketname"):
+            assert _cwl_input_presigner(job_id="j-1") is None
 
     def test_presigner_bucket_not_a_workspace(self, monkeypatch):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
         monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
         with gps_config_overrides(s3_bucket_name="some-unknown-bucket"):
-            assert _cwl_input_presigner(job_id="j-1", user_id="alice") is None
+            assert _cwl_input_presigner(job_id="j-1") is None
 
     def test_presigner_missing_job_token_fails(self, monkeypatch, tmp_path):
         monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
@@ -1030,21 +1029,32 @@ class TestCwlInputPresigning:
             batch_job_config_dir=tmp_path,
         ):
             with pytest.raises(RuntimeError, match="job token missing or older than 48 hours"):
-                _cwl_input_presigner(job_id="j-1", user_id="alice")
+                _cwl_input_presigner(job_id="j-1")
 
-    def test_presigner_urls(self, monkeypatch):
+    def test_presigner_urls(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
         monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        (tmp_path / "token").write_text("the-job-token")
         creds = STSCredentials(
             access_key_id="testing",
             secret_access_key="testing",
             session_token="testing",
             expiration=datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc),
         )
+        # No IDP key needed: a batch job driver exchanges its mounted job token, once.
         with gps_config_overrides(
             s3_bucket_name="openeo-fake-bucketname",
-        ), mock.patch.object(s3_shared_context, "get_aws_credentials_for_proxy_in_context", return_value=creds):
-            presign = _cwl_input_presigner(job_id="j-1", user_id="alice")
+            batch_job_config_dir=tmp_path,
+            openeo_idp_details_file=tmp_path / "missing_idp_details.json",
+        ), mock.patch.object(sts, "_get_aws_credentials_for_proxy", return_value=creds) as exchange:
+            presign = _cwl_input_presigner(job_id="j-1")
             [local, s3] = presign(["/batch_jobs/j-1/cwl_input/cube/catalog.json", "s3://openeo-fake-bucketname/k/openEO.tif"])
+            with pytest.raises(ValueError, match="job bucket"):
+                presign(["s3://other-bucket/k.tif"])
+
+        exchange.assert_called_once_with(
+            token="the-job-token", role_arn="arn:openeows:iam:::role/s3_workspace", session_name="calrissian-cwl-input"
+        )
 
         for url, key in [(local, "batch_jobs/j-1/cwl_input/cube/catalog.json"), (s3, "k/openEO.tif")]:
             parts = urlsplit(url)
@@ -1069,19 +1079,6 @@ class TestCwlInputPresigning:
             "path": "/data/x.json",
         }
 
-    def test_check_reachable_ok_after_404(self, requests_mock):
-        url = "https://s3proxy.test/b/catalog.json?X-Amz-Signature=abc"
-        m = requests_mock.head(url, [{"status_code": 404}, {"status_code": 200}])
-        _check_presigned_urls_reachable([url], poll_interval=0)
-        assert m.call_count == 2
-
-    def test_check_reachable_fails_without_leaking_signature(self, requests_mock):
-        url = "https://s3proxy.test/b/catalog.json?X-Amz-Signature=abc"
-        requests_mock.head(url, status_code=403)
-        with pytest.raises(RuntimeError, match="'/b/catalog.json' is not reachable: HTTP 403") as e:
-            _check_presigned_urls_reachable([url])
-        assert "Signature" not in str(e.value)
-
     def test_cwl_to_stac_passes_presigned_catalog(self, tmp_path, monkeypatch, caplog):
         from openeo_driver.users import User
         from openeo_driver.save_result import ImageCollectionResult
@@ -1102,9 +1099,7 @@ class TestCwlInputPresigning:
             "openeogeotrellis.integrations.calrissian.to_save_result", return_value=save_result
         ), mock.patch(
             "openeogeotrellis.integrations.calrissian._cwl_input_presigner", return_value=_fake_presign
-        ) as presigner, mock.patch(
-            "openeogeotrellis.integrations.calrissian._check_presigned_urls_reachable"
-        ) as check, mock.patch.object(
+        ) as presigner, mock.patch.object(
             CalrissianJobLauncher, "from_context", return_value=fake_launcher
         ), mock.patch(
             "openeogeotrellis.integrations.calrissian.ensure_kubernetes_config"
@@ -1116,13 +1111,7 @@ class TestCwlInputPresigning:
             )
 
         assert result == "https://example.test/result/catalog.json"
-        presigner.assert_called_once_with(job_id="j-1", user_id="alice")
+        presigner.assert_called_once_with(job_id="j-1")
         cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
         assert cwl_arguments["cube"] == _fake_presign([str(output_dir / "catalog.json")])[0]
-        [checked_urls] = check.call_args.args
-        assert set(checked_urls) == set(
-            _fake_presign(
-                [str(output_dir / f) for f in ["catalog.json", "collection.json", "item1.json", "out/openEO.tif"]]
-            )
-        )
         assert "X-Amz-Signature" not in caplog.text
