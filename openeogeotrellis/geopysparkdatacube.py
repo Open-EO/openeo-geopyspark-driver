@@ -2234,7 +2234,7 @@ class GeopysparkDataCube(DriverDataCube):
         filename_prefix = get_jvm().scala.Option.apply(
             format_opts.filename_prefix
             or (
-                map_optional(lambda h: h.node_id, save_result_hints)
+                map_optional(lambda h: f"openEO_{h.node_id}", save_result_hints)
                 if format_opts.prefix_filename_with_node_id
                 else "openEO"
             )

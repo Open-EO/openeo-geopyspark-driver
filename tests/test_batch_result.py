@@ -238,7 +238,7 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
     ["stac_version", "asset_name", "default_prefix"],
     [
         ("1.0", "", "openEO"),
-        ("1.1", "openEO", "save"),
+        ("1.1", "openEO", "openEO_save"),
     ],
 )
 def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(
@@ -407,7 +407,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_v
     assets = [asset for item in metadata["items"] for asset in item["assets"].values()] if stac_version == "1.1" else [asset for asset in metadata["assets"].values()]
     # get file names as set:
     asset_filenames = {Path(asset["href"]).name for asset in assets}
-    prefix = "save1" if stac_version == "1.1" else "openEO"
+    prefix = "openEO_save1" if stac_version == "1.1" else "openEO"
     assert asset_filenames == {filename.format(prefix=prefix) for filename in expected_filenames}
 
     for asset in assets:
@@ -456,7 +456,7 @@ def test_separate_asset_per_band_throw(tmp_path):
         )
 
 
-@pytest.mark.parametrize(["stac_version", "prefix"], [("1.0", "openEO"), ("1.1", "save")])
+@pytest.mark.parametrize(["stac_version", "prefix"], [("1.0", "openEO"), ("1.1", "openEO_save")])
 def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, stac_version, prefix):
     """
     sample_by_feature with vector cube loaded through load_url
@@ -881,7 +881,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     items = metadata["items"]
     assert len(items) == 2
 
-    item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/save_0.nc")][0]
+    item0 = [
+        item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_save_0.nc")
+    ][0]
 
     assert item0["bbox"] == [0.1, 0.1, 1.8, 1.8]
     assert (
@@ -899,7 +901,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
     }]
 
-    item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/save_1.nc")][0]
+    item1 = [
+        item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_save_1.nc")
+    ][0]
     assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
     assert (
         shape(item1["geometry"])
@@ -1035,7 +1039,7 @@ def test_multiple_image_collection_results(tmp_path):
     ["stac_version", "asset_keys", "bands_name", "prefix"],
     [
         ("1.0", ["openEO_2021-01-15Z.tif", "openEO_2021-01-05Z.tif"], "raster:bands", "openEO"),
-        ("1.1", ["openEO", "openEO"], "bands", "saveresult1"),
+        ("1.1", ["openEO", "openEO"], "bands", "openEO_saveresult1"),
     ],
 )
 def test_export_workspace(
@@ -1260,7 +1264,7 @@ def test_export_workspace(
     ["stac_version", "asset_key", "bands_name", "prefix"],
     [
         ("1.0", ["openEO_2021-01-05Z_Latitude.tif", "openEO_2021-01-05Z_Longitude.tif"], "raster:bands", "openEO"),
-        ("1.1", ["Latitude", "Longitude"], "bands", "saveresult1"),
+        ("1.1", ["Latitude", "Longitude"], "bands", "openEO_saveresult1"),
     ],
 )
 def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_key, bands_name, prefix):
@@ -1586,7 +1590,7 @@ def test_filepath_per_band(
     ["stac_version", "bands_name", "prefix"],
     [
         ("1.0", "raster:bands", "openEO"),
-        ("1.1", "bands", "saveresult1"),
+        ("1.1", "bands", "openEO_saveresult1"),
     ],
 )
 def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_version, bands_name, prefix):
@@ -2424,7 +2428,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
     ["stac_version", "asset_key", "bands_key", "netcdf_prefix", "geotiff_prefix"],
     [
         ("1.0", "openEO.tif", "raster:bands", "openEO", "openEO"),
-        ("1.1", "openEO", "bands", "saveresult1", "saveresult2"),
+        ("1.1", "openEO", "bands", "openEO_saveresult1", "openEO_saveresult2"),
     ],
 )
 def test_multiple_save_result_single_export_workspace(
@@ -2654,7 +2658,7 @@ def test_custom_geotiff_tags(tmp_path):
 @pytest.mark.parametrize(
     ["stac_version", "asset_key", "prefix"],
     [
-        ("1.1", "openEO", "saveresult1"),
+        ("1.1", "openEO", "openEO_saveresult1"),
         ("1.0", "openEO_2021-01-05Z.tif", "openEO"),
     ],
 )
@@ -2841,7 +2845,7 @@ def _paths_relative_to(base: Path) -> Set[Path]:
     ["stac_version", "asset_key", "prefix"],
     [
         ("1.0", "openEO.tif", "openEO"),
-        ("1.1", "openEO", "saveresult1"),
+        ("1.1", "openEO", "openEO_saveresult1"),
     ],
 )
 def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_key, prefix):
@@ -3044,16 +3048,16 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
 @pytest.mark.parametrize(
     ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
     [
-        (False, {"save1_2025-04-05Z.tif", "save1_2025-04-15Z.tif"}, {"openEO"}),
+        (False, {"openEO_save1_2025-04-05Z.tif", "openEO_save1_2025-04-15Z.tif"}, {"openEO"}),
         (
             True,
             {
-                "save1_2025-04-05Z_Flat:0.tif",
-                "save1_2025-04-05Z_Flat:1.tif",
-                "save1_2025-04-05Z_Flat:2.tif",
-                "save1_2025-04-15Z_Flat:0.tif",
-                "save1_2025-04-15Z_Flat:1.tif",
-                "save1_2025-04-15Z_Flat:2.tif",
+                "openEO_save1_2025-04-05Z_Flat:0.tif",
+                "openEO_save1_2025-04-05Z_Flat:1.tif",
+                "openEO_save1_2025-04-05Z_Flat:2.tif",
+                "openEO_save1_2025-04-15Z_Flat:0.tif",
+                "openEO_save1_2025-04-15Z_Flat:1.tif",
+                "openEO_save1_2025-04-15Z_Flat:2.tif",
             },
             {"Flat:0", "Flat:1", "Flat:2"},
         ),
@@ -3176,10 +3180,10 @@ def test_unified_asset_keys_tile_grid(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "save1_2025-04-05Z_N50E000.tif",
-        "save1_2025-04-05Z_N50E001.tif",
-        "save1_2025-04-15Z_N50E000.tif",
-        "save1_2025-04-15Z_N50E001.tif",
+        "openEO_save1_2025-04-05Z_N50E000.tif",
+        "openEO_save1_2025-04-05Z_N50E001.tif",
+        "openEO_save1_2025-04-15Z_N50E000.tif",
+        "openEO_save1_2025-04-15Z_N50E001.tif",
     }
 
     with open(metadata_file) as f:
@@ -3273,8 +3277,8 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path, filename_prefix):
         }
         if filename_prefix
         else {
-            "save1_N50E000.tif",
-            "save1_N50E001.tif",
+            "openEO_save1_N50E000.tif",
+            "openEO_save1_N50E001.tif",
         }
     )
 
@@ -3367,10 +3371,10 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "save1_2025-04-05Z_0.tif",
-        "save1_2025-04-05Z_1.tif",
-        "save1_2025-04-15Z_0.tif",
-        "save1_2025-04-15Z_1.tif",
+        "openEO_save1_2025-04-05Z_0.tif",
+        "openEO_save1_2025-04-05Z_1.tif",
+        "openEO_save1_2025-04-15Z_0.tif",
+        "openEO_save1_2025-04-15Z_1.tif",
     }
 
     with open(metadata_file) as f:
@@ -3389,13 +3393,13 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 @pytest.mark.parametrize(
     ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
     [
-        (False, {"save1.tif"}, {"openEO"}),
+        (False, {"openEO_save1.tif"}, {"openEO"}),
         (
             True,
             {
-                "save1_Flat:0.tif",
-                "save1_Flat:1.tif",
-                "save1_Flat:2.tif",
+                "openEO_save1_Flat:0.tif",
+                "openEO_save1_Flat:1.tif",
+                "openEO_save1_Flat:2.tif",
             },
             {"Flat:0", "Flat:1", "Flat:2"},
         ),
@@ -3607,8 +3611,8 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
     assert tiff_files == {
-        "save1_N50E000.tif",
-        "save1_N50E001.tif",
+        "openEO_save1_N50E000.tif",
+        "openEO_save1_N50E001.tif",
     }
 
     with open(metadata_file) as f:
