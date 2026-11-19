@@ -89,13 +89,17 @@ nested fields "_vito" > "data_source" in the collection object, e.g.:
 
 Some collections contain alternatives, such as climate prediction scenarios,
 that should not be mixed when loading data. Set `_vito.required_properties` to
-a list of property names that users must explicitly filter in `load_collection`:
+an object mapping property names to configuration options:
 
 ```json
 {
   "id": "CLIMTAG_PRECIPITATION_ANNUAL",
   "_vito": {
-    "required_properties": ["scenario"],
+    "required_properties": {
+      "scenario": {
+        "enum": ["ssp126", "ssp245", "ssp585"]
+      }
+    },
     "data_source": {
       "type": "stac",
       "url": "https://stac.terrascope.be/collections/climtag-precipitation-annual"
@@ -107,17 +111,45 @@ a list of property names that users must explicitly filter in `load_collection`:
 For example, with the Python client:
 
 ```python
+import openeo
+
 cube = connection.load_collection(
     "CLIMTAG_PRECIPITATION_ANNUAL",
-    properties={"scenario": lambda value: value == "ssp585"},
+    properties=[openeo.collection_property("scenario") == "ssp585"],
 )
 ```
 
-Omitting a required filter results in a `MissingPropertyFilter` error (HTTP 400)
-identifying the collection and property. Process-graph validation also reports
-missing filters. Every listed property must be filtered; `_vito.properties`
-defaults do not replace the required explicit user filters. An omitted or empty
-`required_properties` list preserves the existing behavior.
+Each property's options can contain:
+
+- `enum`: allowed values for an `eq` filter or an `array_contains` selection.
+  Other values or operators result in an `InvalidPropertyFilter` error (HTTP 400).
+  If omitted, no additional restrictions on filter values are imposed.
+- `default`: a value used to construct an equality filter when the user omits
+  this property. An explicit user filter takes precedence. If `enum` is also
+  configured, the default must be one of its values.
+
+For example, to load `ssp245` by default while allowing users to select another
+scenario:
+
+```json
+"required_properties": {
+  "scenario": {
+    "enum": ["ssp126", "ssp245", "ssp585"],
+    "default": "ssp245"
+  }
+}
+```
+
+An empty options object (`"scenario": {}`) requires a filter without restricting
+its values. The shorthand list `["scenario"]` is also supported.
+
+Omitting a required filter without a configured `default` results in a
+`MissingPropertyFilter` error (HTTP 400) identifying the collection and property.
+Loading reports all property issues together. Process-graph validation reports
+these alongside other validation issues. `_vito.properties` defaults do not
+replace required user filters; use the per-property `default` option to make a
+selection optional. An omitted or empty `required_properties` preserves the
+existing behavior.
 
 This setting applies to all `load_collection` source types, including STAC-backed
 collections. It does not impose requirements on direct `load_stac` calls.

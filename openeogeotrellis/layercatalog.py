@@ -93,26 +93,83 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
-    def _validate_required_properties(self, collection_id: str, load_params: LoadParameters) -> Iterable[dict]:
+    def _prepare_required_properties(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv
+    ) -> Tuple[LoadParameters, List[dict]]:
         metadata = self.get_collection_metadata(collection_id)
         required_properties = deep_get(metadata, "_vito", "required_properties", default=[])
-        for property_name in required_properties:
-            if property_name not in (load_params.properties or {}):
-                yield {
-                    "code": "MissingPropertyFilter",
-                    "message": (
-                        f"Collection {collection_id!r} requires a property filter for {property_name!r} "
-                        "in the 'properties' argument of 'load_collection'."
-                    ),
+        if isinstance(required_properties, list):
+            required_properties = {name: {} for name in required_properties}
+        properties = dict(load_params.properties or {})
+        issues = []
+        for property_name, options in required_properties.items():
+            if property_name not in properties and "default" in options:
+                properties[property_name] = {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": options["default"]},
+                            "result": True,
+                        }
+                    }
                 }
+            if property_name not in properties:
+                issues.append(
+                    {
+                        "code": "MissingPropertyFilter",
+                        "message": (
+                            f"Collection {collection_id!r} requires a property filter for {property_name!r} "
+                            "in the 'properties' argument of 'load_collection'."
+                        ),
+                    }
+                )
+            elif "enum" in options:
+                try:
+                    condition = extract_literal_match(deepcopy(properties[property_name]), env=env)
+                except OpenEOApiException as e:
+                    issues.append(
+                        {
+                            "code": "InvalidPropertyFilter",
+                            "message": f"Invalid filter for property {property_name!r} in collection {collection_id!r}: {e}",
+                        }
+                    )
+                    continue
+                if not (
+                    set(condition) == {"eq"}
+                    and condition["eq"] in options["enum"]
+                    or set(condition) == {"in"}
+                    and all(value in options["enum"] for value in condition["in"])
+                ):
+                    issues.append(
+                        {
+                            "code": "InvalidPropertyFilter",
+                            "message": (
+                                f"Collection {collection_id!r} requires a property filter for {property_name!r} "
+                                f"using 'eq' or 'array_contains' with values from {options['enum']!r}."
+                            ),
+                        }
+                    )
+        if properties != (load_params.properties or {}):
+            load_params = copy(load_params)
+            load_params.properties = properties
+        return load_params, issues
 
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(
         self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
     ) -> GeopysparkDataCube:
 
-        for issue in self._validate_required_properties(collection_id, load_params):
-            raise OpenEOApiException(status_code=400, **issue)
+        load_params, issues = self._prepare_required_properties(collection_id, load_params, env)
+        if issues:
+            raise OpenEOApiException(
+                status_code=400,
+                code=(
+                    "MissingPropertyFilter"
+                    if all(issue["code"] == "MissingPropertyFilter" for issue in issues)
+                    else "InvalidPropertyFilter"
+                ),
+                message=" ".join(issue["message"] for issue in issues),
+            )
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
@@ -144,6 +201,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def _load_collection_cached(
         self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
     ) -> GeopysparkDataCube:
+        # Property-filter parsing mutates graphs; keep the cache key unchanged.
+        load_params = copy(load_params)
+        load_params.properties = deepcopy(load_params.properties)
         logger.info(
             f"load_collection: Creating raster datacube for {collection_id=} ({pg_node_id=}) with {load_params=}, {env=}"
         )
@@ -1429,10 +1489,8 @@ def estimate_load_collection_pixels(
 def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
     if "backend_implementation" in env:
         catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
-        issues = list(catalog._validate_required_properties(collection_id, load_params))
-        if issues:
-            yield from issues
-            return
+        load_params, issues = catalog._prepare_required_properties(collection_id, load_params, env)
+        yield from issues
     if collection_id == "TestCollection-LonLat4x4":
         # No need to check on artificial debug layer
         return
