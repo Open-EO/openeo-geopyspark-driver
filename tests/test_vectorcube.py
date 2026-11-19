@@ -262,8 +262,10 @@ def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three
     assert cube.dims == ('geometry', 't', 'bands')
     assert vectorcube._geometries.shape == (num_geometries,1)
 
-    date1_values = np.array([[np.nan], [np.nan], [np.nan], [np.nan], [ 1.], [ 1.], [ 1.], [ 1.]])
-    date2_values = np.array([[2.], [2.], [2.], [2.], [np.nan], [np.nan], [np.nan], [np.nan]])
+    # Polygons with the same value are merged across tile borders (one geometry per date).
+    assert num_geometries == 2
+    date1_values = np.array([[1.], [np.nan]])
+    date2_values = np.array([[np.nan], [2.]])
     assert np.allclose(cube.isel(t=0).values, date1_values, equal_nan=True)
     assert np.allclose(cube.isel(t=1).values, date2_values, equal_nan=True)
 
