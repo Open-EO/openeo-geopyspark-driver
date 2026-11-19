@@ -85,56 +85,6 @@ nested fields "_vito" > "data_source" in the collection object, e.g.:
         ...
 ```
 
-### Required property filters
-
-Some collections contain alternatives, such as climate prediction scenarios,
-that should not be mixed when loading data. Set `_vito.required_properties` to
-an object mapping property names to configuration options:
-
-```json
-{
-  "id": "CLIMTAG_PRECIPITATION_ANNUAL",
-  "_vito": {
-    "required_properties": {
-      "scenario": {
-        "enum": ["ssp126", "ssp245", "ssp585"]
-      }
-    },
-    "data_source": {
-      "type": "stac",
-      "url": "https://stac.terrascope.be/collections/climtag-precipitation-annual"
-    }
-  }
-}
-```
-
-For example, with the Python client:
-
-```python
-import openeo
-
-cube = connection.load_collection(
-    "CLIMTAG_PRECIPITATION_ANNUAL",
-    properties=[openeo.collection_property("scenario") == "ssp585"],
-)
-```
-
-An empty options object (`"scenario": {}`) requires a filter by property name.
-The shorthand list `["scenario"]` is also supported. Optionally, `enum` lists
-possible values to include in the error message when the filter is missing.
-This check only verifies that the property is present in the user's filter
-listing; it does not inspect the filter's operators or values.
-
-Omitting a required filter results in a `MissingPropertyFilter` error (HTTP 400)
-identifying the collection and property, with enum hints when configured.
-Loading reports all missing filters together. Process-graph validation reports
-these alongside other validation issues. `_vito.properties` defaults do not
-replace required user filters. An omitted or empty `required_properties`
-preserves the existing behavior.
-
-This setting applies to all `load_collection` source types, including STAC-backed
-collections. It does not impose requirements on direct `load_stac` calls.
-
 ## STAC source type
 
 The easiest data source type is the "stac" type,
@@ -277,3 +227,38 @@ More advanced data sources exist, and are documented in [the code](https://githu
 - "file-oscars"
 - "sentinel-hub"
 - "creodias-s1-backscatter"
+
+## Required property filters
+
+To avoid mixing alternatives such as prediction scenarios, require users to
+provide a `load_collection` property filter with `_vito.data_source.required_properties`:
+
+```json
+{
+  "id": "CLIMATE_PROJECTIONS",
+  "_vito": {
+    "data_source": {
+      "type": "stac",
+      "url": "https://stac.example.org/collections/climate-projections",
+      "required_properties": {
+        "scenario": {"enum": ["scenario-a", "scenario-b"]}
+      }
+    }
+  }
+}
+```
+
+Use `"scenario": {}` to require a filter by name only. The optional `enum`
+provides value hints in the missing-filter error, without restricting the filter.
+Omitting a required filter returns `MissingPropertyFilter` (HTTP 400).
+
+For example, with the Python client:
+
+```python
+import openeo
+
+cube = connection.load_collection(
+    "CLIMATE_PROJECTIONS",
+    properties=[openeo.collection_property("scenario") == "scenario-a"],
+)
+```

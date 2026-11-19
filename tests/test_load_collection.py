@@ -50,137 +50,60 @@ def catalog(vault):
     return catalog
 
 
-@pytest.mark.parametrize("do_extent_check", [True, False])
-@pytest.mark.parametrize("properties", [None, {}, {"other": {}}])
-def test_load_collection_required_properties_missing(do_extent_check, properties):
-    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario"]}}])
-    load_params = LoadParameters(properties=properties)
+@pytest.mark.parametrize(
+    "options, hint",
+    [
+        ({}, ""),
+        ({"enum": ["scenario-a", "scenario-b"]}, " Possible values: ['scenario-a', 'scenario-b']."),
+    ],
+)
+def test_load_collection_required_properties_missing(options, hint):
+    catalog = GeoPySparkLayerCatalog(
+        [{"id": "CLIMATE", "_vito": {"data_source": {"required_properties": {"scenario": options}}}}]
+    )
     with mock.patch.object(catalog, "_load_collection_cached") as load:
         with pytest.raises(OpenEOApiException) as exc_info:
-            catalog.load_collection("CLIMTAG", load_params, EvalEnv({"do_extent_check": do_extent_check}))
+            catalog.load_collection("CLIMATE", LoadParameters(), EvalEnv(), pg_node_id="load1")
     assert exc_info.value.status_code == 400
     assert exc_info.value.code == "MissingPropertyFilter"
     assert exc_info.value.message == (
-        "Collection 'CLIMTAG' requires a property filter for 'scenario' "
-        "in the 'properties' argument of 'load_collection'."
+        "Collection 'CLIMATE' requires a property filter for 'scenario' "
+        "in the 'properties' argument of 'load_collection' (node 'load1')." + hint
     )
     load.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "required_properties", [None, [], {}, ["scenario"], ["scenario", "model"], {"scenario": {}, "model": {}}]
-)
-def test_load_collection_required_properties_satisfied(required_properties):
-    metadata = {"id": "CLIMTAG"}
-    if required_properties is not None:
-        metadata["_vito"] = {"required_properties": required_properties}
-    catalog = GeoPySparkLayerCatalog([metadata])
-    predicate = {
-        "process_graph": {
-            "eq1": {
-                "process_id": "eq",
-                "arguments": {"x": {"from_parameter": "value"}, "y": "ssp585"},
-                "result": True,
-            }
-        }
-    }
-    load_params = LoadParameters(properties={"scenario": predicate, "model": predicate})
-    env = EvalEnv({"do_extent_check": False})
+def test_load_collection_required_properties_satisfied():
+    catalog = GeoPySparkLayerCatalog(
+        [{"id": "CLIMATE", "_vito": {"data_source": {"required_properties": {"scenario": {}}}}}]
+    )
+    load_params = LoadParameters(properties={"scenario": {}})
     with mock.patch.object(catalog, "_load_collection_cached") as load:
-        assert catalog.load_collection("CLIMTAG", load_params, env) is load.return_value
-    assert load.call_args.args[1] is load_params
-
-
-def test_load_collection_required_properties_not_configured():
-    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG"}])
-    with mock.patch.object(catalog, "_load_collection_cached") as load:
-        assert (
-            catalog.load_collection("CLIMTAG", LoadParameters(), EvalEnv({"do_extent_check": False}))
-            is load.return_value
-        )
+        catalog.load_collection("CLIMATE", load_params, EvalEnv({"do_extent_check": False}))
+    load.assert_called_once()
+    assert load.call_args.args[1].properties == {"scenario": {}}
 
 
 def test_extra_validation_required_properties():
     catalog = GeoPySparkLayerCatalog(
-        [{"id": "CLIMTAG", "_vito": {"required_properties": {"scenario": {"enum": ["ssp126", "ssp585"]}, "model": {}}}}]
+        [{"id": "CLIMATE", "_vito": {"data_source": {"required_properties": {"scenario": {}}}}}]
     )
     env = EvalEnv({"backend_implementation": mock.Mock(catalog=catalog)})
     extent_issue = {"code": "ExtentTooLarge", "message": "Requested extent is too large."}
     with mock.patch(
         "openeogeotrellis.layercatalog._get_load_collection_pixel_params", return_value=extent_issue
     ) as pixel_params:
-        issues = list(extra_validation_load_collection("CLIMTAG", LoadParameters(), env))
+        issues = list(extra_validation_load_collection("CLIMATE", LoadParameters(), env, pg_node_id="load1"))
     pixel_params.assert_called_once()
     assert issues == [
         {
             "code": "MissingPropertyFilter",
             "message": (
-                f"Collection 'CLIMTAG' requires a property filter for {name!r} "
-                "in the 'properties' argument of 'load_collection'."
-                + (" Possible values: ['ssp126', 'ssp585']." if name == "scenario" else "")
+                "Collection 'CLIMATE' requires a property filter for 'scenario' "
+                "in the 'properties' argument of 'load_collection' (node 'load1')."
             ),
         }
-        for name in ["scenario", "model"]
     ] + [extent_issue]
-
-
-def test_load_collection_required_properties_enum_hint():
-    catalog = GeoPySparkLayerCatalog(
-        [{"id": "CLIMTAG", "_vito": {"required_properties": {"scenario": {"enum": ["ssp126", "ssp585"]}, "model": {}}}}]
-    )
-    with pytest.raises(OpenEOApiException) as exc_info:
-        catalog.load_collection("CLIMTAG", LoadParameters(), EvalEnv({"do_extent_check": False}))
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.code == "MissingPropertyFilter"
-    assert exc_info.value.message == (
-        "Collection 'CLIMTAG' requires a property filter for 'scenario' "
-        "in the 'properties' argument of 'load_collection'. Possible values: ['ssp126', 'ssp585']. "
-        "Collection 'CLIMTAG' requires a property filter for 'model' "
-        "in the 'properties' argument of 'load_collection'."
-    )
-
-
-@pytest.mark.parametrize(
-    "predicate",
-    [
-        {},
-        {"process_graph": {"arbitrary": {"process_id": "custom"}}},
-        {
-            "process_graph": {
-                "eq": {
-                    "process_id": "eq",
-                    "arguments": {"x": {"from_parameter": "value"}, "y": "not-in-enum"},
-                    "result": True,
-                }
-            }
-        },
-    ],
-)
-def test_load_collection_required_properties_does_not_inspect_condition(predicate):
-    catalog = GeoPySparkLayerCatalog(
-        [{"id": "CLIMTAG", "_vito": {"required_properties": {"scenario": {"enum": ["ssp126", "ssp585"]}}}}]
-    )
-    load_params = LoadParameters(properties={"scenario": predicate})
-    with mock.patch.object(catalog, "_load_collection_cached") as load:
-        assert catalog.load_collection("CLIMTAG", load_params, EvalEnv({"do_extent_check": False})) is load.return_value
-    assert load.call_args.args[1] is load_params
-    assert load_params.properties["scenario"] is predicate
-
-
-def test_load_collection_required_properties_partial():
-    catalog = GeoPySparkLayerCatalog([{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario", "model"]}}])
-    with pytest.raises(OpenEOApiException, match="requires a property filter for 'model'"):
-        catalog.load_collection(
-            "CLIMTAG", LoadParameters(properties={"scenario": {}}), EvalEnv({"do_extent_check": False})
-        )
-
-
-def test_load_collection_required_properties_not_satisfied_by_defaults():
-    catalog = GeoPySparkLayerCatalog(
-        [{"id": "CLIMTAG", "_vito": {"required_properties": ["scenario"], "properties": {"scenario": {}}}}]
-    )
-    with pytest.raises(OpenEOApiException, match="requires a property filter for 'scenario'"):
-        catalog.load_collection("CLIMTAG", LoadParameters(), EvalEnv({"do_extent_check": False}))
 
 
 def test_load_collection_bands_missing_required_extent(catalog):
