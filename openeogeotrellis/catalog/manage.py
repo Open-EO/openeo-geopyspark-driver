@@ -296,6 +296,9 @@ class BandMetadataList:
     def __iter__(self) -> Iterator[BandMetadata]:
         return iter(self._bands)
 
+    def __len__(self) -> int:
+        return len(self._bands)
+
     def as_list(self) -> List[BandMetadata]:
         return list(self._bands)
 
@@ -471,10 +474,8 @@ def build_stac_collection_metadata(
 
     if bands == GUESS_BANDS_FROM_UPSTREAM:
         bands = extract_band_metadata_list(upstream_metadata)
-    elif isinstance(bands, (list, BandMetadataList)):
-        pass
-    else:
-        raise ValueError(bands)
+    if not (isinstance(bands, (list, BandMetadataList)) and len(bands) > 0):
+        raise ValueError(f"Empty {bands=} with {id=} {stac_url=}")
 
     if ComparableVersion("1.1.0").or_higher(stac_version):
         # Per https://github.com/radiantearth/stac-spec/issues/1346
