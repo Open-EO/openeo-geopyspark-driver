@@ -2236,7 +2236,7 @@ class GeopysparkDataCube(DriverDataCube):
             or (
                 map_optional(lambda h: f"openEO_{h.node_id}", save_result_hints)
                 if format_opts.prefix_filename_with_node_id
-                else "openEO"
+                else None
             )
         )
         separate_asset_per_band = format_opts.separate_asset_per_band
