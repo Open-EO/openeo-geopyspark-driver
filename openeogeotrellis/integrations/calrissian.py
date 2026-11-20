@@ -1226,6 +1226,26 @@ def _cwl_input_presigner(job_id: str) -> Optional[Callable[[List[str]], List[str
     return presign
 
 
+def _upload_cwl_input_for_local_debugging(output_dir: Path, hrefs: List[str], s3_prefix: str) -> Tuple[str, List[str]]:
+    """
+    Local debugging (e.g. k3d/minikube with docs/deployment/calrissian-local-minio.yaml):
+    CWL pods can't see the local `batch_job_work_dir_root`, so upload the (self-contained) CWL input STAC
+    to the public-read Calrissian bucket and return in-cluster URLs for the given local hrefs.
+    """
+    calrissian_config = get_backend_config().calrissian_config
+    bucket = calrissian_config.s3_bucket
+    base_url = os.environ.get(
+        "CALRISSIAN_LOCAL_S3_URL", f"http://minio-service.{calrissian_config.namespace}.svc:9000"
+    ).rstrip("/")
+    s3_client = S3ClientBuilder.from_bucket(bucket)
+    for path in sorted(p for p in output_dir.rglob("*") if p.is_file()):
+        s3_client.upload_file(str(path), bucket, f"{s3_prefix}/{path.relative_to(output_dir).as_posix()}")
+    _log.info(f"Uploaded CWL input {output_dir} to s3://{bucket}/{s3_prefix} for local debugging.")
+
+    urls = [f"{base_url}/{bucket}/{s3_prefix}/{Path(h).relative_to(output_dir).as_posix()}" for h in hrefs]
+    return urls[0], urls[1:]
+
+
 def _without_query(url: str) -> str:
     """Strip the query string, e.g. to log a presigned URL without its signature and session token."""
     return urlunsplit(urlsplit(url)._replace(query=""))
@@ -1291,6 +1311,8 @@ def cwl_to_stac(
                 presign = _cwl_input_presigner(job_id=correlation_id)
                 presign_resolved = True
 
+            # Without batch_mode, temporal cubes get stitched into a single spatial GeoTIFF, losing all dates.
+            save_result.options = {**save_result.options, "batch_mode": True}
             items = save_result.write_assets(output_dir / "out")
             catalog_href, item_hrefs = _write_stac_catalog_for_write_assets_result(
                 output_dir=output_dir,
@@ -1298,6 +1320,13 @@ def cwl_to_stac(
                 collection_id=f"{correlation_id}_{key}",
                 presign=presign,
             )
+
+            if presign is None and smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+                catalog_href, item_hrefs = _upload_cwl_input_for_local_debugging(
+                    output_dir=output_dir,
+                    hrefs=[catalog_href, *item_hrefs],
+                    s3_prefix=f"cwl_input/{correlation_id}/{key}",
+                )
 
             if cwl_source.is_string_array_input(key):
                 # Parameter expects an array of strings: pass the individual STAC item URLs

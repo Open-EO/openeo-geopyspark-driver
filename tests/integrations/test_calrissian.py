@@ -737,7 +737,7 @@ class TestCalrissianJobLauncher:
                     "bands": ["Longitude", "Latitude", "Day"],
                     "id": "TestCollection-LonLat16x16",
                     "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
-                    "temporal_extent": ["2023-06-01", "2023-06-07"],
+                    "temporal_extent": ["2023-06-01", "2023-06-20"],
                 },
             },
             "saveresult1": {
@@ -786,6 +786,13 @@ class TestCalrissianJobLauncher:
         fake_launcher.run_cwl_workflow.assert_called_once()
         cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
         assert isinstance(cwl_arguments["datacube_s2"], str)
+
+        # The temporal input cube should be passed as one STAC item per date, not stitched into a single one.
+        [cwl_input_collection] = glob.glob(str(tmp_path / "*" / "cwl_input" / "datacube_s2" / "collection.json"))
+        cwl_input_item_links = [
+            l for l in json.loads(Path(cwl_input_collection).read_text())["links"] if l["rel"] == "item"
+        ]
+        assert len(cwl_input_item_links) > 1
 
         files = list(glob.glob(str(tmp_path / "*.tif")))
         print(files)
@@ -1088,6 +1095,7 @@ class TestCwlInputPresigning:
         monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
         output_dir = tmp_path / "j-1" / "cwl_input" / "cube"
         save_result = mock.Mock(spec=ImageCollectionResult)
+        save_result.options = {}
         save_result.write_assets.return_value = _write_assets_items(str(output_dir / "out" / "openEO.tif"))
 
         fake_result = mock.Mock()
