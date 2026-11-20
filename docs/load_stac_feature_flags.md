@@ -63,6 +63,11 @@ that can be used in some use cases
 ### `granule_metadata_band_map`
 
 Mainly intended for layer-catalog-based configuration.
+Maps band names to `granule_metadata##N` angle bands of the Sentinel-2 `MTD_TL.xml` asset:
+`N` from 0 to 3 are constant tile means, 4 to 7 per-pixel angles
+(see [`layercatalog.md`](layercatalog.md)).
+The map must list `granule_metadata##0` up to its highest index without gaps (and at most 10 entries),
+because the index used is the position among the sorted values.
 
 ### `cellsize_override`
 
@@ -87,6 +92,13 @@ Mainly intended for layer-catalog-based configuration.
 ### `tilesize`
 
 To set the RDD tile size.
+
+### `retain_nodata_tiles`
+
+Whether to retain tiles whose bands are all NoData when loading. Boolean value.
+Default: False, which drops such tiles. This can be useful for pure Sentinel-2 angle requests
+whose angle sources are unavailable and whose float32/NaN placeholder tiles would otherwise be filtered out.
+This load flag is separate from the `save_result` format option with the same name.
 
 ### `property_filter_adaptations`
 
