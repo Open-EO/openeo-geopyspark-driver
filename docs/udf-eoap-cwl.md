@@ -49,6 +49,21 @@ The CWL is executed using [Calrissian](https://duke-gcb.github.io/calrissian/).
 > Calrissian leverages [cwltool](https://github.com/common-workflow-language/cwltool) heavily and most conformance tests
 > for CWL v1.0.
 
+## CWL datacube input
+
+A datacube passed as CWL input is written as a STAC catalog (one item per output file).
+The CWL input receives the URL of `catalog.json`, or a list of item URLs when the input type is `string[]`.
+
+When the backend runs with an S3 proxy (e.g. on CDSE), these are HTTPS URLs presigned against the internal S3 proxy.
+Every link inside the catalog (`root`, `parent`, `child`, `item` and asset hrefs) is also an absolute presigned URL,
+so CWL tools can read everything with plain HTTP GET and without credentials.
+The URLs are valid for 24 hours after signing.
+Do not build relative paths from them: a path resolved against a presigned URL loses its signature.
+GDAL may probe unsigned sidecar files (e.g. `.aux.xml`) next to an asset and get a 403.
+That is harmless, and `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` avoids it.
+
+Without an S3 proxy (e.g. local development) or outside a batch job, the CWL input receives local paths and the catalog uses relative links.
+
 ## CWL Output
 
 The CWL workflow should output a STAC collection, with the root being `collection.json`. The STAC will then be read by

@@ -1,11 +1,13 @@
 import datetime
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Generator
+from typing import Dict, Iterator, List, Optional, Generator
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 import dirty_equals
 import kubernetes.client
@@ -27,9 +29,14 @@ from openeogeotrellis.integrations.calrissian import (
     parse_cwl_outputs_listing,
     find_stac_root,
     cwl_to_stac,
+    CWL_INPUT_PRESIGNED_URL_EXPIRATION,
+    _cwl_input_presigner,
+    _redact_presigned_urls,
     _write_stac_catalog_for_write_assets_result,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
+from openeogeotrellis.integrations.s3proxy import sts
+from openeogeotrellis.config.s3_config import AWSConfig
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import S3ClientBuilder
@@ -663,7 +670,7 @@ class TestCalrissianJobLauncher:
             )
 
     def test_write_stac_catalog_for_write_assets_result(self, tmp_path):
-        stac_root = _write_stac_catalog_for_write_assets_result(
+        stac_root, item_hrefs = _write_stac_catalog_for_write_assets_result(
             output_dir=tmp_path,
             items={
                 "916537ca-071f-4c2b-8f0f-791a607eb67f": {
@@ -704,6 +711,8 @@ class TestCalrissianJobLauncher:
             },
             collection_id="test_write_stac_catalog_for_write_assets_result",
         )
+        assert stac_root == str(tmp_path / "catalog.json")
+        assert item_hrefs == [str(tmp_path / "916537ca-071f-4c2b-8f0f-791a607eb67f.json")]
         pystac.Catalog.from_file(stac_root).validate_all()
         files = [f for f in os.listdir(tmp_path) if os.path.isfile(os.path.join(tmp_path, f))]
         for file in files:
@@ -728,7 +737,7 @@ class TestCalrissianJobLauncher:
                     "bands": ["Longitude", "Latitude", "Day"],
                     "id": "TestCollection-LonLat16x16",
                     "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
-                    "temporal_extent": ["2023-06-01", "2023-06-07"],
+                    "temporal_extent": ["2023-06-01", "2023-06-20"],
                 },
             },
             "saveresult1": {
@@ -777,6 +786,13 @@ class TestCalrissianJobLauncher:
         fake_launcher.run_cwl_workflow.assert_called_once()
         cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
         assert isinstance(cwl_arguments["datacube_s2"], str)
+
+        # The temporal input cube should be passed as one STAC item per date, not stitched into a single one.
+        [cwl_input_collection] = glob.glob(str(tmp_path / "*" / "cwl_input" / "datacube_s2" / "collection.json"))
+        cwl_input_item_links = [
+            l for l in json.loads(Path(cwl_input_collection).read_text())["links"] if l["rel"] == "item"
+        ]
+        assert len(cwl_input_item_links) > 1
 
         files = list(glob.glob(str(tmp_path / "*.tif")))
         print(files)
@@ -958,3 +974,152 @@ class TestCalrissianUtils:
         )
         print(results)
         assert len(results) == 1
+
+
+def _fake_presign(hrefs: List[str]) -> List[str]:
+    return [f"https://s3proxy.test/{h.lstrip('/')}?X-Amz-Expires=86400&X-Amz-Signature=abc" for h in hrefs]
+
+
+def _write_assets_items(asset_href: str) -> dict:
+    return {
+        "item1": {
+            "id": "item1",
+            "geometry": {"type": "Polygon", "coordinates": [[[5, 51], [6, 51], [6, 52], [5, 52], [5, 51]]]},
+            "bbox": [5, 51, 6, 52],
+            "properties": {"datetime": "2023-06-01T00:00:00Z"},
+            "assets": {"openEO": {"href": asset_href, "type": "image/tiff; application=geotiff", "roles": ["data"]}},
+        }
+    }
+
+
+class TestCwlInputPresigning:
+    @pytest.mark.parametrize("asset_href", ["/batch_jobs/j-1/cwl_input/cube/out/openEO.tif", "s3://openeo-fake-bucketname/k/openEO.tif"])
+    def test_write_stac_catalog_presigned(self, tmp_path, asset_href):
+        catalog_href, item_hrefs = _write_stac_catalog_for_write_assets_result(
+            output_dir=tmp_path, items=_write_assets_items(asset_href), collection_id="c", presign=_fake_presign
+        )
+        assert catalog_href == _fake_presign([str(tmp_path / "catalog.json")])[0]
+        assert item_hrefs == _fake_presign([str(tmp_path / "item1.json")])
+
+        docs = {name: json.loads((tmp_path / name).read_text()) for name in ["catalog.json", "collection.json", "item1.json"]}
+        hrefs = [link["href"] for doc in docs.values() for link in doc["links"]]
+        hrefs += [asset["href"] for asset in docs["item1.json"]["assets"].values()]
+        assert {link["rel"] for doc in docs.values() for link in doc["links"]} >= {"root", "parent", "child", "item"}
+        for href in hrefs:
+            assert href.startswith("https://s3proxy.test/"), href
+            assert href.endswith("?X-Amz-Expires=86400&X-Amz-Signature=abc"), href
+        assert docs["item1.json"]["assets"]["openEO"]["href"] == _fake_presign([asset_href])[0]
+
+    def test_presigner_not_in_batch_job(self, monkeypatch):
+        monkeypatch.delenv(ENV_VAR_OPENEO_BATCH_JOB_ID, raising=False)
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        with gps_config_overrides(s3_bucket_name="openeo-fake-bucketname"):
+            assert _cwl_input_presigner(job_id="j-1") is None
+
+    def test_presigner_without_proxy_endpoint(self, monkeypatch):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
+        monkeypatch.delenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, raising=False)
+        with gps_config_overrides(s3_bucket_name="openeo-fake-bucketname"):
+            assert _cwl_input_presigner(job_id="j-1") is None
+
+    def test_presigner_bucket_not_a_workspace(self, monkeypatch):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        with gps_config_overrides(s3_bucket_name="some-unknown-bucket"):
+            assert _cwl_input_presigner(job_id="j-1") is None
+
+    def test_presigner_missing_job_token_fails(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
+        with gps_config_overrides(
+            s3_bucket_name="openeo-fake-bucketname",
+            batch_job_config_dir=tmp_path,
+        ):
+            with pytest.raises(RuntimeError, match="job token missing or older than 48 hours"):
+                _cwl_input_presigner(job_id="j-1")
+
+    def test_presigner_urls(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
+        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
+        (tmp_path / "token").write_text("the-job-token")
+        creds = STSCredentials(
+            access_key_id="testing",
+            secret_access_key="testing",
+            session_token="testing",
+            expiration=datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc),
+        )
+        # No IDP key needed: a batch job driver exchanges its mounted job token, once.
+        with gps_config_overrides(
+            s3_bucket_name="openeo-fake-bucketname",
+            batch_job_config_dir=tmp_path,
+            openeo_idp_details_file=tmp_path / "missing_idp_details.json",
+        ), mock.patch.object(sts, "_get_aws_credentials_for_proxy", return_value=creds) as exchange:
+            presign = _cwl_input_presigner(job_id="j-1")
+            [local, s3] = presign(["/batch_jobs/j-1/cwl_input/cube/catalog.json", "s3://openeo-fake-bucketname/k/openEO.tif"])
+            with pytest.raises(ValueError, match="job bucket"):
+                presign(["s3://other-bucket/k.tif"])
+
+        exchange.assert_called_once_with(
+            token="the-job-token", role_arn="arn:openeows:iam:::role/s3_workspace", session_name="calrissian-cwl-input"
+        )
+
+        for url, key in [(local, "batch_jobs/j-1/cwl_input/cube/catalog.json"), (s3, "k/openEO.tif")]:
+            parts = urlsplit(url)
+            assert parts.netloc.endswith("s3proxy.test")
+            assert parts.path.endswith(key)
+            query = parse_qs(parts.query)
+            # Valid for 24h after signing, independent of the 12h lifetime of the signing credentials.
+            assert query["X-Amz-Expires"] == [str(CWL_INPUT_PRESIGNED_URL_EXPIRATION)] == ["86400"]
+            assert query["X-Proxy-Head-As-Get"] == ["true"]
+
+    def test_redact_presigned_urls(self):
+        args = {
+            "cube": "https://s3proxy.test/b/catalog.json?X-Amz-Signature=abc&X-Amz-Security-Token=t",
+            "items": ["https://s3proxy.test/b/i.json?X-Amz-Signature=abc"],
+            "n": 3,
+            "path": "/data/x.json",
+        }
+        assert _redact_presigned_urls(args) == {
+            "cube": "https://s3proxy.test/b/catalog.json",
+            "items": ["https://s3proxy.test/b/i.json"],
+            "n": 3,
+            "path": "/data/x.json",
+        }
+
+    def test_cwl_to_stac_passes_presigned_catalog(self, tmp_path, monkeypatch, caplog):
+        from openeo_driver.users import User
+        from openeo_driver.save_result import ImageCollectionResult
+        from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
+        caplog.set_level(logging.DEBUG)
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
+        output_dir = tmp_path / "j-1" / "cwl_input" / "cube"
+        save_result = mock.Mock(spec=ImageCollectionResult)
+        save_result.options = {}
+        save_result.write_assets.return_value = _write_assets_items(str(output_dir / "out" / "openEO.tif"))
+
+        fake_result = mock.Mock()
+        fake_result.generate_public_url.return_value = "https://example.test/result/catalog.json"
+        fake_launcher = mock.Mock()
+        fake_launcher.run_cwl_workflow.return_value = {"out/catalog.json": fake_result}
+
+        with gps_config_overrides(batch_job_work_dir_root=str(tmp_path)), mock.patch(
+            "openeogeotrellis.integrations.calrissian.to_save_result", return_value=save_result
+        ), mock.patch(
+            "openeogeotrellis.integrations.calrissian._cwl_input_presigner", return_value=_fake_presign
+        ) as presigner, mock.patch.object(
+            CalrissianJobLauncher, "from_context", return_value=fake_launcher
+        ), mock.patch(
+            "openeogeotrellis.integrations.calrissian.ensure_kubernetes_config"
+        ):
+            result = cwl_to_stac(
+                cwl_arguments={"cube": mock.Mock(spec=GeopysparkDataCube)},
+                env=EvalEnv({"user": User("alice")}),
+                cwl_source=CwLSource.from_string(SIMPLE_CWL_STR),
+            )
+
+        assert result == "https://example.test/result/catalog.json"
+        presigner.assert_called_once_with(job_id="j-1")
+        cwl_arguments = fake_launcher.run_cwl_workflow.call_args.kwargs["cwl_arguments"]
+        assert cwl_arguments["cube"] == _fake_presign([str(output_dir / "catalog.json")])[0]
+        assert "X-Amz-Signature" not in caplog.text
