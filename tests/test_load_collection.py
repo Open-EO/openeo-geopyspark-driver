@@ -63,7 +63,7 @@ def test_load_collection_required_properties_missing(options, hint):
     )
     with mock.patch.object(catalog, "_load_collection_cached") as load:
         with pytest.raises(OpenEOApiException) as exc_info:
-            catalog.load_collection("CLIMATE", LoadParameters(), EvalEnv(), pg_node_id="load1")
+            catalog.load_collection("CLIMATE", load_params=LoadParameters(), env=EvalEnv(), pg_node_id="load1")
     assert exc_info.value.status_code == 400
     assert exc_info.value.code == "MissingPropertyFilter"
     assert exc_info.value.message == (
@@ -79,7 +79,7 @@ def test_load_collection_required_properties_satisfied():
     )
     load_params = LoadParameters(properties={"scenario": {}})
     with mock.patch.object(catalog, "_load_collection_cached") as load:
-        catalog.load_collection("CLIMATE", load_params, EvalEnv({"do_extent_check": False}))
+        catalog.load_collection("CLIMATE", load_params=load_params, env=EvalEnv({"do_extent_check": False}))
     load.assert_called_once()
     assert load.call_args.args[1].properties == {"scenario": {}}
 
@@ -93,7 +93,9 @@ def test_extra_validation_required_properties():
     with mock.patch(
         "openeogeotrellis.layercatalog._get_load_collection_pixel_params", return_value=extent_issue
     ) as pixel_params:
-        issues = list(extra_validation_load_collection("CLIMATE", LoadParameters(), env, pg_node_id="load1"))
+        issues = list(
+            extra_validation_load_collection("CLIMATE", load_params=LoadParameters(), env=env, pg_node_id="load1")
+        )
     pixel_params.assert_called_once()
     assert issues == [
         {
