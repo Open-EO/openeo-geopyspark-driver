@@ -25,8 +25,6 @@ def _settings(**overrides) -> JobResultsSettings:
         processing_facility="VITO - SPARK",
         processing_software="openeo-geotrellis-dummy-version",
         provider={},
-        job_local_href_format="file",
-        s3_bucket_name=None,
         gdalinfo_from_file=True,
         gdalinfo_use_subprocess=False,
         item_collection_glob="items_*.json",

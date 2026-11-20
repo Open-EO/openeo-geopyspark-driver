@@ -212,8 +212,7 @@ def finalize_job(
                             "rel": "derived_from",
                             "href": href_from_job_local_path(
                                 stac_item_collection_path.absolute(),
-                                job_local_href_format=settings.job_local_href_format,
-                                s3_bucket_name=settings.s3_bucket_name,
+                                job_storage=settings.job_storage,
                             ),
                             "type": "application/geo+json",
                             ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
