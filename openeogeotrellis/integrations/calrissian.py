@@ -1036,6 +1036,8 @@ def _write_stac_catalog_for_write_assets_result(
     if presign:
         # Presigning is local and does not need the objects to exist yet,
         # so sign everything up front, including upward (root/parent) link targets.
+        # Note: There could be input a delay on when the files behind the signed URL
+        # become valid. The mound and the claudferro S3 laulg have some lag.
         sources = {**{k: str(v) for k, v in local_paths.items()}, **asset_sources}
         hrefs = dict(zip(sources.keys(), presign(list(sources.values()))))
     else:
