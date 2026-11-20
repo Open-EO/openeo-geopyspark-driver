@@ -11,7 +11,7 @@ import pyproj
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
 from openeo_driver.constants import RESAMPLE_SPATIAL_ALIGN
-from openeo_driver.dry_run import SourceConstraint
+from openeo_driver.dry_run import SourceConstraint, SourceId
 from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none
 from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
@@ -454,12 +454,22 @@ def determine_global_extent(
 ) -> dict:
     """
     Go through all source constraints, extract the aligned extent from each (possibly with variations)
-    and merge to a global extent
+    and merge to a global extent.
+
+    Special case: sources that are the "mask" branch of a `mask` process (tagged with the
+    "is_mask" constraint by the dry-run tracer) are excluded from the main/data global extent.
+    Instead, the mask branch(es) get their own (typically larger, so that it fully covers the
+    data cube it masks and avoids negative spatial keys) global extent, which is the union of the
+    mask's own aligned extent and the data global extent. This is returned per-source via
+    "global_extent_per_source".
     """
     # TODO: how to determine best target CRS for global extent?
     #       e.g. add stats to AlignedExtentResult for better informed decision?
-    aligned_merger = BoundingBoxMerger()
+    data_merger = BoundingBoxMerger()
+    full_merger = BoundingBoxMerger()
     variant_mergers: Dict[str, BoundingBoxMerger] = collections.defaultdict(BoundingBoxMerger)
+
+    extraction_results: List[Tuple[SourceConstraint, Union[AlignedExtentResult, None]]] = []
     for source_id, constraint in source_constraints:
         try:
             aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
@@ -467,8 +477,11 @@ def determine_global_extent(
             raise SpatialExtentExtractionError(
                 f"Failed to extract spatial extent from {source_id=} with {constraint=}: {e=}"
             ) from e
+        extraction_results.append(((source_id, constraint), aligned_extent_result))
         if aligned_extent_result:
-            aligned_merger.add(aligned_extent_result.extent)
+            full_merger.add(aligned_extent_result.extent)
+            if "is_mask" not in constraint:
+                data_merger.add(aligned_extent_result.extent)
             for name, ext in aligned_extent_result.variants.items():
                 if ext:
                     variant_mergers[name].add(ext)
@@ -478,11 +491,24 @@ def determine_global_extent(
                         f"determine_global_extent: skipping {name=} from {source_id=} with {aligned_extent_result.variants=}"
                     )
 
-    global_extent: BoundingBox = aligned_merger.get()
+    data_extent: Union[BoundingBox, None] = data_merger.get()
+    full_extent: Union[BoundingBox, None] = full_merger.get()
+    # Fall back on full_extent if there are no non-mask sources at all (e.g. degenerate/edge case)
+    global_extent: Union[BoundingBox, None] = data_extent if data_extent is not None else full_extent
+
+    global_extent_per_source: Dict[SourceId, BoundingBox] = {}
+    for (source_id, constraint), aligned_extent_result in extraction_results:
+        if aligned_extent_result:
+            # Mask sources get the full (union of data + mask) extent, so that the mask
+            # fully covers the data cube it masks and shares the same grid origin.
+            # Data sources keep the (non-inflated) data-only extent.
+            global_extent_per_source[source_id] = full_extent if "is_mask" in constraint else data_extent
+
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}
 
     return {
         EVAL_ENV_KEY.GLOBAL_EXTENT: global_extent,
+        EVAL_ENV_KEY.GLOBAL_EXTENT_PER_SOURCE: global_extent_per_source,
         "global_extent_variants": global_extent_variants,
     }
 
@@ -505,7 +531,19 @@ def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[Bou
     """
     # TODO this is a short-term adapter to migrate from load_params to env approach,
     #      so ideally this can be removed once migration is completed
-    if global_extent := env.get(EVAL_ENV_KEY.GLOBAL_EXTENT):
+    # Note: guard with `in` instead of `.get()`: `GLOBAL_EXTENT_PER_SOURCE` is deliberately
+    # not white-listed for the load_collection/load_stac cache boundary (`WhiteListEvalEnv.get`
+    # raises on non-whitelisted keys), as per-source resolution must happen before that boundary
+    # (see `resolve_global_extent_in_env`).
+    global_extent_per_source: Dict[SourceId, BoundingBox] = (
+        env.get(EVAL_ENV_KEY.GLOBAL_EXTENT_PER_SOURCE) if EVAL_ENV_KEY.GLOBAL_EXTENT_PER_SOURCE in env else None
+    ) or {}
+    source_id = load_params.get("source_id")
+    if source_id is not None and source_id in global_extent_per_source:
+        global_extent = global_extent_per_source[source_id]
+        _log.info(f"get_global_extent from env (per-source): {source_id=} {global_extent=}")
+        return global_extent
+    elif global_extent := env.get(EVAL_ENV_KEY.GLOBAL_EXTENT):
         _log.info(f"get_global_extent from env: {global_extent=}")
         return global_extent
     elif load_params.global_extent:
@@ -513,3 +551,27 @@ def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[Bou
         return BoundingBox.from_dict(load_params.global_extent)
     else:
         return None
+
+
+def resolve_global_extent_in_env(*, load_params: LoadParameters, env: EvalEnv) -> EvalEnv:
+    """
+    Resolve the effective (possibly per-source) global extent for given load parameters
+    and push it into the env under the plain `GLOBAL_EXTENT` key.
+
+    This is intended to be used just before caching boundaries
+    (e.g. `_load_collection_cached`/`_load_stac_cached`, which use `load_params` and a
+    white-listed `env` as cache key):
+    - `load_params.source_id` is excluded from `LoadParameters` equality (to avoid cache misses
+      for identical loads from different process graph nodes), so the per-source lookup must
+      happen before the cache boundary.
+    - The resolved extent, via the (white-listed) `GLOBAL_EXTENT` env key, correctly participates
+      in the cache key: loads with the same effective extent share a cache entry, while e.g. a
+      mask source with a larger extent gets its own.
+    """
+    global_extent = get_global_extent(load_params=load_params, env=env)
+    if global_extent is not None and global_extent != env.get(EVAL_ENV_KEY.GLOBAL_EXTENT, None):
+        _log.info(f"resolve_global_extent_in_env: pushing {global_extent=} for {load_params.get('source_id')=}")
+        env = env.push({EVAL_ENV_KEY.GLOBAL_EXTENT: global_extent})
+    return env
+
+
