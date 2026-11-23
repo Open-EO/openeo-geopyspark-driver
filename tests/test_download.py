@@ -496,9 +496,7 @@ class TestDownload:
                 "geometry": _BOX_0_4_GEOMETRY,
                 "bbox": [0.0, 0.0, 4.0, 4.0],
                 "properties": {
-                    "datetime": None,
-                    "start_datetime": "2017-09-01T00:00:00Z",
-                    "end_datetime": "2017-10-01T00:00:00Z",
+                    "datetime": '2017-09-25T11:37:00Z',
                 },
                 "assets": {
                     "openEO": {
@@ -506,8 +504,8 @@ class TestDownload:
                         "type": expected_type,
                         "roles": ["data"],
                         "data_type": "int32",
-                        "start_datetime": "2017-09-01T00:00:00Z",
-                        "end_datetime": "2017-10-01T00:00:00Z",
+                        'nodata': -1,
+                        "datetime": "2017-09-25T11:37:00Z",
                         "geometry": _BOX_0_4_GEOMETRY,
                         "bbox": [0.0, 0.0, 4.0, 4.0],
                     }
