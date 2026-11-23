@@ -7,7 +7,7 @@ import logging
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import pyproj
 import shapely.geometry
@@ -74,10 +74,37 @@ class CollectNodesVisitor(ProcessGraphVisitor):
 
 
 def _bbox_to_geojson(bbox: Union[Tuple, List]) -> dict:
-    """Convert a lon-lat bounding box (xmin, ymin, xmax, ymax) to a GeoJSON (Polygon) dict."""
+    """Convert a lon-lat bounding box to a GeoJSON Polygon or MultiPolygon."""
     xmin, ymin, xmax, ymax = bbox
+    if -180 <= xmin <= xmax <= 180:
+        return mapping(shapely.geometry.box(*bbox))
     geometry = BoundingBox(xmin, ymin, xmax, ymax, crs=4326).as_geometry()
-    return shapely.geometry.mapping(geometry)
+    return mapping(geometry)
+
+
+def _enclosing_longitudes(intervals: Iterable[Tuple[float, float]]) -> Tuple[float, float]:
+    """Return the smallest longitude range enclosing the given WGS 84 intervals."""
+    segments = []
+    for west, east in intervals:
+        if west > east:
+            segments.extend([(-180, east), (west, 180)])
+        else:
+            segments.append((west, east))
+    segments.sort()
+
+    # The complement of the largest uncovered gap is the enclosing range.
+    # Start with the gap across the antimeridian, preferring a non-crossing bbox on ties.
+    west = segments[0][0]
+    east = max(end for _, end in segments)
+    largest_gap = 360 - (east - west)
+    covered_east = segments[0][1]
+    for start, end in segments[1:]:
+        gap = start - covered_east
+        if gap > largest_gap:
+            largest_gap = gap
+            west, east = start, covered_east
+        covered_east = max(covered_east, end)
+    return west, east
 
 
 def _extend_spatial_extent_from_items(metadata: dict, stac_items: List[dict]) -> None:
@@ -94,11 +121,9 @@ def _extend_spatial_extent_from_items(metadata: dict, stac_items: List[dict]) ->
     bbox = metadata["bbox"]
     if bbox:
         item_bounds.append(bbox)
-    west, south, east, north = zip(*item_bounds)
-    bounds = [min(west), min(south), max(east), max(north)]
-    if any(w > e for w, e in zip(west, east)):
-        # Use an enclosing longitude range when an input crosses the antimeridian.
-        bounds[0], bounds[2] = -180, 180
+    wests, souths, easts, norths = zip(*item_bounds)
+    west, east = _enclosing_longitudes(zip(wests, easts))
+    bounds = [west, min(souths), east, max(norths)]
     if bounds != bbox:
         metadata["bbox"] = bounds
         metadata["geometry"] = _bbox_to_geojson(bounds)
@@ -191,7 +216,7 @@ def extract_result_metadata(tracer: DryRunDataTracer, stac_items: Optional[List[
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
             area = area_in_square_meters(shapely.geometry.box(*bbox), bbox_crs)
-            lonlat_geometry = mapping(shapely.geometry.box(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            lonlat_geometry = _bbox_to_geojson(convert_bbox_to_lat_long(bbox, bbox_crs))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 

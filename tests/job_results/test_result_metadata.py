@@ -1,12 +1,16 @@
 from pathlib import Path
 
+import pytest
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, NullResult
+from shapely.geometry import Point, shape
 
 from openeogeotrellis.job_results.result_metadata import (
     CollectNodesVisitor,
+    _extend_spatial_extent_from_items,
     assemble_result_metadata,
     convert_asset_outputs_to_s3_urls,
+    extract_result_metadata,
     href_from_job_local_path,
 )
 from openeogeotrellis.job_results.settings import JobResultsSettings, ResultCubeMetadata
@@ -35,6 +39,32 @@ def _settings(**overrides) -> JobResultsSettings:
     )
     values.update(overrides)
     return JobResultsSettings(**values)
+
+
+@pytest.mark.parametrize(
+    ["item_bounds", "expected_west", "expected_east"],
+    [
+        ([(179, 180), (-180, -179)], 179, -179),
+        ([(178, -178)], 178, -178),
+        ([(100, 180), (-180, -100), (2, 3)], 2, -100),
+        ([(-180, 180)], -180, 180),
+    ],
+)
+def test_tiled_extent_across_antimeridian(item_bounds, expected_west, expected_east):
+    tracer = DryRunDataTracer()
+    tracer.load_collection(
+        collection_id="Sentinel2",
+        arguments={"spatial_extent": {"west": 179, "south": 51, "east": -179, "north": 52}},
+    )
+    metadata = extract_result_metadata(tracer)
+    items = [{"bbox": [west, 51, east, 52]} for west, east in item_bounds]
+    _extend_spatial_extent_from_items(metadata, items)
+
+    assert metadata["bbox"] == [expected_west, 51, expected_east, 52]
+    geometry = shape(metadata["geometry"])
+    assert geometry.covers(Point(179.5, 51.5))
+    assert geometry.covers(Point(-179.5, 51.5))
+    assert geometry.covers(Point(0, 51.5)) == (expected_west == -180)
 
 
 def test_assemble_result_metadata_without_gdal():
