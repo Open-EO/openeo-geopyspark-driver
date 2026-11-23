@@ -1,28 +1,22 @@
 """
-Item/asset dict construction for ``GeopysparkDataCube.write_assets``.
+Item/asset dict handling for ``GeopysparkDataCube.write_assets``.
 
-Turns the raw output of the GeoTrellis/GeoPySpark writers -- expressed here
-as plain ``WrittenItem``/``WrittenAsset`` values -- into the STAC-like
-item/asset dicts ``write_assets`` has always returned. Every output shape
-(one per combination of format/stitch/tile_grid/batch_mode/sample_by_feature),
-including its small format-specific inconsistencies (e.g. which variant sets
-``properties.datetime``, or drops empty ``band_indices`` differently), is
-kept unchanged.
+The GeoTrellis writers (openeo-geotrellis-extensions) return STAC items
+(``Item.toJson``); this module converts them to dicts and holds the
+parsed ``format_options``.
 """
+
+import json
 import os
 import pathlib
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional
 
-from openeo.util import dict_no_none
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import smart_bool
-from shapely.geometry import box, mapping
-from shapely.geometry.polygon import Polygon
 
-from .util import GDALINFO_SUFFIX, reproject_geometry
+from .util import GDALINFO_SUFFIX
 
 _SUPPORTED_FORMATS = ("GTIFF", "PNG", "NETCDF", "JSON", "ZARR", "DEBUG_GENERAL")
 
@@ -136,73 +130,14 @@ class SaveResultFormatOptions:
             raise OpenEOApiException(message="separate_asset_per_band is not supported with sample_by_feature")
 
 
-@dataclass(frozen=True)
-class WrittenAsset:
-    key: str
-    path: str
-    proj_bbox: Optional[Tuple[float, ...]] = None
-    proj_shape: Optional[Tuple[int, ...]] = None
-    proj_epsg: Optional[int] = None
-    bands: Optional[List[dict]] = None
-    nodata: Optional[float] = None
-    data_type: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class WrittenItem:
-    id: str
-    datetime: Optional[str] = None
-    bbox: Optional[Tuple[float, float, float, float]] = None
-    crs: Optional[Any] = None
-    assets: List[WrittenAsset] = field(default_factory=list)
-
-
-def _to_latlng_geometry(bbox: Optional[Tuple[float, float, float, float]], crs: Any) -> Optional[Polygon]:
-    if bbox is None:
-        return None
-    xmin, ymin, xmax, ymax = bbox
-    return reproject_geometry(box(xmin, ymin, xmax, ymax), src_crs=crs, dst_crs="EPSG:4326")
-
-
-def build_item(item: WrittenItem, format_type: str) -> dict:
-    geometry = _to_latlng_geometry(item.bbox, item.crs)
-    bbox = geometry.bounds if geometry is not None else None
-    datetime = item.datetime
-    assets = {}
-    for a in item.assets:
-        assets[a.key] = dict_no_none(
-            {
-                "href": a.path,
-                "type": format_type,
-                "roles": ["data"],
-                "datetime": datetime,
-                "nodata": a.nodata,
-                "data_type": a.data_type,
-                "geometry": mapping(geometry) if geometry is not None else None,
-                "bbox": bbox,
-                "bands": a.bands,
-                "raster:bands": a.bands,
-                "proj:bbox": a.proj_bbox,
-                "proj:shape": a.proj_shape,
-                "proj:epsg": a.proj_epsg,
-            }
-        )
-    properties = {"datetime": datetime} if datetime is not None else None
-    return dict_no_none({
-        "id": item.id,
-        "properties": properties,
-        "geometry": mapping(geometry) if geometry is not None else None,
-        "bbox": bbox,
-        "assets": assets,
-    })
-
-
-def build_items(written: Sequence[WrittenItem], *, format_type: str) -> Dict[str, dict]:
-    return {item.id: build_item(item, format_type) for item in written}
+def items_from_java(java_items: Iterable) -> Dict[str, dict]:
+    """Convert the STAC items returned by openeo-geotrellis-extensions (``Item.toJson``) to dicts keyed by item id."""
+    items = [json.loads(java_item.toJson()) for java_item in java_items]
+    return {item["id"]: item for item in items}
 
 
 def single_asset_item(*, asset_key: str, asset: dict, item_extra: Optional[dict] = None) -> Dict[str, dict]:
-    """Build the single-uuid-item, single-asset shape used by PNG, stitched batch NetCDF and the fallback format."""
+    """Build the single-uuid-item, single-asset shape used by stitched batch NetCDF and the fallback format."""
     item_id = str(uuid.uuid4())
     item = {"id": item_id, "assets": {asset_key: asset}}
     if item_extra:
