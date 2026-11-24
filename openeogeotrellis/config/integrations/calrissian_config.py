@@ -83,3 +83,12 @@ class CalrissianConfig:
     (`coresMin`/`coresMax` of a `ResourceRequirement`). Set to `None` to disable the check.
     """
     max_cores_per_step: Optional[float] = 7
+
+    """
+    Validity (in seconds) of the presigned CWL input links, counted from signing.
+    Must outlive the CWL job timeout (see `CalrissianJobLauncher.launch_job_and_wait`).
+    This may exceed the 12h lifetime of the STS credentials used to sign:
+    the S3 proxy accepts presigned URLs up to `signedURLGraceTimeSeconds` past the credential expiry
+    (7 days on CDSE), so X-Amz-Expires is the effective limit.
+    """
+    cwl_input_presigned_url_expiration: int = 24 * 3600
