@@ -93,17 +93,41 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
+    def _validate_required_properties(
+        self, collection_id: str, *, load_params: LoadParameters, pg_node_id: Optional[str] = None
+    ) -> Iterable[dict]:
+        metadata = self.get_collection_metadata(collection_id)
+        required_properties = deep_get(metadata, "_vito", "data_source", "required_properties", default={})
+        for property_name, options in required_properties.items():
+            if property_name not in (load_params.properties or {}):
+                message = (
+                    f"Collection {collection_id!r} requires a property filter for {property_name!r} "
+                    f"in the 'properties' argument of 'load_collection' (node {pg_node_id!r})."
+                )
+                if "enum" in options:
+                    message += f" Possible values: {options['enum']!r}."
+                yield {"code": "MissingPropertyFilter", "message": message}
+
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(
         self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
     ) -> GeopysparkDataCube:
+
+        if missing_property_filters := list(
+            self._validate_required_properties(collection_id, load_params=load_params, pg_node_id=pg_node_id)
+        ):
+            raise OpenEOApiException(
+                status_code=400,
+                code="MissingPropertyFilter",
+                message=" ".join(error["message"] for error in missing_property_filters),
+            )
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
             try:
-                issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+                issues = extra_validation_load_collection(collection_id, load_params=load_params, env=env_validate)
             except Exception as e:
                 issues = [{"code": "Internal", "message": str(e)}]
                 logger.warning(f"Error during extra_validation_load_collection: {e!r}")
@@ -1420,7 +1444,12 @@ def estimate_load_collection_pixels(
     return estimated_pixels, None
 
 
-def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+def extra_validation_load_collection(
+    collection_id: str, *, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+) -> Iterable[dict]:
+    if "backend_implementation" in env:
+        catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
+        yield from catalog._validate_required_properties(collection_id, load_params=load_params, pg_node_id=pg_node_id)
     if collection_id == "TestCollection-LonLat4x4":
         # No need to check on artificial debug layer
         return

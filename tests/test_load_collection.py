@@ -20,7 +20,7 @@ from py4j.java_gateway import JavaGateway
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, extra_validation_load_collection, get_layer_catalog
 from tests.data import get_test_data_file
 
 
@@ -48,6 +48,64 @@ def catalog(vault):
     catalog = get_layer_catalog(vault)
     catalog.set_default_sentinel_hub_credentials(client_id="???", client_secret="!!!")
     return catalog
+
+
+@pytest.mark.parametrize(
+    "options, hint",
+    [
+        ({}, ""),
+        ({"enum": ["scenario-a", "scenario-b"]}, " Possible values: ['scenario-a', 'scenario-b']."),
+    ],
+)
+def test_load_collection_required_properties_missing(options, hint):
+    catalog = GeoPySparkLayerCatalog(
+        [{"id": "CLIMATE", "_vito": {"data_source": {"required_properties": {"scenario": options}}}}]
+    )
+    with mock.patch.object(catalog, "_load_collection_cached") as load:
+        with pytest.raises(OpenEOApiException) as exc_info:
+            catalog.load_collection("CLIMATE", load_params=LoadParameters(), env=EvalEnv(), pg_node_id="load1")
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "MissingPropertyFilter"
+    assert exc_info.value.message == (
+        "Collection 'CLIMATE' requires a property filter for 'scenario' "
+        "in the 'properties' argument of 'load_collection' (node 'load1')." + hint
+    )
+    load.assert_not_called()
+
+
+def test_load_collection_required_properties_satisfied():
+    catalog = GeoPySparkLayerCatalog(
+        [{"id": "CLIMATE", "_vito": {"data_source": {"required_properties": {"scenario": {}}}}}]
+    )
+    load_params = LoadParameters(properties={"scenario": {}})
+    with mock.patch.object(catalog, "_load_collection_cached") as load:
+        catalog.load_collection("CLIMATE", load_params=load_params, env=EvalEnv({"do_extent_check": False}))
+    load.assert_called_once()
+    assert load.call_args.args[1].properties == {"scenario": {}}
+
+
+def test_extra_validation_required_properties():
+    catalog = GeoPySparkLayerCatalog(
+        [{"id": "CLIMATE", "_vito": {"data_source": {"required_properties": {"scenario": {}}}}}]
+    )
+    env = EvalEnv({"backend_implementation": mock.Mock(catalog=catalog)})
+    extent_issue = {"code": "ExtentTooLarge", "message": "Requested extent is too large."}
+    with mock.patch(
+        "openeogeotrellis.layercatalog._get_load_collection_pixel_params", return_value=extent_issue
+    ) as pixel_params:
+        issues = list(
+            extra_validation_load_collection("CLIMATE", load_params=LoadParameters(), env=env, pg_node_id="load1")
+        )
+    pixel_params.assert_called_once()
+    assert issues == [
+        {
+            "code": "MissingPropertyFilter",
+            "message": (
+                "Collection 'CLIMATE' requires a property filter for 'scenario' "
+                "in the 'properties' argument of 'load_collection' (node 'load1')."
+            ),
+        }
+    ] + [extent_issue]
 
 
 def test_load_collection_bands_missing_required_extent(catalog):

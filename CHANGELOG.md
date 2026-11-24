@@ -51,6 +51,7 @@ without compromising stable operations.
 - `load_collection`/`load_stac`: make retaining NODATA tiles by default configurable (defaults to `False`) ([#1949](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1949))
 - `load_stac`: fall back to 10m (approximately) resolution for EPSG:4326 and improve resolution detection when `proj:shape` is missing ([#1952](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952))
 - Reduce number of STAC API request retries from 25 to 10 to avoid "hanging" jobs and excessive sleeping (eu-cdse/openeo-cdse-infra#1157, [#1783](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1783))
+- `load_collection`: support `_vito.data_source.required_properties` to require property filters by name, with optional `enum` hints in missing-filter errors during loading and process-graph validation ([#1962](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1962))
 
 
 ## 0.73.0
