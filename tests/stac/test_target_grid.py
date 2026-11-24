@@ -112,9 +112,10 @@ class TestDetermineCellSize:
             feature_flags={},
         )
         # 10m in degrees of longitude at latitude ~-34.6
-        expected = 10.0 / (111_320 * math.cos(math.radians(34.6)))  # TODO: clarify constant (= earth_radius * π / 180)
-        assert cell_width == pytest.approx(expected, rel=0.01)
-        assert cell_height == pytest.approx(expected, rel=0.01)
+        one_degree_lon_in_meters_at_equator = 111_320
+        expected_degrees = 10.0 / (one_degree_lon_in_meters_at_equator * math.cos(math.radians(34.6)))
+        assert cell_width == pytest.approx(expected_degrees, rel=0.01)
+        assert cell_height == pytest.approx(expected_degrees, rel=0.01)
 
 
 class TestApplyLoadParamsOverrides:

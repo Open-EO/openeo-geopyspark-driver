@@ -197,6 +197,67 @@ def test_zonal_statistics(imagecollection_with_two_bands_and_one_date):
     }
 
 
+def test_zonal_statistics_parquet_output(imagecollection_with_two_bands_and_one_date, monkeypatch):
+    from unittest import mock
+
+    from openeogeotrellis.testing import gps_config_overrides
+    from openeogeotrellis.vectorcube import AggregateSpatialResultParquet
+
+    cube = imagecollection_with_two_bands_and_one_date
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    jvm_adapter = mock.MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, AggregateSpatialResultParquet)
+    args = jvm_adapter.compute_generic_timeseries_from_datacube.call_args.args
+    assert args[0] == "mean"
+    assert args[-2:] == ("parquet", "file")
+
+
+def test_zonal_statistics_parquet_output_with_jvm(imagecollection_with_two_bands_and_one_date):
+    from py4j.java_gateway import JavaClass
+
+    from openeogeotrellis.testing import gps_config_overrides
+    from openeogeotrellis.utils import get_jvm
+    from openeogeotrellis.vectorcube import AggregateSpatialResultParquet
+
+    output_options = get_jvm().org.openeo.geotrellis.aggregate_polygon.AggregateOutputOptions
+    if not isinstance(output_options, JavaClass):
+        pytest.skip("geotrellis-extensions jar without AggregateOutputOptions (#671)")
+
+    cube = imagecollection_with_two_bands_and_one_date
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    expected = cube.zonal_statistics(polygon, "mean").get_data()
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, AggregateSpatialResultParquet)
+    assert result.get_data() == expected == {"2017-09-25T11:37:00Z": [[1.0, 2.0]]}
+
+
+def test_zonal_statistics_in_memory_with_jvm(imagecollection_with_two_bands_and_one_date):
+    from openeogeotrellis.testing import gps_config_overrides
+    from openeogeotrellis.utils import get_jvm
+    from openeogeotrellis.vectorcube import AggregateSpatialResultInMemory
+
+    loader = get_jvm().java.lang.Thread.currentThread().getContextClassLoader()
+    adapter_class = loader.loadClass("org.openeo.geotrellis.ComputeStatsGeotrellisAdapter")
+    if "compute_generic_timeseries_dataframe_from_datacube" not in [m.getName() for m in adapter_class.getMethods()]:
+        pytest.skip("geotrellis-extensions jar without in-memory aggregate_spatial (#671)")
+
+    cube = imagecollection_with_two_bands_and_one_date
+    polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    expected = cube.zonal_statistics(polygon, "mean").get_data()
+    with gps_config_overrides(aggregate_spatial_in_memory_max_polygons=10):
+        result = cube.zonal_statistics(polygon, "mean")
+
+    assert isinstance(result, AggregateSpatialResultInMemory)
+    assert result.get_data() == expected == {"2017-09-25T11:37:00Z": [[1.0, 2.0]]}
+
+
 def get_near_and_far_polygon_geometry_collection():
     polygon1 = Polygon(shell=[
         (0.0, 0.0),

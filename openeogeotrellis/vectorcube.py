@@ -1,10 +1,14 @@
+import glob
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Optional, Callable, List, Tuple
 
 import pandas
 import pandas as pd
+import pyspark.sql
 from pyspark.sql import SparkSession
 
 import openeo.udf
@@ -222,3 +226,58 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             return processed
 
         return callback
+
+
+class AggregateSpatialResultParquet(AggregateSpatialResultCSV):
+    """
+    `aggregate_spatial` result (with time dimension) written as Parquet by the JVM.
+
+    The Parquet files are converted once to a CSV file in the same directory,
+    so all CSV based functionality (data access, save_result, run_udf) is reused.
+    """
+
+    def __init__(self, parquet_dir, regions, metadata=None):
+        super().__init__(parquet_dir, regions=regions, metadata=metadata)
+        self._converted = False
+
+    def _convert_to_csv(self):
+        if self._converted:
+            return
+        parquet_paths = sorted(glob.glob(os.path.join(self._csv_dir, "*.parquet")))
+        _log.info(f"{type(self).__name__}: converting {len(parquet_paths)} parquet file(s) in {self._csv_dir}")
+        if parquet_paths:
+            df = pd.concat(map(pd.read_parquet, parquet_paths))
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"], utc=True)
+            df.to_csv(os.path.join(self._csv_dir, "converted.csv"), index=False)
+        self._converted = True
+
+    def get_data(self):
+        self._convert_to_csv()
+        return super().get_data()
+
+    def to_csv(self, destination=None):
+        self._convert_to_csv()
+        return super().to_csv(destination)
+
+    def run_udf(self, udf: str, *, runtime: str = "Python", context: Optional[dict] = None, env: EvalEnv):
+        self._convert_to_csv()
+        return super().run_udf(udf, runtime=runtime, context=context, env=env)
+
+
+class AggregateSpatialResultInMemory(AggregateSpatialResultCSV):
+    """
+    `aggregate_spatial` result (with time dimension) collected in memory from a (small) JVM DataFrame.
+
+    The data is written to a driver-local temp CSV file (not on a shared volume),
+    so all CSV based functionality (data access, save_result, run_udf) is reused.
+    """
+
+    def __init__(self, jdf, regions, metadata=None):
+        # `toPandas` collects the (small) result in the driver.
+        df = pyspark.sql.DataFrame(jdf, SparkSession.builder.getOrCreate()).toPandas()
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], utc=True)
+        csv_dir = tempfile.mkdtemp(prefix="aggregate_spatial_in_memory_")
+        df.to_csv(os.path.join(csv_dir, "in_memory.csv"), index=False)
+        super().__init__(csv_dir, regions=regions, metadata=metadata)
