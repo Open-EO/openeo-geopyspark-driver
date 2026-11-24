@@ -8,7 +8,7 @@
     ],
     "spark4-scala213-github": [
       "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/geotrellis-extensions-2.6.4_2.13-SNAPSHOT.jar",
-      "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/geotrellis-dependencies-2.6.4_2.13-SNAPSHOT.jar",
+      "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/geotrellis-extensions-issue867-make-item-stac-SNAPSHOT.jar",
       "https://github.com/Open-EO/openeo-geotrellis-extensions/releases/download/2.6.4_2.13-SNAPSHOT/openeo-logging-2.6.4_2.13-SNAPSHOT.jar"
     ]
   }
