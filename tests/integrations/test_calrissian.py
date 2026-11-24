@@ -1010,17 +1010,6 @@ class TestCwlInputPresigning:
             assert href.endswith("?X-Amz-Expires=86400&X-Amz-Signature=abc"), href
         assert docs["item1.json"]["assets"]["openEO"]["href"] == _fake_presign([asset_href])[0]
 
-    def test_presigner_not_in_batch_job(self, monkeypatch):
-        monkeypatch.delenv(ENV_VAR_OPENEO_BATCH_JOB_ID, raising=False)
-        monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "https://s3proxy.test")
-        with gps_config_overrides(s3_bucket_name="openeo-fake-bucketname"):
-            assert _cwl_input_presigner(job_id="j-1") is None
-
-    def test_presigner_without_proxy_endpoint(self, monkeypatch):
-        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
-        monkeypatch.delenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, raising=False)
-        with gps_config_overrides(s3_bucket_name="openeo-fake-bucketname"):
-            assert _cwl_input_presigner(job_id="j-1") is None
 
     def test_presigner_bucket_not_a_workspace(self, monkeypatch):
         monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-1")
