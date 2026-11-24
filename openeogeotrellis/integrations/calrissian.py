@@ -458,6 +458,7 @@ class CalrissianJobLauncher:
             "AWS_ENDPOINT_URL_S3": s3_endpoint,
             "AWS_ENDPOINT_URL_STS": sts_endpoint,
             "AWS_REGION": "eodata",
+            "AWS_DEFAULT_REGION": "eodata",  # For boto3
             "AWS_VIRTUAL_HOSTING": "FALSE",
             **s3_credentials.as_env_vars(),
         }
