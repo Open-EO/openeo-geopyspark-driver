@@ -320,6 +320,8 @@ class TestCalrissianJobLauncher:
             for cred_part in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
                 assert cred_part in env
                 assert getattr(self, cred_part) == env[cred_part]
+            assert env["AWS_REGION"] == "eodata"
+            assert env["AWS_DEFAULT_REGION"] == "eodata"
 
         k8s_core_v1_api.return_value.create_namespaced_secret = create_namespaced_secret
         yield
