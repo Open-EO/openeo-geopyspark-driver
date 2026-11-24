@@ -353,6 +353,7 @@ class TestDownload:
                 "id": dirty_equals.IsUUID(),
                 "bbox": dirty_equals.IsListOrTuple(length=4),
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+                "links": [],
                 **item_properties,
                 "assets": {
                     "openEO": {
@@ -498,6 +499,7 @@ class TestDownload:
                 "properties": {
                     "datetime": '2017-09-25T11:37:00Z',
                 },
+                "links": [],
                 "assets": {
                     "openEO": {
                         "href": str(tmp_path / "res") + expected_href_suffix,
@@ -579,6 +581,7 @@ class TestDownload:
                     "start_datetime": "2017-09-01T00:00:00Z",
                     "end_datetime": "2017-10-01T00:00:00Z",
                 },
+                "links": [],
                 "assets": {
                     "openEO": {
                         "href": file_path,
@@ -621,6 +624,7 @@ class TestDownload:
                     "start_datetime": "2017-09-01T00:00:00Z",
                     "end_datetime": "2017-10-01T00:00:00Z",
                 },
+                "links": [],
                 "assets": {
                     "openEO": {
                         "href": file_path,
@@ -663,6 +667,7 @@ class TestDownload:
                 "geometry": _BOX_0_4_GEOMETRY,
                 "bbox": [0.0, 0.0, 4.0, 4.0],
                 "properties": {"datetime": "2017-09-25T11:37:00Z"},
+                "links": [],
                 "assets": {
                     "openEO": {
                         "href": file_path,
