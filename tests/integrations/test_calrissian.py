@@ -29,7 +29,6 @@ from openeogeotrellis.integrations.calrissian import (
     parse_cwl_outputs_listing,
     find_stac_root,
     cwl_to_stac,
-    CWL_INPUT_PRESIGNED_URL_EXPIRATION,
     _cwl_input_presigner,
     _redact_presigned_urls,
     _write_stac_catalog_for_write_assets_result,
@@ -1058,7 +1057,7 @@ class TestCwlInputPresigning:
             assert parts.path.endswith(key)
             query = parse_qs(parts.query)
             # Valid for 24h after signing, independent of the 12h lifetime of the signing credentials.
-            assert query["X-Amz-Expires"] == [str(CWL_INPUT_PRESIGNED_URL_EXPIRATION)] == ["86400"]
+            assert query["X-Amz-Expires"] == ["86400"]
             assert query["X-Proxy-Head-As-Get"] == ["true"]
 
     def test_redact_presigned_urls(self):

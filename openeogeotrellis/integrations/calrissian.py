@@ -1152,13 +1152,6 @@ def _write_stac_catalog_for_write_assets_result(
     return hrefs["catalog"], [hrefs[f"item:{item_id}"] for item_id in items]
 
 
-# Presigned CWL input links stay valid this long after signing. Must outlive the CWL job timeout
-# (see `CalrissianJobLauncher.launch_job_and_wait`). This is longer than the 12h STS credentials used to sign:
-# the S3 proxy accepts presigned URLs up to `signedURLGraceTimeSeconds` past the credential expiry
-# (7 days on CDSE), so X-Amz-Expires is the effective limit.
-CWL_INPUT_PRESIGNED_URL_EXPIRATION = 24 * 3600
-
-
 def _cwl_input_presigner(job_id: str) -> Optional[Callable[[List[str]], List[str]]]:
     """
     Build a function that presigns CWL input hrefs (local paths or s3:// URIs of the job bucket)
@@ -1204,6 +1197,7 @@ def _cwl_input_presigner(job_id: str) -> Optional[Callable[[List[str]], List[str
         config=botocore.config.Config(signature_version="s3v4"),
         **creds.as_client_kwargs(),
     )
+    expiration = get_backend_config().calrissian_config.cwl_input_presigned_url_expiration
 
     def presign_one(href: str) -> str:
         # With the FUSE mounted job bucket, the local job dir is the bucket prefix mounted at the same path.
@@ -1215,7 +1209,7 @@ def _cwl_input_presigner(job_id: str) -> Optional[Callable[[List[str]], List[str
             s3_client,
             bucket_name=bucket,
             object_name=key,
-            expiration=CWL_INPUT_PRESIGNED_URL_EXPIRATION,
+            expiration=expiration,
             parameters={"X-Proxy-Head-As-Get": "true"},
         )
         if not url:
