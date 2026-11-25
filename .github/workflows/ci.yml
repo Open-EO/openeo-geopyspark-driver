@@ -44,9 +44,9 @@ jobs:
         # Bump `version` to force a refresh (e.g. to pick up newer GDAL from the PPA).
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          packages: gdal-bin libgdal-dev libnetcdf-dev netcdf-bin libhdf5-dev libkrb5-dev
+          packages: gdal-bin libgdal-dev libnetcdf-dev netcdf-bin libhdf5-dev libkrb5-dev libblas3 liblapack3
           add-repository: ppa:ubuntugis/ubuntugis-unstable
-          version: ubuntu-24.04-v1
+          version: ubuntu-24.04-v2
 
       - name: Symlink libgdal.so.38 -> system libgdal
         run: |
@@ -57,6 +57,8 @@ jobs:
           echo "System libgdal: ${ACTUAL}"
           sudo ln -sf "${ACTUAL}" ${LIBDIR}/libgdal.so.38
           sudo ldconfig
+          # libblas.so.3 is an update-alternatives symlink, which the apt cache may not restore
+          ldconfig -p | grep -q 'libblas.so.3' || { echo 'libblas.so.3 missing'; exit 1; }
           ls -l ${LIBDIR}/libgdal.so*
       - uses: actions/setup-java@v4
         with:
