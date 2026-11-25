@@ -22,7 +22,7 @@ from openeo_driver.utils import smart_bool
 from shapely.geometry import box, mapping
 from shapely.geometry.polygon import Polygon
 
-from .util import GDALINFO_SUFFIX, reproject_geometry
+from .util import GDALINFO_SUFFIX, reproject_geometry, sanitize_band_statistics
 
 _SUPPORTED_FORMATS = ("GTIFF", "PNG", "NETCDF", "JSON", "ZARR", "DEBUG_GENERAL")
 
@@ -170,6 +170,14 @@ def build_item(item: WrittenItem, format_type: str) -> dict:
     datetime = item.datetime
     assets = {}
     for a in item.assets:
+        bands = (
+            [
+                {**band, "statistics": sanitize_band_statistics(band["statistics"])} if "statistics" in band else band
+                for band in a.bands
+            ]
+            if a.bands is not None
+            else None
+        )
         assets[a.key] = dict_no_none(
             {
                 "href": a.path,
@@ -180,8 +188,8 @@ def build_item(item: WrittenItem, format_type: str) -> dict:
                 "data_type": a.data_type,
                 "geometry": mapping(geometry) if geometry is not None else None,
                 "bbox": bbox,
-                "bands": a.bands,
-                "raster:bands": a.bands,
+                "bands": bands,
+                "raster:bands": bands,
                 "proj:bbox": a.proj_bbox,
                 "proj:shape": a.proj_shape,
                 "proj:epsg": a.proj_epsg,

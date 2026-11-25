@@ -3,6 +3,7 @@ Small, dependency-free helpers shared across the ``job_results`` package.
 """
 import hashlib
 import json
+import logging
 import math
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, Optional, Union
@@ -11,6 +12,21 @@ import pyproj
 from shapely.ops import transform
 
 GDALINFO_SUFFIX = "_gdalinfo.json"
+
+logger = logging.getLogger(__name__)
+
+
+def sanitize_band_statistics(statistics: dict) -> dict:
+    """Omit unavailable or invalid numeric band statistics."""
+    result = {}
+    for key, value in statistics.items():
+        if value is None or (isinstance(value, float) and not math.isfinite(value)):
+            continue
+        if key == "valid_percent" and isinstance(value, (int, float)) and not 0 <= value <= 100:
+            logger.warning("Omitting out-of-range band valid_percent: %s", value)
+            continue
+        result[key] = value
+    return result
 
 
 def json_default(obj: Any) -> Any:

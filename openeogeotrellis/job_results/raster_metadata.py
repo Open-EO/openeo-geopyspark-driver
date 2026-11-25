@@ -10,7 +10,6 @@ import subprocess
 import time
 from dataclasses import dataclass
 from functools import partial
-from math import isfinite
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
@@ -18,7 +17,7 @@ import pyproj
 from openeo.util import dict_no_none
 
 from .result_metadata import convert_bbox_to_lat_long
-from .util import GDALINFO_SUFFIX, make_set_for_key, parse_json_from_output
+from .util import GDALINFO_SUFFIX, make_set_for_key, parse_json_from_output, sanitize_band_statistics
 
 logger = logging.getLogger(__name__)
 
@@ -58,21 +57,16 @@ class BandStatistics:
     stddev: Optional[float] = None
     valid_percent: Optional[float] = None
 
-    @staticmethod
-    def _to_jsonable_float(x: Optional[float]) -> Union[float, str, None]:
-        if x is None:
-            return None
-
-        return x if isfinite(x) else str(x)
-
     def to_dict(self):
-        return {
-            "minimum": self._to_jsonable_float(self.minimum),
-            "maximum": self._to_jsonable_float(self.maximum),
-            "mean": self._to_jsonable_float(self.mean),
-            "stddev": self._to_jsonable_float(self.stddev),
-            "valid_percent": self._to_jsonable_float(self.valid_percent),
-        }
+        return sanitize_band_statistics(
+            {
+                "minimum": self.minimum,
+                "maximum": self.maximum,
+                "mean": self.mean,
+                "stddev": self.stddev,
+                "valid_percent": self.valid_percent,
+            }
+        )
 
 
 """
