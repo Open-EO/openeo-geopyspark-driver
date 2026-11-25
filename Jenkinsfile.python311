@@ -19,6 +19,7 @@ pythonPipeline {
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
     "PYTHON_VERSION=3.11",
     "OPENEO_JARS_VARIANT=spark4-scala213",
+    "UV_INDEX_STRATEGY=unsafe-best-match",
   ]
   python_version = ["3.11-alma9"]
   downstream_job = 'openEO/trigger-python311-build'
