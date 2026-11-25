@@ -14,7 +14,7 @@ from openeo_driver.views import build_app
 
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.deploy import get_socket, patch_sar_backscatter_spec
+from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.integrations.kubernetes import kube_client
 from openeogeotrellis.job_registry import EagerlyK8sTrackingInMemoryJobRegistry
 from openeogeotrellis.util.audience_logging import get_logging_config
@@ -62,7 +62,6 @@ def main():
         ),
     )
     app = build_app(backend_implementation=backend_implementation)
-    patch_sar_backscatter_spec(backend_implementation)
 
     host = os.environ.get("SPARK_LOCAL_IP", None)
     if host is None:
