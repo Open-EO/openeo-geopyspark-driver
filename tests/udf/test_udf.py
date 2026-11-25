@@ -244,9 +244,7 @@ def test_udf_metrics_keep_nodes_separate(monkeypatch):
     monkeypatch.setattr(udf_module, "_metrics_initialized", True)
     monkeypatch.setattr(udf_module, "_udf_execution_count", count)
     for node_id, value in [("runudf1", 10), ("runudf2", 20), ("runudf1", 30)]:
-        udf_module._record_udf_execution_gauge_metrics(
-            duration, duration_ms=value, node_id=node_id
-        )
+        udf_module._record_udf_execution_gauge_metrics(duration, duration_ms=value, node_id=node_id)
     for node_id, value, calls in [("runudf1", 30, 2), ("runudf2", 20, 1)]:
         assert registry.get_sample_value("test_udf_duration", {"node_id": node_id}) == value
         assert registry.get_sample_value("test_udf_count_total", {"node_id": node_id}) == calls
@@ -297,9 +295,7 @@ def test_raster_udf_passes_node_id(imagecollection_with_two_bands_and_three_date
 def test_noop_udf_metrics_accept_node_id(monkeypatch):
     monkeypatch.setattr(udf_module, "_metrics_initialized", True)
     monkeypatch.setattr(udf_module, "_udf_execution_count", udf_module._NoOpMetric())
-    udf_module._record_udf_execution_gauge_metrics(
-        udf_module._NoOpMetric(), duration_ms=10, node_id="my_udf"
-    )
+    udf_module._record_udf_execution_gauge_metrics(udf_module._NoOpMetric(), duration_ms=10, node_id="my_udf")
 
 
 class TestUdfCollection:

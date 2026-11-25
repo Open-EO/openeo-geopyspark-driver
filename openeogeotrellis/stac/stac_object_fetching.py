@@ -32,7 +32,7 @@ from openeogeotrellis.integrations.stac import ResilientStacIO
 logger = logging.getLogger(__name__)
 
 STAC_API_BACKOFF_FACTOR = 2
-STAC_API_RETRY_TOTAL = 25
+STAC_API_RETRY_TOTAL = 10
 STAC_API_MINIMUM_BACKOFF_SECONDS = 1
 STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
 REQUESTS_TIMEOUT_SECONDS = 60
@@ -124,4 +124,3 @@ def await_stac_object(
         time.sleep(poll_interval_seconds)
 
     return stac_object
-

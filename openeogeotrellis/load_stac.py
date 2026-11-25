@@ -138,7 +138,7 @@ def build_opensearch_features(*, asset_table: AssetTable, jvm: Any) -> Any:
         if item.raster_extent:
             builder = builder.withRasterExtent(*item.raster_extent)
         if item.resolution is not None:
-            builder = builder.withResolution(item.resolution)
+            builder = builder.withResolution(float(item.resolution))
         if item.bbox_wsen:
             builder = builder.withBBox(*item.bbox_wsen)
         if item.geometry_wkt is not None:

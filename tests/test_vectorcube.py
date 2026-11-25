@@ -19,7 +19,7 @@ from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons
-from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
+from openeogeotrellis.vectorcube import AggregateSpatialResultCSV, AggregateSpatialResultParquet
 from tests.data import get_test_data_file
 
 
@@ -262,8 +262,10 @@ def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three
     assert cube.dims == ('geometry', 't', 'bands')
     assert vectorcube._geometries.shape == (num_geometries,1)
 
-    date1_values = np.array([[np.nan], [np.nan], [np.nan], [np.nan], [ 1.], [ 1.], [ 1.], [ 1.]])
-    date2_values = np.array([[2.], [2.], [2.], [2.], [np.nan], [np.nan], [np.nan], [np.nan]])
+    # Polygons with the same value are merged across tile borders (one geometry per date).
+    assert num_geometries == 2
+    date1_values = np.array([[1.], [np.nan]])
+    date2_values = np.array([[np.nan], [2.]])
     assert np.allclose(cube.isel(t=0).values, date1_values, equal_nan=True)
     assert np.allclose(cube.isel(t=1).values, date2_values, equal_nan=True)
 
@@ -294,3 +296,32 @@ def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three
     assert cube_udf_applied.shape == cube.shape
     assert np.allclose(cube_udf_applied.values, cube.values ** 2, equal_nan=True)
     assert all(vectorcube_udf_applied.get_geometries() == vectorcube.get_geometries())
+
+
+def test_aggregate_spatial_result_parquet_matches_csv(tmp_path):
+    import pandas as pd
+    from shapely.geometry import GeometryCollection, box
+
+    regions = GeometryCollection([box(0, 0, 1, 1), box(1, 1, 2, 2)])
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2017-01-01", "2017-01-01", "2017-01-15", "2017-01-15"], utc=True),
+            "feature_index": [0, 1, 0, 1],
+            "band_0": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    csv_dir = tmp_path / "csv"
+    csv_dir.mkdir()
+    df.assign(date=df["date"].dt.strftime("%Y-%m-%dT%H:%M:%S.000+00:00")).to_csv(csv_dir / "part-0.csv", index=False)
+    parquet_dir = tmp_path / "parquet"
+    parquet_dir.mkdir()
+    df.to_parquet(parquet_dir / "part-0.parquet")
+
+    expected = AggregateSpatialResultCSV(str(csv_dir), regions=regions).get_data()
+    actual = AggregateSpatialResultParquet(str(parquet_dir), regions=regions)
+    assert actual.get_data() == expected
+    assert actual.get_data() == {
+        "2017-01-01T00:00:00Z": [[1.0], [2.0]],
+        "2017-01-15T00:00:00Z": [[3.0], [4.0]],
+    }
+    assert open(actual.to_csv()).read().splitlines()[0] == "date,feature_index,band_0"
