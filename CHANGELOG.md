@@ -50,9 +50,9 @@ without compromising stable operations.
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 - `load_collection`/`load_stac`: make retaining NODATA tiles by default configurable (defaults to `false`) ([#1949](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1949))
 - `load_stac`: fall back to 10m (approximately) resolution for EPSG:4326 and improve resolution detection when `proj:shape` is missing ([#1952](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1952))
-- `save_result`: include node ID in asset file names for STAC 1.1 job results ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 - Reduce number of STAC API request retries from 25 to 10 to avoid "hanging" jobs and excessive sleeping (eu-cdse/openeo-cdse-infra#1157, [#1783](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1783))
 - `export_workspace`: support not merging `derived_from` links into a STAC Collection by means of the `export-workspace-merge-derived-from-links` job option (defaults to `true`). ([#1922](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1922))
+- `save_result`: include node ID in asset file names for STAC 1.1 job results ([#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 
 
 ## 0.73.0
