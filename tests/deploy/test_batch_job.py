@@ -482,8 +482,8 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
 
     # asset_meta is how it previously looked like
     asset_meta = {
-        "openEO01-01.tif": {"href": "openEO01-01.tif", "roles": ["data"]},
-        "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": ["data"]},
+        "openEO01-01.tif": {"href": "openEO01-01.tif", "roles": ["data"], "file:local_path": "openEO01-01.tif"},
+        "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": ["data"], "file:local_path": "openEO01-05.tif"},
     }
     cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
@@ -632,6 +632,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
             first_asset_name: {
                 "href": first_asset_name,
                 "roles": "data",
+                "file:local_path": first_asset_name,
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
                 "proj:shape": [1188, 720],
@@ -648,7 +649,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
                     }
                 ],
             },
-            "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
+            "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data", "file:local_path": "openEO01-05.tif"},
         },
         "bbox": None,
         "end_datetime": None,
@@ -775,6 +776,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
             first_asset_name: {
                 "href": first_asset_name,
                 "roles": "data",
+                "file:local_path": first_asset_name,
                 # Projection extension metadata should not be here, but higher up.
                 # Raster statistics however are always stored at the asset level.
                 "raster:bands": [
@@ -793,6 +795,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
             second_asset_name: {
                 "href": second_asset_name,
                 "roles": "data",
+                "file:local_path": second_asset_name,
                 # Idem: projection extension metadata should not be here, but higher up.
                 "raster:bands": [
                     {
@@ -949,6 +952,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         first_asset_name: {
             "href": first_asset_name,
             "roles": "data",
+            "file:local_path": first_asset_name,
             # Projection extension metadata should not be here, but higher up.
             # Raster statistics however are always stored at the asset level.
             "raster:bands": [
@@ -967,6 +971,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         second_asset_name: {
             "href": second_asset_name,
             "roles": "data",
+            "file:local_path": second_asset_name,
             # Idem: projection extension metadata should not be here, but higher up.
             "raster:bands": [
                 {
@@ -1074,6 +1079,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(ev
             first_asset_name: {
                 "href": first_asset_name,
                 "roles": "data",
+                "file:local_path": first_asset_name,
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
                 "proj:shape": [1188, 720],
@@ -1093,6 +1099,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(ev
             second_asset_name: {
                 "href": second_asset_name,
                 "roles": "data",
+                "file:local_path": second_asset_name,
                 "proj:bbox": [723413.644, 577049.010, 745443.909, 614102.693],
                 "proj:epsg": 3812,
                 "proj:shape": [1188, 720],
@@ -1239,6 +1246,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                 first_asset_name: {
                     "href": first_asset_name,
                     "roles": "data",
+                    "file:local_path": first_asset_name,
                     "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                     "proj:epsg": 4326,
                     "proj:shape": [1188, 720],
@@ -1255,7 +1263,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                         }
                     ],
                 },
-                "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
+                "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data", "file:local_path": "openEO01-05.tif"},
             },
             "bbox": None,
             "epsg": None,
@@ -1384,6 +1392,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
                 single_asset_name: {
                     "href": single_asset_href,
                     "roles": "data",
+                    "file:local_path": single_asset_name,
                     # Projection extension metadata should not be here, but higher up.
                     # Raster statistics however, are always stored at the asset level.
                     "raster:bands": [

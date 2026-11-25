@@ -280,6 +280,81 @@ def test_stac11_mode(tmp_path):
     assert list(item["assets"].keys()) == ["result.json"]
 
 
+class _AssetsResult(SaveResult):
+    """A `SaveResult` that reports the given (STAC 1.1-style) items without actually writing anything."""
+
+    def __init__(self, items: dict, **kwargs):
+        super().__init__(**kwargs)
+        self._items = items
+
+    def write_assets(self, directory) -> dict:
+        return self._items
+
+
+@pytest.mark.parametrize("stac11_mode", [False, True])
+def test_file_local_path(tmp_path, stac11_mode):
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+    (job_dir / "2023").mkdir()
+    nested_asset = job_dir / "2023" / "B04.json"
+    nested_asset.write_text("{}")
+
+    def asset(href: str, **kwargs) -> dict:
+        return dict(href=href, roles=["data"], type="application/json", **kwargs)
+
+    items = {
+        "item-1": {
+            "id": "item-1",
+            "assets": {
+                "B04": asset(str(nested_asset)),
+                "relative": asset("relative.json"),
+                "s3": asset(f"s3://bucket{job_dir}/2024/B08.json"),
+                "elsewhere": asset(str(tmp_path / "elsewhere" / "outside.json")),
+                "explicit": asset(str(job_dir / "explicit.json"), **{"file:local_path": "custom/explicit.json"}),
+            },
+        }
+    }
+
+    finalize_job(
+        _AssetsResult(items),
+        tracer=DryRunDataTracer(),
+        process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+        job_specification={"process_graph": {}},
+        job_dir=job_dir,
+        output_file=output_file,
+        metadata_file=metadata_file,
+        settings=_settings(stac11_mode=stac11_mode, detailed_asset_metadata=False),
+        hooks=_RecordingHooks(),
+        workspace_repository=None,
+    )
+
+    metadata = _read_metadata(metadata_file)
+    if stac11_mode:
+        [item] = metadata["items"]
+        assets = item["assets"]
+    else:
+        assets = metadata["assets"]
+
+    local_paths = {key: asset["file:local_path"] for key, asset in assets.items()}
+    expected_local_paths = {
+        "B04": "2023/B04.json",
+        "relative": "relative.json",
+        "s3": "2024/B08.json",
+        "elsewhere": "outside.json",
+        "explicit": "custom/explicit.json",
+    }
+    if stac11_mode:
+        assert local_paths == expected_local_paths
+    else:
+        # STAC 1.0 asset keys are (still) relative asset paths, independent of "file:local_path"
+        assert local_paths == {
+            "2023/B04.json": "2023/B04.json",
+            "relative.json": "relative.json",
+            "2024/B08.json": "2024/B08.json",
+            "outside.json": "outside.json",
+            "explicit.json": "custom/explicit.json",
+        }
+
+
 def test_sample_by_feature_with_geometry(tmp_path):
     job_dir, output_file, metadata_file = _job_paths(tmp_path)
     hooks = _RecordingHooks()

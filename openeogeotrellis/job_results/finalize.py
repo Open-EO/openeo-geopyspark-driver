@@ -157,28 +157,20 @@ def finalize_job(
 
             def unique_key(asset_id, href):
                 # try to make the key unique, and backwards compatible if possible
-                if href is not None:
-                    try:
-                        if str(href).startswith("s3://"):
-                            url = urlparse(str(href))
-                            temp_key = str(Path(url.path).relative_to(output_file.parent))
-                        else:
-                            href_path = Path(str(href))
-                            if href_path.is_absolute():
-                                temp_key = str(href_path.relative_to(Path(str(output_file)).parent))
-                            else:
-                                temp_key = str(href_path)
-                    except ValueError:
-                        url = urlparse(str(href))
-                        temp_key = url.path.split("/")[-1]
-                else:
-                    temp_key = asset_id
+                temp_key = _relative_asset_path(str(href), output_file.parent) if href is not None else asset_id
                 counter = 0
                 while temp_key in keys:
                     temp_key = f"{asset_id}_{counter}"
                     counter += 1
                 keys.add(temp_key)
                 return temp_key
+
+            for item in written_items.values():
+                for asset in item.get("assets", {}).values():
+                    if asset.get("href") is not None:
+                        asset.setdefault(
+                            "file:local_path", _relative_asset_path(str(asset["href"]), output_file.parent)
+                        )
 
             assets = {
                 unique_key(asset_key, asset.get("href", None)): asset
@@ -300,6 +292,22 @@ def finalize_job(
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
         write(meta)
+
+
+def _relative_asset_path(href: str, job_dir: Path) -> str:
+    """
+    Path of an asset relative to the job directory (as exposed in "file:local_path"),
+    falling back to its file name if it's not inside the job directory.
+    """
+    try:
+        if href.startswith("s3://"):
+            relative_path = Path(urlparse(href).path).relative_to(job_dir)
+        else:
+            href_path = Path(href)
+            relative_path = href_path.relative_to(job_dir) if href_path.is_absolute() else href_path
+        return relative_path.as_posix()
+    except ValueError:
+        return urlparse(href).path.split("/")[-1]
 
 
 def _store_detailed_metrics(
