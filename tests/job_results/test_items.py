@@ -116,7 +116,7 @@ class TestBuildItemsStitch:
 
 
 class TestBuildItemsBatch:
-    @pytest.mark.parametrize("valid_percent", [-0.01, 100.88479289410685, float("nan"), float("inf")])
+    @pytest.mark.parametrize("valid_percent", [float("nan"), float("inf"), float("-inf")])
     def test_invalid_band_statistics(self, valid_percent):
         bands = [
             {
@@ -138,8 +138,8 @@ class TestBuildItemsBatch:
         assert json.loads(json.dumps(asset, allow_nan=False))["bands"] == expected
         assert "stddev" in bands[0]["statistics"]
 
-    @pytest.mark.parametrize("valid_percent", [0.0, 53.125, 100.0])
-    def test_valid_band_statistics(self, valid_percent):
+    @pytest.mark.parametrize("valid_percent", [0.0, 53.125, 100.0, -0.01, 100.88479289410685])
+    def test_band_statistics_are_preserved(self, valid_percent):
         bands = [{"name": "B01", "statistics": {"stddev": 0.0, "valid_percent": valid_percent}}]
         item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
         asset = build_items([item], format_type="image/tiff")["item1"]["assets"]["openEO"]

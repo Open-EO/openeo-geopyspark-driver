@@ -157,7 +157,9 @@ def test_write_metadata_with_invalid_band_statistics(tmp_path, stac11_mode):
 
     result = json.loads(metadata_file.read_text(), parse_constant=reject_constant)
     assets = result["items"][0]["assets"] if stac11_mode else result["assets"]
-    assert assets["result.nc"]["bands"] == [{"name": "B02", "statistics": {"mean": 12.0}}]
+    assert assets["result.nc"]["bands"] == [
+        {"name": "B02", "statistics": {"mean": 12.0, "valid_percent": 100.88}}
+    ]
     assert assets["result.nc"]["raster:bands"] == assets["result.nc"]["bands"]
 
 

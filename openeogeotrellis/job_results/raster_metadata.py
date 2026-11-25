@@ -4,6 +4,7 @@ gdalinfo-based raster metadata for STAC assets.
 import copy
 import json
 import logging
+import math
 import multiprocessing
 import os
 import subprocess
@@ -17,7 +18,7 @@ import pyproj
 from openeo.util import dict_no_none
 
 from .result_metadata import convert_bbox_to_lat_long
-from .util import GDALINFO_SUFFIX, make_set_for_key, parse_json_from_output, sanitize_band_statistics
+from .util import GDALINFO_SUFFIX, make_set_for_key, parse_json_from_output
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,16 @@ class BandStatistics:
     stddev: Optional[float] = None
     valid_percent: Optional[float] = None
 
+    @staticmethod
+    def sanitize(statistics: dict) -> dict:
+        return {
+            key: value
+            for key, value in statistics.items()
+            if value is not None and (not isinstance(value, float) or math.isfinite(value))
+        }
+
     def to_dict(self):
-        return sanitize_band_statistics(
+        return self.sanitize(
             {
                 "minimum": self.minimum,
                 "maximum": self.maximum,

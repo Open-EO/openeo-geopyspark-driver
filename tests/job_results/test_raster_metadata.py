@@ -5,7 +5,7 @@ import pytest
 from openeogeotrellis.job_results.raster_metadata import AssetRasterMetadata, _get_raster_statistics
 
 
-@pytest.mark.parametrize("valid_percent", ["-1", "100.88479289410685", "nan", "inf", "-inf"])
+@pytest.mark.parametrize("valid_percent", ["nan", "inf", "-inf"])
 def test_gdal_invalid_band_statistics(valid_percent):
     gdal_info = {
         "bands": [
@@ -35,8 +35,8 @@ def test_gdal_invalid_band_statistics(valid_percent):
     json.dumps(metadata, allow_nan=False)
 
 
-@pytest.mark.parametrize("valid_percent", ["0", "53.125", "100"])
-def test_gdal_valid_band_statistics(valid_percent):
+@pytest.mark.parametrize("valid_percent", ["0", "53.125", "100", "-1", "100.88479289410685"])
+def test_gdal_finite_band_statistics_are_preserved(valid_percent):
     gdal_info = {
         "bands": [
             {
