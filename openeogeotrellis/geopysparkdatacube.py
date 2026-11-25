@@ -2238,6 +2238,14 @@ class GeopysparkDataCube(DriverDataCube):
         retain_nodata_tiles = format_opts.retain_nodata_tiles
         filepath_per_band = format_opts.filepath_per_band
 
+        if format == "GTIFF" and tile_grid and not batch_mode:
+            # For sync requests, tile grid assets would collide in the shared /tmp directory.
+            raise ProcessParameterInvalidException(
+                parameter="options",
+                process="save_result",
+                reason="tile_grid can only be used for batch jobs.",
+            )
+
         if batch_mode and any(
             [
                 format_options.get("use_s3proxy"),

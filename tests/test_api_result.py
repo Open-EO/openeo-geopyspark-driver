@@ -5353,3 +5353,34 @@ def test_reduce_bands_to_geotiff(api110, tmp_path):
 
     only_band = raster.GetRasterBand(1)
     assert not only_band.GetDescription()
+
+
+def test_tile_grid_not_supported_in_sync_request(api110):
+    response = api110.result(
+        {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat16x16",
+                    "temporal_extent": ["2021-01-05", "2021-01-06"],
+                    "spatial_extent": {"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
+                    "bands": ["Flat:1"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                    "options": {"tile_grid": "wgs84-1degree"},
+                },
+                "result": True,
+            },
+        }
+    )
+
+    response.assert_error(
+        status_code=400,
+        error_code="ProcessParameterInvalid",
+        message="tile_grid can only be used for batch jobs",
+    )
