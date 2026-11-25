@@ -25,7 +25,6 @@ from openeo_driver.views import build_app
 
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.deploy import patch_sar_backscatter_spec
 
 log = logging.getLogger(__name__)
 
@@ -131,7 +130,6 @@ def main():
 
     backend_implementation = create_lite_backend_implementation()
     app = build_app(backend_implementation=backend_implementation)
-    patch_sar_backscatter_spec(backend_implementation)
 
     def on_started():
         app.logger.setLevel("DEBUG")
