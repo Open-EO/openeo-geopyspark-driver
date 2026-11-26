@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import traceback
 import urllib
@@ -139,6 +140,7 @@ from openeogeotrellis.layercatalog import (
     extra_validation_load_collection,
     WHITELIST,
 )
+from openeogeotrellis import fast_job
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.ml.modelloader import ModelLoader
@@ -426,6 +428,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         self._principal = principal
         self._key_tab = key_tab
+        # Fast job threads evaluate process graphs with this backend implementation (see `GpsBatchJobs._start_fast_job`)
+        self.batch_jobs.set_backend_implementation(self)
 
     def capabilities_billing(self) -> dict:
         return {
@@ -1712,6 +1716,10 @@ class GpsBatchJobs(backend.BatchJobs):
         self._double_job_registry = DoubleJobRegistry(
             elastic_job_registry=elastic_job_registry,
         )
+        self._backend_implementation: Optional["GeoPySparkBackendImplementation"] = None
+
+    def set_backend_implementation(self, backend_implementation: "GeoPySparkBackendImplementation"):
+        self._backend_implementation = backend_implementation
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -1872,6 +1880,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
+
+        if dependencies is None and fast_job.is_fast_execution_requested(job_options):
+            self._start_fast_job(job_id=job_id, user=user, job_info=job_info, api_version=api_version, log=log)
+            return
+
         isKube = ConfigParams().is_kube_deploy
         options_class = K8SOptions if isKube else JobOptions
         # Shared by small job detection and dependency scheduling
@@ -2266,6 +2279,76 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(
                         f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
                     )
+
+    def _start_fast_job(
+        self, *, job_id: str, user: User, job_info: dict, api_version: str, log: logging.LoggerAdapter
+    ) -> threading.Thread:
+        """
+        Fast execution of a small batch job (EOEPCA/roadmap#566): instead of launching a dedicated
+        batch job driver, run the job in a "fast job thread" of this (web app) driver, using its Spark context.
+        Results and metadata are written to the job work dir, in the same layout as a normal batch job.
+        """
+        user_id = user.user_id
+        job_options = job_info.get("job_options") or {}
+        options = JobOptions.from_dict(job_options)
+        options.validate()
+        # TODO: storage step 2: write results with direct S3 access (STS proxy credentials) instead of local/mounted dir
+        job_dir = self.get_job_work_dir(job_id=job_id)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        metadata_file = job_dir / JOB_METADATA_FILENAME
+        application_id = fast_job.fast_job_application_id(job_id)
+        log.info(f"Fast execution of job {job_id}: {application_id=} {job_dir=}")
+
+        with self._double_job_registry as dbl_registry:
+            dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+            dbl_registry.set_results_metadata_uri(
+                job_id=job_id, user_id=user_id, results_metadata_uri=f"file://{metadata_file}"
+            )
+            infra_id = get_backend_config().infra_id
+            status_kwargs = {"infra_id": infra_id} if infra_id else {}
+            dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED, **status_kwargs)
+
+        # Deep copy: evaluation mutates the process graph in place, which must not leak into the job registry
+        job_specification = deepcopy(
+            {"process_graph": job_info["process"]["process_graph"], "job_options": job_options}
+        )
+        default_sentinel_hub_credentials = (
+            (self._default_sentinel_hub_client_id, self._default_sentinel_hub_client_secret)
+            if self._default_sentinel_hub_client_id and self._default_sentinel_hub_client_secret
+            else None
+        )
+
+        def run():
+            # Local import to avoid circular import (batch_job imports backend)
+            from openeogeotrellis.deploy.batch_job import run_job
+
+            run_job(
+                job_specification,
+                output_file=job_dir / "out",
+                metadata_file=metadata_file,
+                api_version=api_version,
+                job_dir=job_dir,
+                dependencies=[],
+                user_id=user_id,
+                max_soft_errors_ratio=float(options.soft_errors_arg()),
+                default_sentinel_hub_credentials=default_sentinel_hub_credentials,
+                access_token=(user.internal_auth_data or {}).get("access_token"),
+                job_id=job_id,
+                backend_implementation=self._backend_implementation,
+                shared_spark_context=True,
+            )
+
+        def set_status(**kwargs):
+            with self._double_job_registry as registry:
+                registry.set_status(job_id=job_id, user_id=user_id, **kwargs)
+
+        def get_status() -> str:
+            with self._double_job_registry as registry:
+                return registry.get_job(job_id=job_id, user_id=user_id)["status"]
+
+        return fast_job.start_fast_job_thread(
+            job_id=job_id, user_id=user_id, job_dir=job_dir, set_status=set_status, get_status=get_status, run=run
+        )
 
     def _resolve_udf_dependencies_for_k8s(self, uris: List[str], *, job_id: str, user_id: str) -> List[str]:
         """Resolve UDF dependency URIs (files or archives), replacing S3 URIs with presigned URLs."""
@@ -2675,6 +2758,15 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
+        if fast_job.is_fast_execution_requested(job_info.job_options):
+            # TODO: in a deployed setting, these per-job log files should be picked up by Vector (and end up in ES).
+            return fast_job.read_fast_job_logs(
+                fast_job.get_fast_job_log_file(self.get_job_work_dir(job_id=job_id)),
+                offset=offset,
+                level=level,
+                audience=audience,
+            )
+
         return elasticsearch_logs(
             job_id=job_id,
             create_time=job_info.created,
@@ -2697,6 +2789,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
         application_id = job_info['application_id']
         logger.debug(f"Cancelling job with application_id: {application_id}")
+
+        if fast_job.is_fast_job_application_id(application_id):
+            # A Python thread can not be killed: just mark the job as canceled,
+            # the fast job thread will not overwrite that status when it ends.
+            # TODO: actually stop the work (e.g. cancel Spark job group of the fast job thread).
+            logger.warning(f"Canceling fast job {job_id} ({application_id}): only updating status")
+            with self._double_job_registry as registry:
+                registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
+            return
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:

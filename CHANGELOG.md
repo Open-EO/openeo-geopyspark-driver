@@ -38,6 +38,7 @@ without compromising stable operations.
 - Kubernetes batch jobs: support `s3://` UDF dependency files and archives (`udf-dependency-files` and `udf-dependency-archives` job options) from workspace buckets, by resolving them to presigned URLs on the internal S3 proxy ([eu-cdse/openeo-cdse-infra#1224](https://github.com/eu-cdse/openeo-cdse-infra/issues/1224))
 - Replace `open_telemetry_metrics_exporter` with the boolean `detailed_metrics` job option.
 - Logging: keep batch job failure diagnostics visible in user-facing job logs.
+- Experimental: run small batch jobs with job option `allow_fast_execution: true` in a thread of the web app driver (reusing its Spark context) instead of starting a separate batch job driver. Results and logs are written to the local job directory ([EOEPCA/roadmap#566](https://github.com/EOEPCA/roadmap/issues/566))
 - Batch job results: when `detailed_metrics` is enabled, include detailed Prometheus metrics in result metadata.
 - Allow `openeo-jar-path` artifacts from `https://repo.vito.be/` and GitHub releases of `Open-EO/openeo-geotrellis-extensions`, in addition to the existing Artifactory locations.
 - Application metrics script: report per-collection pixel-load speeds and totals, UDF execution times, executor task runtime, lifetime and utilization, and peak memory usage, working set and limits.

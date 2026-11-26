@@ -71,7 +71,6 @@ logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
 
 
 OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
-GlobalExtraLoggingFilter.set("job_id", get_job_id(default="unknown-job"))
 
 
 def _create_job_dir(job_dir: Path):
@@ -255,8 +254,23 @@ def run_job(
     sentinel_hub_client_alias="default",
     vault_token: str = None,
     access_token: str = None,
+    job_id: Optional[str] = None,
+    backend_implementation: Optional[GeoPySparkBackendImplementation] = None,
+    shared_spark_context: bool = False,
 ) -> None:
+    """
+    Evaluate a batch job's process graph and write its results and (STAC) metadata to `job_dir`.
+
+    Besides the batch job driver entry point (`main`), this can also be called
+    from the web app driver (fast execution of small batch jobs):
+
+    :param job_id: job id; defaults to the job id from the batch job environment (env var).
+    :param backend_implementation: backend implementation to use, a new one is created if not given.
+    :param shared_spark_context: whether the Spark context (JVM) is shared with other work
+        (e.g. web app driver), in which case it should be left untouched (no cleanup/stop).
+    """
     dependencies = dependencies or []
+    job_id = job_id or get_job_id(default="unknown-job")
 
     # TODO: migrate all raw job option usage to parsed job options
     job_options = job_specification.get("job_options", {})
@@ -267,6 +281,7 @@ def run_job(
     logger.info(f"{stac11_mode=} {job_options.get('stac-version')=}")
 
     settings = _build_job_results_settings(
+        job_id=job_id,
         job_options=job_options,
         stac11_mode=stac11_mode,
         omit_derived_from_links=omit_derived_from_links,
@@ -278,7 +293,13 @@ def run_job(
     output_file = Path(output_file).absolute()
     metadata_file = Path(metadata_file).absolute()
     job_dir = Path(job_dir).absolute()
-    hooks = GeoPySparkJobResultsHooks(job_dir=job_dir, output_file=output_file, dependencies=dependencies, job_options = parsed_job_options)
+    hooks = GeoPySparkJobResultsHooks(
+        job_dir=job_dir,
+        output_file=output_file,
+        dependencies=dependencies,
+        job_options=parsed_job_options,
+        shared_spark_context=shared_spark_context,
+    )
 
     try:
         logger.info(f"Job spec: {json.dumps(job_specification, indent=1)}")
@@ -292,16 +313,17 @@ def run_job(
         except Exception as e:
             raise UdfDependencyHandlingFailure(message=f"Failed extracting/installing UDF dependencies.") from e
 
-        backend_implementation = GeoPySparkBackendImplementation(
-            use_job_registry=bool(get_backend_config().ejr_api),
-            do_ejr_health_check=False,
-        )
+        if backend_implementation is None:
+            backend_implementation = GeoPySparkBackendImplementation(
+                use_job_registry=bool(get_backend_config().ejr_api),
+                do_ejr_health_check=False,
+            )
 
-        if default_sentinel_hub_credentials is not None:
-            backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
+            if default_sentinel_hub_credentials is not None:
+                backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
         logger.debug(f"Using backend implementation {backend_implementation}")
-        correlation_id = get_job_id(default="unknown-job")
+        correlation_id = job_id
         logger.info(f"Correlation id: {correlation_id}")
         env_values = {
             "version": api_version or "1.0.0",
@@ -361,11 +383,16 @@ def run_job(
 
 
 def _build_job_results_settings(
-    *, job_options: dict, stac11_mode: bool, omit_derived_from_links: bool, max_soft_errors_ratio: float
+    *,
+    job_options: dict,
+    stac11_mode: bool,
+    omit_derived_from_links: bool,
+    max_soft_errors_ratio: float,
+    job_id: Optional[str] = None,
 ) -> JobResultsSettings:
     backend_config = get_backend_config()
     return JobResultsSettings(
-        job_id=get_job_id(default="unknown-job"),
+        job_id=job_id or get_job_id(default="unknown-job"),
         stac11_mode=stac11_mode,
         omit_derived_from_links=omit_derived_from_links,
         detailed_asset_metadata=job_options.get("detailed_asset_metadata", False),
@@ -397,8 +424,17 @@ class GeoPySparkJobResultsHooks:
     See `openeogeotrellis.job_results.settings.JobResultsHooks`.
     """
 
-    def __init__(self, *, job_dir: Path, output_file: Path, dependencies: List[dict], job_options: JobOptions):
+    def __init__(
+        self,
+        *,
+        job_dir: Path,
+        output_file: Path,
+        dependencies: List[dict],
+        job_options: JobOptions,
+        shared_spark_context: bool = False,
+    ):
         self._job_dir = job_dir
+        self._shared_spark_context = shared_spark_context
         self._output_file = output_file
         self._dependencies = dependencies
         self._is_kube_deploy = ConfigParams().is_kube_deploy
@@ -475,6 +511,9 @@ class GeoPySparkJobResultsHooks:
         mode = self._job_options.spark_context_cleanup
         if mode == "none":
             return
+        if self._shared_spark_context:
+            logger.info(f"Ignoring spark_context_cleanup {mode=}: Spark context is shared (e.g. web app driver)")
+            return
 
         sc = SparkContext.getOrCreate()
         if mode == "kill-executors":
@@ -548,6 +587,9 @@ class GeoPySparkJobResultsHooks:
             batch_job_metadata.transform_stac_metadata(job_dir)
 
     def before_export_workspace(self) -> None:
+        if self._shared_spark_context:
+            # GDALWarp and the Spark context are shared with other work: leave them alone.
+            return
         try:
             get_jvm().com.azavea.gdal.GDALWarp.deinit()
         except Py4JError as e:
@@ -643,6 +685,7 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
 
 
 def start_main():
+    GlobalExtraLoggingFilter.set("job_id", get_job_id(default="unknown-job"))
     setup_logging(
         get_logging_config(
             root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],
