@@ -382,7 +382,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             user_defined_processes = InMemoryUserDefinedProcessRepository()
         else:
             user_defined_processes = ZooKeeperUserDefinedProcessRepository(
-                hosts=ConfigParams().zookeepernodes,
+                hosts=get_backend_config().zookeeper_hosts,
                 zk_client_reuse=get_backend_config().udp_registry_zookeeper_client_reuse,
             )
 
@@ -2001,7 +2001,7 @@ class GpsBatchJobs(backend.BatchJobs):
             concurrent_pod_limit = ConfigParams().concurrent_pod_limit
             if not get_backend_config().yunikorn_user_specific_queues:
                 try:
-                    with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
+                    with zk_client(hosts=get_backend_config().zookeeper_hosts) as zk:
                         zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
                         concurrent_pod_limit = int(zk.get(zk_path)[0])
                         log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
