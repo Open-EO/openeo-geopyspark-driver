@@ -220,7 +220,12 @@ def test_fit_class_random_forest_batch_job_metadata(
     metadata_result["ml_model_metadata"]["id"] = "rf-uuid"
     assert metadata_result == DictSubSet(
         {
-            "assets": {"randomforest.model.tar.gz": {"href": str(tmp_path / "randomforest.model.tar.gz")}},
+            "assets": {
+                "randomforest.model.tar.gz": {
+                    "href": str(tmp_path / "randomforest.model.tar.gz"),
+                    "file:local_path": "randomforest.model.tar.gz",
+                }
+            },
             "ml_model_metadata": {
                 "stac_version": "1.0.0",
                 "stac_extensions": ["https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"],
