@@ -5,6 +5,7 @@ from unittest import skip
 import dirty_equals
 import geopyspark as gps
 import pytest
+from openeo_driver.errors import ProcessParameterInvalidException
 import xarray as xr
 from openeo.metadata import Band
 from openeo_driver.util.geometry import geojson_to_geometry
@@ -230,32 +231,28 @@ class TestDownload:
         }
         assert assets == expected
 
-    def test_write_assets_samples_tile_grid(self, tmp_path):
-        """
-        See also: tests.test_batch_result.test_unified_asset_keys_tile_grid
-
-        """
+    def test_write_assets_samples_tile_grid_requires_batch_mode(self, tmp_path):
         input_layer = layer_with_two_bands_and_one_date()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
 
-        res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format, format_options={
-            "multidate": True,  # not used
-            "batch_mode": False,
-            "geometries": geojson_to_geometry(self.features),
-            "sample_by_feature": True,
-            "feature_id_property": 'id',
-            "filename_prefix": "filenamePrefixTest",
-            "tile_grid": "100km",
-        })
-        assert len(res) == 30
-        assets = {asset[1]["href"]: asset[1] for item in res.values() for asset in item['assets'].items()}
-        asset = list(assets.values())[0]
-        assert Path(asset["href"]).parent == tmp_path
-        assert asset['roles'] == ['data']
-        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
+        with pytest.raises(ProcessParameterInvalidException, match="tile_grid can only be used for batch jobs"):
+            imagecollection.write_assets(
+                str(tmp_path / "test_download_result.tiff"),
+                format=format,
+                format_options={
+                    "multidate": True,  # not used
+                    "batch_mode": False,
+                    "geometries": geojson_to_geometry(self.features),
+                    "sample_by_feature": True,
+                    "feature_id_property": "id",
+                    "filename_prefix": "filenamePrefixTest",
+                    "tile_grid": "100km",
+                },
+            )
+        assert list(tmp_path.iterdir()) == []
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
         """
@@ -396,6 +393,9 @@ class TestDownload:
             return
         if attach_gdalinfo_assets and format_arg != "GTIFF":
             # 'attach_gdalinfo_assets' is only relevant when outputting 'GTIFF'
+            return
+        if tile_grid and not batch_mode and format_arg == "GTIFF":
+            # 'tile_grid' is rejected outside of 'batch_mode' (see test_write_assets_samples_tile_grid_requires_batch_mode)
             return
 
         if space_type == "spacetime":
