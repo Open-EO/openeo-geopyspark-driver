@@ -426,3 +426,37 @@ def test_zonal_statistics_spatial_default_still_csv(imagecollection_with_two_ban
 
     assert type(result) is AggregateSpatialVectorCube
     assert len(jvm_adapter.compute_generic_timeseries_from_spatial_datacube.call_args.args) == 5
+
+
+def _skip_without_spatial_output_options_jar():
+    from openeogeotrellis.utils import get_jvm
+
+    loader = get_jvm().java.lang.Thread.currentThread().getContextClassLoader()
+    adapter_class = loader.loadClass("org.openeo.geotrellis.ComputeStatsGeotrellisAdapter")
+    if "compute_generic_timeseries_dataframe_from_spatial_datacube" not in [m.getName() for m in adapter_class.getMethods()]:
+        pytest.skip("geotrellis-extensions jar without spatial aggregate_spatial output options (#969)")
+
+
+@pytest.mark.parametrize(
+    ["config", "expected_type"],
+    [
+        ({"aggregate_spatial_output_format": "parquet"}, AggregateSpatialVectorCubeParquet),
+        ({"aggregate_spatial_in_memory_max_polygons": 1000}, AggregateSpatialVectorCubeInMemory),
+    ],
+)
+def test_aggregate_spatial_vector_cube_output_options_with_jvm(
+    imagecollection_with_two_bands_spatial_only, config, expected_type
+):
+    from openeogeotrellis.testing import gps_config_overrides
+
+    _skip_without_spatial_output_options_jar()
+    cube = imagecollection_with_two_bands_spatial_only
+    vector_cube = _feature_collection_vector_cube()
+
+    expected = cube.aggregate_spatial(vector_cube, _SPATIAL_AGGREGATE_PROCESS)
+    assert type(expected) is AggregateSpatialVectorCube
+    with gps_config_overrides(**config):
+        result = cube.aggregate_spatial(vector_cube, _SPATIAL_AGGREGATE_PROCESS)
+
+    assert type(result) is expected_type
+    assert result.prepare_for_json() == expected.prepare_for_json()
