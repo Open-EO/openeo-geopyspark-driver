@@ -2121,7 +2121,7 @@ class GeopysparkDataCube(DriverDataCube):
         return get_jvm().org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
 
     def _zookeepers(self):
-        return ','.join(ConfigParams().zookeepernodes)
+        return ",".join(get_backend_config().zookeeper_hosts)
 
     # FIXME: define this somewhere else?
     def _as_python(self, java_object):
