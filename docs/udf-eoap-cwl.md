@@ -15,7 +15,7 @@ class: CommandLineTool
 # This uses a very simple image that packages some JSON and TIFF files and copies them to the output directory.
 requirements:
   - class: DockerRequirement
-    dockerPull: openeo-docker-local-prod.repo.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.10
+    dockerPull: ghcr.io/open-eo/openeo-calrissian-default:1.1.0
 baseCommand: ["sh", "-c", "cp /data/* ."]
 inputs: []
 outputs:

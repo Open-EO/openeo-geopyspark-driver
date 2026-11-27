@@ -17,7 +17,11 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.aggregatespatialvectorcube import (
+    AggregateSpatialVectorCube,
+    AggregateSpatialVectorCubeInMemory,
+    AggregateSpatialVectorCubeParquet,
+)
 from openeogeotrellis.utils import to_projected_polygons
 from openeogeotrellis.vectorcube import AggregateSpatialResultCSV, AggregateSpatialResultParquet
 from tests.data import get_test_data_file
@@ -325,3 +329,134 @@ def test_aggregate_spatial_result_parquet_matches_csv(tmp_path):
         "2017-01-15T00:00:00Z": [[3.0], [4.0]],
     }
     assert open(actual.to_csv()).read().splitlines()[0] == "date,feature_index,band_0"
+
+
+_SPATIAL_AGGREGATE_PROCESS = {
+    "mean1": {
+        "process_id": "mean",
+        "arguments": {"data": {"from_parameter": "data"}},
+        "result": True,
+    }
+}
+
+
+def _feature_collection_vector_cube() -> DriverVectorCube:
+    with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
+        geojson = json.load(f)
+    return DriverVectorCube.from_geojson(geojson, columns_for_cube=DriverVectorCube.COLUMN_SELECTION_ALL)
+
+
+def test_aggregate_spatial_vector_cube_parquet_matches_csv(tmp_path):
+    import pandas as pd
+    from shapely.geometry import GeometryCollection, box
+
+    regions = GeometryCollection([box(0, 0, 1, 1), box(1, 1, 2, 2)])
+    df = pd.DataFrame({"feature_index": [1, 0], "band_0": [4.0, 3.0], "band_1": [2.0, 1.0]})
+    csv_dir = tmp_path / "csv"
+    csv_dir.mkdir()
+    df.to_csv(csv_dir / "part-0.csv", index=False)
+    parquet_dir = tmp_path / "parquet"
+    parquet_dir.mkdir()
+    df.to_parquet(parquet_dir / "part-0.parquet")
+
+    expected = AggregateSpatialVectorCube(str(csv_dir), regions=regions).prepare_for_json()
+    actual = AggregateSpatialVectorCubeParquet(str(parquet_dir), regions=regions)
+    assert actual.prepare_for_json() == expected == [[3.0, 1.0], [4.0, 2.0]]
+    # conversion happens once
+    assert actual.prepare_for_json() == expected
+
+
+def test_aggregate_spatial_vector_cube_in_memory_matches_csv(tmp_path):
+    import pandas as pd
+    from shapely.geometry import GeometryCollection, box
+
+    regions = GeometryCollection([box(0, 0, 1, 1), box(1, 1, 2, 2)])
+    df = pd.DataFrame({"feature_index": [1, 0], "band_0": [4.0, 3.0]})
+    jdf = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("pyspark.sql.DataFrame", lambda jdf_, session: MagicMock(toPandas=lambda: df))
+        mp.setattr("pyspark.sql.SparkSession.builder", MagicMock())
+        result = AggregateSpatialVectorCubeInMemory(jdf, regions=regions)
+    assert result.prepare_for_json() == [[3.0], [4.0]]
+
+
+def test_zonal_statistics_spatial_parquet_output(imagecollection_with_two_bands_spatial_only, monkeypatch):
+    from openeogeotrellis.testing import gps_config_overrides
+
+    jvm_adapter = MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = imagecollection_with_two_bands_spatial_only.aggregate_spatial(
+            _feature_collection_vector_cube(), _SPATIAL_AGGREGATE_PROCESS
+        )
+
+    assert isinstance(result, AggregateSpatialVectorCubeParquet)
+    args = jvm_adapter.compute_generic_timeseries_from_spatial_datacube.call_args.args
+    assert len(args) == 7
+    assert args[-2:] == ("parquet", "file")
+
+
+def test_zonal_statistics_spatial_in_memory_output(imagecollection_with_two_bands_spatial_only, monkeypatch):
+    from openeogeotrellis.testing import gps_config_overrides
+
+    jvm_adapter = MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+    monkeypatch.setattr(
+        "openeogeotrellis.geopysparkdatacube.AggregateSpatialVectorCubeInMemory",
+        lambda jdf, regions, metadata=None: ("in-memory", jdf),
+    )
+
+    with gps_config_overrides(aggregate_spatial_in_memory_max_polygons=1000):
+        result = imagecollection_with_two_bands_spatial_only.aggregate_spatial(
+            _feature_collection_vector_cube(), _SPATIAL_AGGREGATE_PROCESS
+        )
+
+    assert result == ("in-memory", jvm_adapter.compute_generic_timeseries_dataframe_from_spatial_datacube.return_value)
+    jvm_adapter.compute_generic_timeseries_from_spatial_datacube.assert_not_called()
+
+
+def test_zonal_statistics_spatial_default_still_csv(imagecollection_with_two_bands_spatial_only, monkeypatch):
+    jvm_adapter = MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    result = imagecollection_with_two_bands_spatial_only.aggregate_spatial(
+        _feature_collection_vector_cube(), _SPATIAL_AGGREGATE_PROCESS
+    )
+
+    assert type(result) is AggregateSpatialVectorCube
+    assert len(jvm_adapter.compute_generic_timeseries_from_spatial_datacube.call_args.args) == 5
+
+
+def _skip_without_spatial_output_options_jar():
+    from openeogeotrellis.utils import get_jvm
+
+    loader = get_jvm().java.lang.Thread.currentThread().getContextClassLoader()
+    adapter_class = loader.loadClass("org.openeo.geotrellis.ComputeStatsGeotrellisAdapter")
+    if "compute_generic_timeseries_dataframe_from_spatial_datacube" not in [m.getName() for m in adapter_class.getMethods()]:
+        pytest.skip("geotrellis-extensions jar without spatial aggregate_spatial output options (#969)")
+
+
+@pytest.mark.parametrize(
+    ["config", "expected_type"],
+    [
+        ({"aggregate_spatial_output_format": "parquet"}, AggregateSpatialVectorCubeParquet),
+        ({"aggregate_spatial_in_memory_max_polygons": 1000}, AggregateSpatialVectorCubeInMemory),
+    ],
+)
+def test_aggregate_spatial_vector_cube_output_options_with_jvm(
+    imagecollection_with_two_bands_spatial_only, config, expected_type
+):
+    from openeogeotrellis.testing import gps_config_overrides
+
+    _skip_without_spatial_output_options_jar()
+    cube = imagecollection_with_two_bands_spatial_only
+    vector_cube = _feature_collection_vector_cube()
+
+    expected = cube.aggregate_spatial(vector_cube, _SPATIAL_AGGREGATE_PROCESS)
+    assert type(expected) is AggregateSpatialVectorCube
+    with gps_config_overrides(**config):
+        result = cube.aggregate_spatial(vector_cube, _SPATIAL_AGGREGATE_PROCESS)
+
+    assert type(result) is expected_type
+    assert result.prepare_for_json() == expected.prepare_for_json()
