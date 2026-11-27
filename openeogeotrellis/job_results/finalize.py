@@ -78,6 +78,7 @@ def finalize_job(
             ml_model_metadata=ml_model_metadata,
             is_item=settings.stac11_mode,
             result_items=result_items,
+            extend_spatial_extent=bool(result_items) and any(r.options.get("tile_grid") for r in results),
         )
 
     def write(metadata: dict) -> None:
