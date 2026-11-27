@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -409,10 +410,33 @@ def test_metadata_write_phases_logged(tmp_path, caplog):
         workspace_repository=None,
     )
 
-    wrote = [m for m in caplog.messages if m.startswith("Wrote job metadata")]
-    assert [m.split("phase=")[1].split(")")[0] for m in wrote] == ["'initial'", "'assets-written'", "'final'"]
-    assert all(str(metadata_file) in m for m in wrote)
-    assert wrote[-1].endswith(f"file size {metadata_file.stat().st_size}")
+    file_size = metadata_file.stat().st_size
+    about_to_write = [
+        m.groups()
+        for m in (
+            re.fullmatch(
+                r"Serialized job metadata \(phase='([\w-]+)'\): \d+ characters, about to \(over\)write (.+) \(current state: (.+)\)",
+                msg,
+            )
+            for msg in caplog.messages
+        )
+        if m
+    ]
+    assert about_to_write[0] == ("initial", str(metadata_file), "non-existent")
+    assert [phase for phase, _, _ in about_to_write] == ["initial", "assets-written", "final"]
+    assert all(re.fullmatch(r"file_size=\d+", state) for _, _, state in about_to_write[1:])
+
+    wrote = [
+        m.groups()
+        for m in (
+            re.fullmatch(r"Wrote job metadata \(phase='([\w-]+)'\) to (.+): \d+ characters, resulting state: (.+)", msg)
+            for msg in caplog.messages
+        )
+        if m
+    ]
+    assert [phase for phase, _, _ in wrote] == ["initial", "assets-written", "final"]
+    assert all(path == str(metadata_file) for _, path, _ in wrote)
+    assert wrote[-1][2] == f"file_size={file_size}"
 
 
 def test_metadata_serialization_failure_keeps_previous_file(tmp_path, caplog):
