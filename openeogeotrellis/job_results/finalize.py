@@ -8,6 +8,7 @@ happens once the process graph has been evaluated (or failed to evaluate).
 import concurrent.futures
 import json
 import logging
+import math
 import tempfile
 import uuid
 from copy import deepcopy
@@ -327,6 +328,24 @@ def _store_detailed_metrics(
         return None
 
 
+def _sanitize_band_statistics_for_json(metadata: dict) -> None:
+    asset_collections = [
+        metadata.get("assets", {}),
+        *(item.get("assets", {}) for item in metadata.get("items", [])),
+    ]
+    for assets in asset_collections:
+        for asset in assets.values():
+            for bands_key in ("bands", "raster:bands"):
+                for band in asset.get(bands_key, []) or []:
+                    statistics = band.get("statistics")
+                    if isinstance(statistics, dict):
+                        band["statistics"] = {
+                            key: value
+                            for key, value in statistics.items()
+                            if value is not None and (not isinstance(value, float) or math.isfinite(value))
+                        }
+
+
 def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings, hooks: JobResultsHooks) -> None:
     """Writes a best-effort metadata file for a job that failed before evaluation completed."""
     tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
@@ -392,6 +411,7 @@ def _write_metadata_file(
             for item in out_metadata.get("items", []):
                 item.setdefault("links", []).append(link)
 
+    _sanitize_band_statistics_for_json(out_metadata)
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)
     logger.info("wrote metadata to %s" % metadata_file)

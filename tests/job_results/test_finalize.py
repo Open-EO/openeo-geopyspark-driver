@@ -7,7 +7,8 @@ import pytest
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, SaveResult
 
-from openeogeotrellis.job_results.finalize import finalize_job, write_failure_metadata
+from openeogeotrellis.job_results.finalize import _write_metadata_file, finalize_job, write_failure_metadata
+from openeogeotrellis.job_results.items import WrittenAsset, WrittenItem, build_items
 from openeogeotrellis.job_results.settings import JobResultsSettings, ResultCubeMetadata
 
 
@@ -137,6 +138,34 @@ def _job_paths(tmp_path):
 
 def _read_metadata(metadata_file: Path) -> dict:
     return json.loads(metadata_file.read_text())
+
+
+@pytest.mark.parametrize("stac11_mode", [False, True])
+def test_write_metadata_with_invalid_band_statistics(tmp_path, stac11_mode):
+    bands = [
+        {
+            "name": "B02",
+            "statistics": {"mean": 12.0, "stddev": float("nan"), "valid_percent": 100.88, "other": float("inf")},
+        }
+    ]
+    item = WrittenItem(id="item1", assets=[WrittenAsset(key="result.nc", path="/result.nc", bands=bands)])
+    item = build_items([item], format_type="application/x-netcdf")["item1"]
+    metadata = {"items": [item]} if stac11_mode else {"assets": item["assets"]}
+    metadata_file = tmp_path / "job_metadata.json"
+
+    _write_metadata_file(
+        metadata, metadata_file, stac11_mode=stac11_mode, hooks=_RecordingHooks(), auxiliary_links_cache={}
+    )
+
+    def reject_constant(value):
+        raise ValueError(f"Unexpected JSON constant: {value}")
+
+    result = json.loads(metadata_file.read_text(), parse_constant=reject_constant)
+    assets = result["items"][0]["assets"] if stac11_mode else result["assets"]
+    assert assets["result.nc"]["bands"] == [
+        {"name": "B02", "statistics": {"mean": 12.0, "valid_percent": 100.88}}
+    ]
+    assert assets["result.nc"]["raster:bands"] == assets["result.nc"]["bands"]
 
 
 def test_single_result(tmp_path):

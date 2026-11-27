@@ -147,7 +147,6 @@ class WrittenAsset:
     nodata: Optional[float] = None
     data_type: Optional[str] = None
 
-
 @dataclass(frozen=True)
 class WrittenItem:
     id: str

@@ -4,13 +4,13 @@ gdalinfo-based raster metadata for STAC assets.
 import copy
 import json
 import logging
+import math
 import multiprocessing
 import os
 import subprocess
 import time
 from dataclasses import dataclass
 from functools import partial
-from math import isfinite
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
@@ -58,21 +58,21 @@ class BandStatistics:
     stddev: Optional[float] = None
     valid_percent: Optional[float] = None
 
-    @staticmethod
-    def _to_jsonable_float(x: Optional[float]) -> Union[float, str, None]:
-        if x is None:
-            return None
-
-        return x if isfinite(x) else str(x)
-
-    def to_dict(self):
-        return {
-            "minimum": self._to_jsonable_float(self.minimum),
-            "maximum": self._to_jsonable_float(self.maximum),
-            "mean": self._to_jsonable_float(self.mean),
-            "stddev": self._to_jsonable_float(self.stddev),
-            "valid_percent": self._to_jsonable_float(self.valid_percent),
+    def to_dict(self, jsonable: bool = True):
+        statistics = {
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "mean": self.mean,
+            "stddev": self.stddev,
+            "valid_percent": self.valid_percent,
         }
+        if jsonable:
+            return {
+                key: value
+                for key, value in statistics.items()
+                if value is not None and (not isinstance(value, float) or math.isfinite(value))
+            }
+        return statistics
 
 
 """
@@ -108,7 +108,7 @@ class AssetRasterMetadata:
         if self.statistics is not None:
             raster_bands = []
             for band, stats in self.statistics.items():
-                raster_bands.append({"name": band, "statistics": dict_no_none(stats.to_dict())})
+                raster_bands.append({"name": band, "statistics": stats.to_dict(jsonable=True)})
             result["raster:bands"] = raster_bands
 
         return result

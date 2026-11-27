@@ -1,3 +1,5 @@
+import math
+
 import pytest
 from openeo_driver.errors import OpenEOApiException
 
@@ -114,6 +116,33 @@ class TestBuildItemsStitch:
 
 
 class TestBuildItemsBatch:
+    @pytest.mark.parametrize("valid_percent", [float("nan"), float("inf"), float("-inf")])
+    def test_invalid_band_statistics(self, valid_percent):
+        bands = [
+            {
+                "name": "B02",
+                "statistics": {
+                    "minimum": -999.0,
+                    "maximum": 23208.0,
+                    "mean": -5857.25,
+                    "stddev": float("nan"),
+                    "valid_percent": valid_percent,
+                    "other": float("-inf"),
+                },
+            }
+        ]
+        item = _item(assets=[WrittenAsset(key="openEO.nc", path="/a.nc", bands=bands)])
+        asset = build_items([item], format_type="application/x-netcdf")["item1"]["assets"]["openEO.nc"]
+        assert asset["bands"] == asset["raster:bands"] == bands
+        assert math.isnan(asset["bands"][0]["statistics"]["stddev"])
+
+    @pytest.mark.parametrize("valid_percent", [0.0, 53.125, 100.0, -0.01, 100.88479289410685])
+    def test_band_statistics_are_preserved(self, valid_percent):
+        bands = [{"name": "B01", "statistics": {"stddev": 0.0, "valid_percent": valid_percent}}]
+        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
+        asset = build_items([item], format_type="image/tiff")["item1"]["assets"]["openEO"]
+        assert asset["bands"] == asset["raster:bands"] == bands
+
     def test_band_indices_empty_falls_back_to_all_bands(self):
         # Quirk: an empty (but non-None) band_indices list is falsy, so BATCH includes all bands.
         bands = [{"name": "B01"}, {"name": "B02"}]

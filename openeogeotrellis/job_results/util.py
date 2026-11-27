@@ -12,7 +12,6 @@ from shapely.ops import transform
 
 GDALINFO_SUFFIX = "_gdalinfo.json"
 
-
 def json_default(obj: Any) -> Any:
     """default function for packing objects in JSON."""
     if isinstance(obj, Path):
