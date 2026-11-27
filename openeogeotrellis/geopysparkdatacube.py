@@ -71,6 +71,7 @@ from openeogeotrellis.utils import (
     normalize_temporal_extent,
 )
 from openeogeotrellis.udf import run_udf_code
+from openeogeotrellis.util.audience_logging import user_facing_log_context
 from openeogeotrellis._version import __version__ as softwareversion
 from openeogeotrellis.vectorcube import (
     AggregateSpatialResultCSV,
@@ -1361,11 +1362,13 @@ class GeopysparkDataCube(DriverDataCube):
         @ensure_executor_logging
         def get_metadata(x):
             from openeo.udf.run_code import load_module_from_string
-            module = load_module_from_string(udf_code)
+            with user_facing_log_context():
+                module = load_module_from_string(udf_code)
             functions = list([(k, v) for (k, v) in module.items() if callable(v) and k == "apply_metadata"])
             if len(functions)>=1:
                 apply_metadata_func = functions[0][1]
-                transformed_metadata = apply_metadata_func(metadata,context)
+                with user_facing_log_context():
+                    transformed_metadata = apply_metadata_func(metadata,context)
                 return transformed_metadata
             else:
                 raise ValueError("run_udf: apply_metadata function not found in the provided code.")

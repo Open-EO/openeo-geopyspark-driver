@@ -15,7 +15,7 @@ from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.util.audience_logging import AUDIENCE_ALL
+from openeogeotrellis.util.audience_logging import AUDIENCE_USER
 
 import logging
 
@@ -29,7 +29,7 @@ def elasticsearch_logs(
     create_time: Optional[dt.datetime] = None,
     offset: Optional[str] = None,
     level: Optional[str] = None,
-    audience: Optional[str] = "all",
+    audience: Optional[str] = AUDIENCE_USER,
 ) -> Iterable[dict]:
     """Retrieve a job's logs from Elasticsearch.
 
@@ -52,8 +52,8 @@ def elasticsearch_logs(
         Return only logs with this log level or higher.
 
     :param audience:
-        Return only logs with this `audience` ("all" by default, which disables filtering);
-        use "user" to hide developer-only logs.
+        "user" (default): return logs with audience "user" and logs without audience.
+        "developer": return all logs, without audience filtering.
 
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON
@@ -80,7 +80,7 @@ def _elasticsearch_logs(
     create_time: Optional[dt.datetime] = None,
     search_after: Optional[list] = None,
     level: Optional[str] = None,
-    audience: Optional[str] = None,
+    audience: Optional[str] = AUDIENCE_USER,
 ) -> Iterable[dict]:
     """Internal helper function to retrieve a job's logs from Elasticsearch.
 
@@ -141,8 +141,18 @@ def _elasticsearch_logs(
         )
     if level_filter:
         query["bool"]["filter"].append(level_filter)
-    if audience and audience != AUDIENCE_ALL:
-        query["bool"]["filter"].append({"term": {"audience": audience}})
+    if (audience or AUDIENCE_USER) == AUDIENCE_USER:
+        query["bool"]["filter"].append(
+            {
+                "bool": {
+                    "should": [
+                        {"term": {"audience": AUDIENCE_USER}},
+                        {"bool": {"must_not": {"exists": {"field": "audience"}}}},
+                    ],
+                    "minimum_should_match": 1,
+                }
+            }
+        )
 
     config = get_backend_config()
     with Elasticsearch(config.logging_es_hosts) as es:
