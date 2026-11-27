@@ -80,9 +80,14 @@ def finalize_job(
             result_items=result_items,
         )
 
-    def write(metadata: dict) -> None:
+    def write(metadata: dict, *, phase: str) -> None:
         _write_metadata_file(
-            metadata, metadata_file, stac11_mode=settings.stac11_mode, hooks=hooks, auxiliary_links_cache=auxiliary_links_cache
+            metadata=metadata,
+            metadata_file=metadata_file,
+            stac11_mode=settings.stac11_mode,
+            hooks=hooks,
+            auxiliary_links_cache=auxiliary_links_cache,
+            phase=phase,
         )
 
     try:
@@ -94,7 +99,7 @@ def finalize_job(
         logger.debug("finalize 1: using hooks %s for usage_metadata", hooks)
         tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
 
-        write({**result_metadata, **tracker_metadata})
+        write(metadata={**result_metadata, **tracker_metadata}, phase="initial")
 
         global_metadata_attributes = {
             "title": job_specification.get("title", ""),
@@ -250,7 +255,7 @@ def finalize_job(
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
-        write(meta)
+        write(metadata=meta, phase="assets-written")
 
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
@@ -299,7 +304,7 @@ def finalize_job(
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}} if settings.stac11_mode else {**result_metadata, **tracker_metadata}
         )
-        write(meta)
+        write(metadata=meta, phase="final")
 
 
 def _store_detailed_metrics(
@@ -331,7 +336,14 @@ def write_failure_metadata(*, metadata_file: Path, settings: JobResultsSettings,
     """Writes a best-effort metadata file for a job that failed before evaluation completed."""
     tracker_metadata = hooks.usage_metadata(omit_derived_from_links=settings.omit_derived_from_links)
     meta = {**tracker_metadata, "items": []} if settings.stac11_mode else tracker_metadata
-    _write_metadata_file(meta, metadata_file, stac11_mode=settings.stac11_mode, hooks=hooks, auxiliary_links_cache={})
+    _write_metadata_file(
+        metadata=meta,
+        metadata_file=metadata_file,
+        stac11_mode=settings.stac11_mode,
+        hooks=hooks,
+        auxiliary_links_cache={},
+        phase="failure",
+    )
 
 
 def _assets_for_result_metadata(stac11_mode: bool, assets_metadata: List[dict], results_items: List[dict]) -> dict:
@@ -350,12 +362,15 @@ def _assets_for_result_metadata(stac11_mode: bool, assets_metadata: List[dict], 
 
 def _write_metadata_file(
     metadata: dict,
-    metadata_file: Path,
     *,
+    metadata_file: Path,
     stac11_mode: bool,
     hooks: JobResultsHooks,
     auxiliary_links_cache: Dict[Tuple[str, str, bool], str],
+    phase: str = "unknown",
 ) -> None:
+    logger.info(f"Writing job metadata ({phase=}) to {metadata_file} (current state: {_file_info(metadata_file)})")
+
     def log_asset_hrefs(context: str):
         if stac11_mode:
             items_by_id = {item["id"]: item for item in metadata.get("items", [])}
@@ -392,10 +407,36 @@ def _write_metadata_file(
             for item in out_metadata.get("items", []):
                 item.setdefault("links", []).append(link)
 
-    with open(metadata_file, "w") as f:
-        json.dump(out_metadata, f, default=json_default)
-    logger.info("wrote metadata to %s" % metadata_file)
+    # Serialize before opening (and truncating) the file:
+    # a serialization failure should not leave behind an empty/truncated metadata file.
+    try:
+        serialized = json.dumps(out_metadata, default=json_default)
+    except Exception as e:
+        raise ValueError(f"Failed to serialize job metadata ({phase=}) for {metadata_file}: {e!r}") from e
+    try:
+        with open(metadata_file, "w") as f:
+            f.write(serialized)
+    except Exception as e:
+        logger.exception(
+            f"Failed to write job metadata ({phase=}) to {metadata_file}"
+            f" (resulting state: {_file_info(metadata_file)}): {e!r}"
+        )
+        raise
+    logger.info(
+        f"Wrote job metadata ({phase=}) to {metadata_file}:"
+        f" {len(serialized)} characters, resulting state: {_file_info(metadata_file)}"
+    )
     hooks.publish_metadata_file(metadata_file)
+
+
+def _file_info(path: Path) -> str:
+    """Best-effort, human-readable description of the state of a file (for logging)."""
+    try:
+        return f"file_size={Path(path).stat().st_size}"
+    except FileNotFoundError:
+        return "non-existent"
+    except OSError as e:
+        return f"unknown ({e!r})"
 
 
 def _copy_auxiliary_links(

@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional
 
+import dirty_equals
 import pytest
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, SaveResult
@@ -390,3 +392,88 @@ def test_write_failure_metadata_stac11_mode(tmp_path):
 
     metadata = _read_metadata(metadata_file)
     assert metadata["items"] == []
+
+
+def test_metadata_write_phases_logged(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+
+    finalize_job(
+        JSONResult({"a": 1}),
+        tracer=DryRunDataTracer(),
+        process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+        job_specification={"process_graph": {}},
+        job_dir=job_dir,
+        output_file=output_file,
+        metadata_file=metadata_file,
+        settings=_settings(),
+        hooks=_RecordingHooks(),
+        workspace_repository=None,
+    )
+
+    file_info = f"file_size={metadata_file.stat().st_size}"
+    path = re.escape(str(metadata_file))
+    messages = [m for m in caplog.messages if "job metadata" in m]
+    assert messages == [
+        f"Writing job metadata (phase='initial') to {metadata_file} (current state: non-existent)",
+        dirty_equals.IsStr(
+            regex=rf"Wrote job metadata \(phase='initial'\) to {path}: \d+ characters, resulting state: file_size=\d+"
+        ),
+        dirty_equals.IsStr(
+            regex=rf"Writing job metadata \(phase='assets-written'\) to {path} \(current state: file_size=\d+\)"
+        ),
+        dirty_equals.IsStr(
+            regex=rf"Wrote job metadata \(phase='assets-written'\) to {path}: \d+ characters, resulting state: file_size=\d+"
+        ),
+        dirty_equals.IsStr(regex=rf"Writing job metadata \(phase='final'\) to {path} \(current state: file_size=\d+\)"),
+        dirty_equals.IsStr(
+            regex=rf"Wrote job metadata \(phase='final'\) to {path}: \d+ characters, resulting state: {file_info}"
+        ),
+    ]
+
+
+def test_metadata_serialization_failure_keeps_previous_file(tmp_path):
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+
+    class _NotSerializable:
+        pass
+
+    class _BadUsageHooks(_RecordingHooks):
+        """Usage metadata is serializable for the "initial" write, but not for the later ones."""
+
+        def __init__(self):
+            super().__init__()
+            self.serializable = True
+
+        def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
+            usage = super().usage_metadata(omit_derived_from_links=omit_derived_from_links)
+            if not self.serializable:
+                usage["usage"]["bad"] = _NotSerializable()
+            return usage
+
+        def publish_metadata_file(self, metadata_file: Path) -> None:
+            super().publish_metadata_file(metadata_file)
+            self.serializable = False
+
+    hooks = _BadUsageHooks()
+
+    with pytest.raises(ValueError, match="Failed to serialize job metadata \\(phase='final'\\)") as exc_info:
+        finalize_job(
+            JSONResult({"a": 1}),
+            tracer=DryRunDataTracer(),
+            process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+            job_specification={"process_graph": {}},
+            job_dir=job_dir,
+            output_file=output_file,
+            metadata_file=metadata_file,
+            settings=_settings(),
+            hooks=hooks,
+            workspace_repository=None,
+        )
+
+    assert isinstance(exc_info.value.__cause__, TypeError)
+
+    # the initial metadata file is not truncated by the failing (re)writes
+    assert metadata_file.stat().st_size > 0
+    assert _read_metadata(metadata_file)["usage"] == {}
+    assert hooks.call_names().count("publish_metadata_file") == 1
