@@ -22,7 +22,6 @@ from openeo_driver.utils import smart_bool
 from shapely.geometry import box, mapping
 from shapely.geometry.polygon import Polygon
 
-from openeogeotrellis.job_results.raster_metadata import BandStatistics
 from .util import GDALINFO_SUFFIX, reproject_geometry
 
 _SUPPORTED_FORMATS = ("GTIFF", "PNG", "NETCDF", "JSON", "ZARR", "DEBUG_GENERAL")
@@ -147,20 +146,6 @@ class WrittenAsset:
     bands: Optional[List[dict]] = None
     nodata: Optional[float] = None
     data_type: Optional[str] = None
-
-    def __post_init__(self):
-        if self.bands is not None:
-            object.__setattr__(
-                self,
-                "bands",
-                [
-                    {**band, "statistics": BandStatistics.to_jsonable(band["statistics"])}
-                    if "statistics" in band
-                    else band
-                    for band in self.bands
-                ],
-            )
-
 
 @dataclass(frozen=True)
 class WrittenItem:

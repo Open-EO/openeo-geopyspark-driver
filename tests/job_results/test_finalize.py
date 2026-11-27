@@ -142,7 +142,12 @@ def _read_metadata(metadata_file: Path) -> dict:
 
 @pytest.mark.parametrize("stac11_mode", [False, True])
 def test_write_metadata_with_invalid_band_statistics(tmp_path, stac11_mode):
-    bands = [{"name": "B02", "statistics": {"mean": 12.0, "stddev": float("nan"), "valid_percent": 100.88}}]
+    bands = [
+        {
+            "name": "B02",
+            "statistics": {"mean": 12.0, "stddev": float("nan"), "valid_percent": 100.88, "other": float("inf")},
+        }
+    ]
     item = WrittenItem(id="item1", assets=[WrittenAsset(key="result.nc", path="/result.nc", bands=bands)])
     item = build_items([item], format_type="application/x-netcdf")["item1"]
     metadata = {"items": [item]} if stac11_mode else {"assets": item["assets"]}

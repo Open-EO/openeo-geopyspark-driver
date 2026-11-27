@@ -1,4 +1,4 @@
-import json
+import math
 
 import pytest
 from openeo_driver.errors import OpenEOApiException
@@ -133,10 +133,8 @@ class TestBuildItemsBatch:
         ]
         item = _item(assets=[WrittenAsset(key="openEO.nc", path="/a.nc", bands=bands)])
         asset = build_items([item], format_type="application/x-netcdf")["item1"]["assets"]["openEO.nc"]
-        expected = [{"name": "B02", "statistics": {"minimum": -999.0, "maximum": 23208.0, "mean": -5857.25}}]
-        assert asset["bands"] == asset["raster:bands"] == expected
-        assert json.loads(json.dumps(asset, allow_nan=False))["bands"] == expected
-        assert "stddev" in bands[0]["statistics"]
+        assert asset["bands"] == asset["raster:bands"] == bands
+        assert math.isnan(asset["bands"][0]["statistics"]["stddev"])
 
     @pytest.mark.parametrize("valid_percent", [0.0, 53.125, 100.0, -0.01, 100.88479289410685])
     def test_band_statistics_are_preserved(self, valid_percent):
