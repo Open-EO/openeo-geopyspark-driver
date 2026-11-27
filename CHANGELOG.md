@@ -55,6 +55,7 @@ without compromising stable operations.
 - Reduce number of STAC API request retries from 25 to 10 to avoid "hanging" jobs and excessive sleeping (eu-cdse/openeo-cdse-infra#1157, [#1783](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1783))
 - `export_workspace`: support not merging `derived_from` links into a STAC Collection by means of the `export-workspace-merge-derived-from-links` job option (defaults to `true`). ([#1922](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1922))
 - Remove `ConfigParams.zookeepernodes` in favor of `GpsBackendConfig.zookeeper_hosts` (same `ZOOKEEPERNODES` env var default)
+- `run_udf` along bands dimension: repartition the data cube when it has too few partitions (e.g. a single partition due to a high partitioner index reduction), bounded by the number of spatial tiles and the available Spark parallelism, to avoid serialized UDF execution ([#2012](https://github.com/Open-EO/openeo-geopyspark-driver/issues/2012))
 
 
 ## 0.73.0
