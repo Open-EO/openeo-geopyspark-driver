@@ -1,7 +1,12 @@
+import glob
 import logging
+import os
+import tempfile
 from typing import List, Optional, Union
 
 import geopyspark as gps
+import pandas as pd
+import pyspark.sql
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest
 
@@ -141,3 +146,42 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         # train a model
         model = classifier.fit(trainPool)
         return GeopySparkCatBoostModel(model)
+
+
+class AggregateSpatialVectorCubeParquet(AggregateSpatialVectorCube):
+    """
+    `aggregate_spatial` result without time dimension, written as Parquet by the JVM.
+
+    The Parquet file(s) are converted once to a CSV file in the same directory,
+    so all CSV based functionality of the parent class is reused.
+    """
+
+    def __init__(self, parquet_dir, regions, metadata=None, **kwargs):
+        super().__init__(parquet_dir, regions=regions, metadata=metadata, **kwargs)
+        self._converted = False
+
+    def _csv_path(self) -> str:
+        if not self._converted:
+            parquet_paths = sorted(glob.glob(os.path.join(self._csv_dir, "*.parquet")))
+            logger.info(f"{type(self).__name__}: converting {len(parquet_paths)} parquet file(s) in {self._csv_dir}")
+            if parquet_paths:
+                df = pd.concat(map(pd.read_parquet, parquet_paths))
+                df.to_csv(os.path.join(self._csv_dir, "converted.csv"), index=False)
+            self._converted = True
+        return super()._csv_path()
+
+
+class AggregateSpatialVectorCubeInMemory(AggregateSpatialVectorCube):
+    """
+    `aggregate_spatial` result without time dimension, collected in memory from a (small) JVM DataFrame.
+
+    The data is written to a driver-local temp CSV file (not on a shared volume),
+    so all CSV based functionality of the parent class is reused.
+    """
+
+    def __init__(self, jdf, regions, metadata=None, **kwargs):
+        # `toPandas` collects the (small) result in the driver.
+        df = pyspark.sql.DataFrame(jdf, SparkSession.builder.getOrCreate()).toPandas()
+        csv_dir = tempfile.mkdtemp(prefix="aggregate_spatial_in_memory_")
+        df.to_csv(os.path.join(csv_dir, "in_memory.csv"), index=False)
+        super().__init__(csv_dir, regions=regions, metadata=metadata, **kwargs)
