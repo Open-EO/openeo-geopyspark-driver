@@ -23,8 +23,7 @@ from openeo_driver.utils import temporal_extent_union
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
-from .settings import JobResultsSettings, ResultCubeMetadata
-from .util import to_s3_url
+from .settings import JobResultsSettings, JobStorage, ResultCubeMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -308,16 +307,19 @@ def convert_asset_outputs_to_s3_urls(job_metadata: dict, *, output_href: Callabl
 
 
 def href_from_job_local_path(
-    path: Union[os.PathLike, str], *, job_local_href_format: str, s3_bucket_name: Optional[str] = None
+    path: Union[os.PathLike, str],
+    *,
+    job_storage: Optional[JobStorage] = None,
 ) -> str:
     """
     Convert a file path from a local job context
     (e.g. a path on a job-specific mount)
     to a href that also makes sense outside the job context,
     e.g. in the web app context (without the same mounts)
+
+    The href is built with the given `job_storage` (e.g. S3 or Azure Blob),
+    falling back to a `file://` href if there is none.
     """
-    if job_local_href_format == "s3":
-        return to_s3_url(path, s3_bucket_name)
-    else:
-        # By default, assume job local path is directly usable
-        return f"file://{path}"
+    if job_storage is not None:
+        return job_storage.uri(str(path).strip("/"))
+    return f"file://{path}"

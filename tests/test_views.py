@@ -1963,7 +1963,7 @@ class TestBatchJobs:
                 False,
             ),
             (
-                {"url_signer": UrlSigner(secret="Secret!"), "job_local_href_format": "s3"},
+                {"url_signer": UrlSigner(secret="Secret!"), "job_storage_type": "aws_s3", "job_aws_s3_bucket_name": "OpenEO-data"},
                 dirty_equals.IsStr(regex="s3://OpenEO-data/.*/job-123/stac-item-collection-loadstac1.json"),
                 "OpenEO-data",
                 dirty_equals.IsStr(
