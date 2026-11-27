@@ -22,7 +22,7 @@ from openeo_driver.utils import smart_bool
 from shapely.geometry import box, mapping
 from shapely.geometry.polygon import Polygon
 
-from .raster_metadata import BandStatistics
+from openeogeotrellis.job_results.raster_metadata import BandStatistics
 from .util import GDALINFO_SUFFIX, reproject_geometry
 
 _SUPPORTED_FORMATS = ("GTIFF", "PNG", "NETCDF", "JSON", "ZARR", "DEBUG_GENERAL")
@@ -148,6 +148,19 @@ class WrittenAsset:
     nodata: Optional[float] = None
     data_type: Optional[str] = None
 
+    def __post_init__(self):
+        if self.bands is not None:
+            object.__setattr__(
+                self,
+                "bands",
+                [
+                    {**band, "statistics": BandStatistics.to_jsonable(band["statistics"])}
+                    if "statistics" in band
+                    else band
+                    for band in self.bands
+                ],
+            )
+
 
 @dataclass(frozen=True)
 class WrittenItem:
@@ -171,18 +184,6 @@ def build_item(item: WrittenItem, format_type: str) -> dict:
     datetime = item.datetime
     assets = {}
     for a in item.assets:
-        bands = (
-            [
-                (
-                    {**band, "statistics": BandStatistics.sanitize(band["statistics"])}
-                    if "statistics" in band
-                    else band
-                )
-                for band in a.bands
-            ]
-            if a.bands is not None
-            else None
-        )
         assets[a.key] = dict_no_none(
             {
                 "href": a.path,
@@ -193,8 +194,8 @@ def build_item(item: WrittenItem, format_type: str) -> dict:
                 "data_type": a.data_type,
                 "geometry": mapping(geometry) if geometry is not None else None,
                 "bbox": bbox,
-                "bands": bands,
-                "raster:bands": bands,
+                "bands": a.bands,
+                "raster:bands": a.bands,
                 "proj:bbox": a.proj_bbox,
                 "proj:shape": a.proj_shape,
                 "proj:epsg": a.proj_epsg,

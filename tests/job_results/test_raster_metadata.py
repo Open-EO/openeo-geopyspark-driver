@@ -1,8 +1,19 @@
 import json
+import math
 
 import pytest
 
-from openeogeotrellis.job_results.raster_metadata import AssetRasterMetadata, _get_raster_statistics
+from openeogeotrellis.job_results.raster_metadata import AssetRasterMetadata, BandStatistics, _get_raster_statistics
+
+
+def test_band_statistics_to_dict_jsonable():
+    statistics = BandStatistics(minimum=float("nan"), maximum=1.0, mean=None)
+    raw_statistics = statistics.to_dict(jsonable=False)
+
+    assert math.isnan(raw_statistics["minimum"])
+    assert raw_statistics["maximum"] == 1.0
+    assert raw_statistics["mean"] is None
+    assert statistics.to_dict(jsonable=True) == {"maximum": 1.0}
 
 
 @pytest.mark.parametrize("valid_percent", ["nan", "inf", "-inf"])

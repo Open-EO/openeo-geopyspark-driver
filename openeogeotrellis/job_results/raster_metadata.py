@@ -59,23 +59,22 @@ class BandStatistics:
     valid_percent: Optional[float] = None
 
     @staticmethod
-    def sanitize(statistics: dict) -> dict:
+    def to_jsonable(statistics: dict) -> dict:
         return {
             key: value
             for key, value in statistics.items()
             if value is not None and (not isinstance(value, float) or math.isfinite(value))
         }
 
-    def to_dict(self):
-        return self.sanitize(
-            {
-                "minimum": self.minimum,
-                "maximum": self.maximum,
-                "mean": self.mean,
-                "stddev": self.stddev,
-                "valid_percent": self.valid_percent,
-            }
-        )
+    def to_dict(self, jsonable: bool = True):
+        statistics = {
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "mean": self.mean,
+            "stddev": self.stddev,
+            "valid_percent": self.valid_percent,
+        }
+        return self.to_jsonable(statistics) if jsonable else statistics
 
 
 """
@@ -111,7 +110,7 @@ class AssetRasterMetadata:
         if self.statistics is not None:
             raster_bands = []
             for band, stats in self.statistics.items():
-                raster_bands.append({"name": band, "statistics": dict_no_none(stats.to_dict())})
+                raster_bands.append({"name": band, "statistics": dict_no_none(stats.to_dict(jsonable=True))})
             result["raster:bands"] = raster_bands
 
         return result
