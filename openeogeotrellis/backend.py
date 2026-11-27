@@ -114,6 +114,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_job_name, kube_client,
     truncate_job_id_k8s,
     k8s_render_manifest_template,
+    k8s_finalize_pod_templates,
     k8s_get_batch_job_cfg_secret_name,
     k8s_set_secret_owner_reference,
     truncate_user_id_k8s,
@@ -2154,6 +2155,13 @@ class GpsBatchJobs(backend.BatchJobs):
                 etl_organization_id_str=etl_organization_id_str,
                 additional_execution_metrics_file=str(self.get_job_output_dir(job_id) / "additional_execution_metrics.json")
             )
+            # Only acts when the deployment's sparkapplication.yaml.j2 extends sparkapplication_podtemplate_base.yaml.j2
+            pod_template_findings = k8s_finalize_pod_templates(sparkapplication_dict)
+            if pod_template_findings:
+                log.warning(
+                    f"SparkApplication {spark_app_id} pod templates: {len(pod_template_findings)} finding(s): "
+                    + "; ".join(pod_template_findings)
+                )
 
             with self._double_job_registry as dbl_registry:
                 try:

@@ -14,6 +14,10 @@ without compromising stable operations.
 
 ## In progress: 0.74.0
 
+- Kubernetes batch jobs: new base template `sparkapplication_podtemplate_base.yaml.j2` that configures the driver and executor pods through pod templates (`spec.{driver,executor}.template`) instead of the spark-operator's mutating pod webhook.
+  A deployment opts in by having its `sparkapplication.yaml.j2` extend it instead of `sparkapplication_template.yaml.j2`; it has the same blocks, but block overrides start at column 0. Each pod only gets the volumes it mounts, and findings
+  (fields still relying on the webhook, mounts of undefined volumes, incomplete prometheus config, ...) are logged as a warning when the batch job is started. Requires spark-operator >= 2.4.0.
+
 - CWL datacube inputs: pass a STAC catalog with absolute links presigned via the S3 proxy (valid for 24 hours), so CWL pods can read it without credentials.
 - `aggregate_spatial`: new backend config `aggregate_spatial_output_format` (`csv` (default) or `parquet`) for the intermediate JVM output, backed by the output options of openeo-geotrellis-extensions (requires a geotrellis-extensions build with [openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671) when set to `parquet`)
 - `aggregate_spatial`: new backend config `aggregate_spatial_in_memory_max_polygons` (default 0 = disabled): with at most that many polygons the result is collected in memory (no files on the shared volume). Requires a geotrellis-extensions build with in-memory aggregate_spatial ([openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671))
