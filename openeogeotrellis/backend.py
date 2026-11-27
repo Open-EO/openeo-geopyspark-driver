@@ -167,7 +167,7 @@ from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
 )
 from openeogeotrellis.job_results.util import BadlyHashable
-from openeogeotrellis.util.audience_logging import AUDIENCE_ALL, AUDIENCE_DEVELOPER, AUDIENCE_USER
+from openeogeotrellis.util.audience_logging import AUDIENCE_DEVELOPER, AUDIENCE_USER
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -2663,7 +2663,7 @@ class GpsBatchJobs(backend.BatchJobs):
         level: str = DEFAULT_LOG_LEVEL_RETRIEVAL,
         audience: Optional[str] = None,
     ) -> Iterable[dict]:
-        supported_audiences = [AUDIENCE_USER, AUDIENCE_DEVELOPER, AUDIENCE_ALL]
+        supported_audiences = [AUDIENCE_USER, AUDIENCE_DEVELOPER]
         if audience and audience not in supported_audiences:
             raise OpenEOApiException(
                 status_code=400,
@@ -2680,7 +2680,7 @@ class GpsBatchJobs(backend.BatchJobs):
             create_time=job_info.created,
             offset=offset,
             level=level,
-            audience=audience or AUDIENCE_ALL,
+            audience=audience or AUDIENCE_USER,
         )
 
     def cancel_job(self, job_id: str, user_id: str):

@@ -17,6 +17,8 @@ from openeo_driver.datacube import SupportsRunUdf
 from openeo_driver.save_result import AggregatePolygonResultCSV, JSONResult
 from openeo_driver.utils import EvalEnv
 
+from openeogeotrellis.util.audience_logging import user_facing_log_context
+
 _log = logging.getLogger(__name__)
 
 
@@ -30,7 +32,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
     # TODO: Move loading from CSV to a factory class method and allow creating an instance from something else too (inline data, netcdf, ...)
 
     def supports_udf(self, udf: str, runtime:str="Python") -> bool:
-        udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
+        with user_facing_log_context():
+            udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
         return any(
             name in udf_globals
             for name in [
@@ -41,7 +44,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
     def run_udf(self, udf: str, *, runtime: str = "Python", context: Optional[dict] = None, env: EvalEnv):
         # TODO: leverage `runtime` argument?
-        udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
+        with user_facing_log_context():
+            udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
 
         csv_paths = list(Path(self._csv_dir).glob("*.csv"))
         _log.info(
@@ -123,7 +127,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             for v in values:
                 bands_df[v] = pd.to_numeric(bands_df[v], errors="ignore")
 
-            processed = udf_function(bands_df)
+            with user_facing_log_context():
+                processed = udf_function(bands_df)
 
             # Post-process UDF output
             if isinstance(processed, (int, float, str)):
@@ -197,7 +202,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
                 structured_data_list=[structured_data], user_context=context
             )
             # Apply UDF function
-            processed = udf_function(udf_data)
+            with user_facing_log_context():
+                processed = udf_function(udf_data)
 
             # Post-process UDF output
             if isinstance(processed, openeo.udf.UdfData):

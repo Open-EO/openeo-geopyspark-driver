@@ -133,26 +133,31 @@ def test_circuit_breaker_raises_openeoapiexception(mock_search):
     assert raise_context.value.message == expected_message
 
 
-@pytest.mark.parametrize(
-    ["audience", "expected_filter"],
-    [
-        ("user", True),
-        ("developer", True),
-    ],
-)
-@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-def test_elasticsearch_logs_audience_filter(mock_search, audience, expected_filter):
-    mock_search.return_value = {"hits": {"hits": []}}
-    list(elasticsearch_logs("job-foo", audience=audience))
-    query = mock_search.call_args.kwargs["query"]
-    assert {"term": {"audience": audience}} in query["bool"]["filter"]
+USER_AUDIENCE_FILTER = {
+    "bool": {
+        "should": [
+            {"term": {"audience": "user"}},
+            {"bool": {"must_not": {"exists": {"field": "audience"}}}},
+        ],
+        "minimum_should_match": 1,
+    }
+}
 
 
-@pytest.mark.parametrize("kwargs", [{}, {"audience": None}, {"audience": "all"}])
+@pytest.mark.parametrize("kwargs", [{}, {"audience": None}, {"audience": "user"}])
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-def test_elasticsearch_logs_audience_none_disables_filter(mock_search, kwargs):
+def test_elasticsearch_logs_user_audience_includes_untagged(mock_search, kwargs):
     mock_search.return_value = {"hits": {"hits": []}}
     list(elasticsearch_logs("job-foo", **kwargs))
+    query = mock_search.call_args.kwargs["query"]
+    assert USER_AUDIENCE_FILTER in query["bool"]["filter"]
+
+
+@pytest.mark.parametrize("audience", ["developer"])
+@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+def test_elasticsearch_logs_developer_audience_disables_filter(mock_search, audience):
+    mock_search.return_value = {"hits": {"hits": []}}
+    list(elasticsearch_logs("job-foo", audience=audience))
     query = mock_search.call_args.kwargs["query"]
     assert not any("audience" in str(f) for f in query["bool"]["filter"])
 
@@ -160,10 +165,9 @@ def test_elasticsearch_logs_audience_none_disables_filter(mock_search, kwargs):
 @pytest.mark.parametrize(
     ["audience", "expected_audience"],
     [
-        (None, "all"),
+        (None, "user"),
         ("user", "user"),
         ("developer", "developer"),
-        ("all", "all"),
     ],
 )
 def test_get_log_entries_audience(audience, expected_audience):
@@ -184,6 +188,6 @@ def test_get_log_entries_invalid_audience():
 
     batch_jobs = GpsBatchJobs(catalog=None, jvm=None)
     with pytest.raises(OpenEOApiException) as exc_info:
-        batch_jobs.get_log_entries("j-123", user_id="john", audience="dev")
+        batch_jobs.get_log_entries("j-123", user_id="john", audience="all")
     assert exc_info.value.status_code == 400
     assert exc_info.value.code == "InvalidAudience"
