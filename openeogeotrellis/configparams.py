@@ -12,12 +12,6 @@ class ConfigParams:
     def __init__(self, env=os.environ):
         self.openeo_env = env.get("OPENEO_ENV", "unknown")
 
-        # TODO: replace usage with GpsBackendConfig.zookeeper_hosts
-        self.zookeepernodes = env.get(
-            "ZOOKEEPERNODES",
-            'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
-        ).split(',')
-
         # TODO: eliminate and leverage GpsBackendConfig.zookeeper_root_path instead
         self.batch_jobs_zookeeper_root_path = env.get(
             "BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs"

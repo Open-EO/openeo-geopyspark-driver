@@ -10,7 +10,7 @@ from kazoo.retry import KazooRetry
 from openeo_driver.backend import UserDefinedProcesses, UserDefinedProcessMetadata
 from openeo_driver.errors import ProcessGraphNotFoundException
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
 
 
 class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
@@ -146,7 +146,7 @@ class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
 
 
 def main():
-    repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes, zk_client_reuse=True)
+    repo = ZooKeeperUserDefinedProcessRepository(hosts=get_backend_config().zookeeper_hosts, zk_client_reuse=True)
 
     user_id = 'vdboschj'
     process_graph_id = 'evi'
