@@ -1,12 +1,12 @@
+import json
+
 import pytest
 from openeo_driver.errors import OpenEOApiException
 
 from openeogeotrellis.job_results.items import (
     SaveResultFormatOptions,
-    WrittenAsset,
-    WrittenItem,
     add_gdalinfo_objects,
-    build_items,
+    items_from_java,
     single_asset_item,
 )
 
@@ -83,94 +83,26 @@ class TestSaveResultFormatOptionsParse:
         options.validate_sample_by_feature_with_separate_asset_per_band()  # does not raise
 
 
-def _item(**kwargs):
-    kwargs.setdefault("id", "item1")
-    kwargs.setdefault("bbox", (10.0, 40.0, 11.0, 41.0))
-    kwargs.setdefault("crs", "EPSG:4326")
-    return WrittenItem(**kwargs)
+class _FakeJavaItem:
+    def __init__(self, stac_item: dict):
+        self._json = json.dumps(stac_item)
+
+    def toJson(self):
+        return self._json
 
 
-class TestBuildItemsStitch:
-    def test_stitch_item_shape(self):
-        item = _item(
-            datetime="2020-01-01T00:00:00Z",
-            assets=[WrittenAsset(key="openEO", path="/a.tif", proj_bbox=(1, 2, 3, 4), proj_shape=(5, 6), proj_epsg=4326)],
-        )
-        items = build_items([item], format_type="image/tiff; application=geotiff")
-        result = items["item1"]
-        assert result["properties"] == {"datetime": "2020-01-01T00:00:00Z"}
-        asset = result["assets"]["openEO"]
-        assert asset["href"] == "/a.tif"
-        assert asset["type"] == "image/tiff; application=geotiff"
-        assert asset["proj:epsg"] == 4326
-        assert "bands" not in asset
+class TestItemsFromJava:
+    def test_keyed_by_id(self):
+        stac_item = {
+            "id": "item1",
+            "properties": {"datetime": "2020-01-01T00:00:00Z"},
+            "assets": {"openEO": {"href": "/a.tif"}},
+        }
+        assert items_from_java([_FakeJavaItem(stac_item)]) == {"item1": stac_item}
 
-    def test_stitch_item_proj_absent_when_none(self):
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
-        asset = result["assets"]["openEO"]
-        assert "proj:bbox" not in asset
-        assert "proj:epsg" not in asset
-
-
-class TestBuildItemsBatch:
-    def test_band_indices_empty_falls_back_to_all_bands(self):
-        # Quirk: an empty (but non-None) band_indices list is falsy, so BATCH includes all bands.
-        bands = [{"name": "B01"}, {"name": "B02"}]
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
-        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
-        assert result["assets"]["openEO"]["bands"] == bands
-
-    def test_band_indices_none_uses_all_bands(self):
-        bands = [{"name": "B01"}]
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif", bands=bands)])
-        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
-        assert result["assets"]["openEO"]["bands"] == bands
-
-
-class TestBuildItemsPlain:
-    def test_band_indices_none_omits_bands_key(self):
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
-        assert "bands" not in result["assets"]["openEO"]
-        assert "properties" not in result
-
-    def test_geometry_and_bbox_always_present(self):
-        item = _item(assets=[WrittenAsset(key="openEO", path="/a.tif")])
-        result = build_items([item], format_type="image/tiff; application=geotiff")["item1"]
-        asset = result["assets"]["openEO"]
-        assert asset["geometry"]["type"] == "Polygon"
-        assert len(asset["bbox"]) == 4
-
-
-class TestBuildItemsNetcdf:
-    def test_netcdf_item_shape(self):
-        item = _item(
-            assets=[
-                WrittenAsset(
-                    key="openEO",
-                    path="/a.nc",
-                    bands=[{"name": "B01", "statistics": {"minimum": 0}}],
-                    proj_epsg=4326,
-                    nodata=-1,
-                )
-            ]
-        )
-        result = build_items([item], format_type="application/x-netcdf")["item1"]
-        assert "properties" not in result
-        asset = result["assets"]["openEO"]
-        assert asset["bands"] == asset["raster:bands"] == [{"name": "B01", "statistics": {"minimum": 0}}]
-        assert asset["nodata"] == -1
-        assert asset["proj:epsg"] == 4326
-
-    def test_netcdf_item_without_bbox_has_no_geometry(self):
-        item = _item(bbox=None, assets=[WrittenAsset(key="openEO", path="/a.nc")])
-        result = build_items([item], format_type="application/x-netcdf")["item1"]
-        assert "geometry" not in result
-        assert "bbox" not in result
-        # dict_no_none strips the per-asset geometry/bbox keys entirely when absent.
-        assert "geometry" not in result["assets"]["openEO"]
-        assert "bbox" not in result["assets"]["openEO"]
+    def test_multiple_items(self):
+        items = [{"id": "a", "assets": {}}, {"id": "b", "assets": {}}]
+        assert list(items_from_java(_FakeJavaItem(i) for i in items)) == ["a", "b"]
 
 
 class TestSingleAssetItem:

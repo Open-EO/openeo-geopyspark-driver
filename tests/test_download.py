@@ -135,14 +135,14 @@ class TestDownload:
             "filename_prefix": "filenamePrefixTest"
         })
         assert 1 == len(res)
-        name, asset = next(iter(res.popitem()[1]['assets'].items()))
-        assert Path(asset['href']).parent == tmp_path
-        assert asset['nodata'] == -1
-        assert asset['roles'] == ['data']
-        assert 2 == len(asset['bands'])
-        assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
-        assert asset['datetime'] == "2017-09-25T11:37:00Z"
+        name, asset = next(iter(res.popitem()[1]["assets"].items()))
+        assert Path(asset["href"]).parent == tmp_path
+        assert asset["nodata"] == -1
+        assert asset["roles"] == ["data"]
+        assert 2 == len(asset["bands"])
+        assert "filenamePrefixTest" in asset["href"]
+        assert "image/tiff; application=geotiff; profile=cloud-optimized" == asset["type"]
+        assert asset["datetime"] == "2017-09-25T11:37:00Z"
         assert "openEO" in name
 
     with get_test_data_file("geometries/polygons02.geojson").open() as f:
@@ -215,7 +215,7 @@ class TestDownload:
                 "data_type": "int32",
                 "nodata": -1,
                 "roles": ["data"],
-                "type": "image/tiff; application=geotiff; profile=cloud-optimize",
+                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
                 "proj:epsg": 4326,
                 "proj:shape": dirty_equals.IsListOrTuple(length=2),
                 "proj:bbox": dirty_equals.IsListOrTuple(length=4),
@@ -254,8 +254,8 @@ class TestDownload:
         assets = {asset[1]["href"]: asset[1] for item in res.values() for asset in item['assets'].items()}
         asset = list(assets.values())[0]
         assert Path(asset["href"]).parent == tmp_path
-        assert asset['roles'] == ['data']
-        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
+        assert asset["roles"] == ["data"]
+        assert "image/tiff; application=geotiff; profile=cloud-optimized" == asset["type"]
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
         """
@@ -278,14 +278,14 @@ class TestDownload:
         })
         assert len(res) == 30
         name, item = next(iter(res.items()))
-        asset = next(iter(item['assets'].values()))
-        assert Path(asset['href']).parent == tmp_path
-        assert asset['nodata'] == -1
-        assert asset['roles'] == ['data']
-        assert 2 == len(asset['bands'])
-        assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff; profile=cloud-optimize' == asset['type']
-        assert asset['datetime'] == "2017-09-25T11:37:00Z"
+        asset = next(iter(item["assets"].values()))
+        assert Path(asset["href"]).parent == tmp_path
+        assert asset["nodata"] == -1
+        assert asset["roles"] == ["data"]
+        assert 2 == len(asset["bands"])
+        assert "filenamePrefixTest" in asset["href"]
+        assert "image/tiff; application=geotiff; profile=cloud-optimized" == asset["type"]
+        assert asset["datetime"] == "2017-09-25T11:37:00Z"
 
     @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
@@ -336,13 +336,28 @@ class TestDownload:
 
         expected_filenames = [f"{filename_prefix or 'openEO'}_{i}{expected_extension}" for i in range(5)]
 
+        if space_type == "spacetime":
+            # The temporal extent of the cube metadata.
+            temporal_range = {"start_datetime": "2017-09-25T11:37:00Z", "end_datetime": "2017-10-25T11:37:00Z"}
+            item_properties = {"properties": {"datetime": None, **temporal_range}}
+        else:
+            # A spatial cube without temporal extent: the item gets no date at all,
+            # so "properties" is omitted (to be filled in by openeo_driver when serving the item).
+            temporal_range = {}
+            item_properties = {}
+
         expected = [
             {
-                "id": dirty_equals.IsStr(),
+                "type": "Feature",
+                "stac_version": "1.1.0",
+                "id": dirty_equals.IsUUID(),
                 "bbox": dirty_equals.IsListOrTuple(length=4),
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+                "links": [],
+                **item_properties,
                 "assets": {
                     "openEO": {
+                        **temporal_range,
                         "bands": [
                             dirty_equals.IsPartialDict(name="red"),
                             dirty_equals.IsPartialDict(name="nir"),
@@ -462,15 +477,44 @@ class TestDownload:
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})
 
-    @pytest.mark.parametrize("to_zip", [True, False])
-    def test_zarr(self,tmp_path,to_zip):
-        input_layer = layer_with_two_bands_and_one_date()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
-        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
-        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+    @pytest.mark.parametrize(
+        ["to_zip", "expected_href_suffix", "expected_type"],
+        [
+            (True, ".zarr.zip", "application/zip"),
+            (False, ".zarr", "application/vnd+zarr"),
+        ],
+    )
+    def test_zarr(self, tmp_path, to_zip, expected_href_suffix, expected_type):
+        imagecollection = _cube_with_two_bands().filter_temporal("2017-09-01", "2017-10-01")
         file_path = str(tmp_path / "res.zarr")
-        zarr_options = {"toZip":to_zip}
-        imagecollection.write_assets(file_path, format="ZARR",format_options=zarr_options)
+        items = imagecollection.write_assets(file_path, format="ZARR", format_options={"to_zip": to_zip})
+        item_id = _single_item_id(items)
+        assert items == {
+            item_id: {
+                "type": "Feature",
+                "stac_version": "1.1.0",
+                "id": item_id,
+                "geometry": _BOX_0_4_GEOMETRY,
+                "bbox": [0.0, 0.0, 4.0, 4.0],
+                "properties": {
+                    "datetime": '2017-09-25T11:37:00Z',
+                },
+                "links": [],
+                "assets": {
+                    "openEO": {
+                        "href": str(tmp_path / "res") + expected_href_suffix,
+                        "type": expected_type,
+                        "roles": ["data"],
+                        "data_type": "int32",
+                        'nodata': -1,
+                        "datetime": "2017-09-25T11:37:00Z",
+                        "geometry": _BOX_0_4_GEOMETRY,
+                        "bbox": [0.0, 0.0, 4.0, 4.0],
+                    }
+                },
+            }
+        }
+        assert Path(file_path + ".zip").exists() == to_zip
         ds = xr.open_zarr(file_path)
         assert len(ds.variables) == 5
         assert "band_one" in ds.variables
@@ -520,5 +564,146 @@ class TestDownload:
         assert (ds_netcdf.band_one.data==band1.data[0]).all()
         assert (ds_netcdf.band_two.data == band2.data[0]).all()
 
-        if to_zip:
-            Path(file_path + ".zip").exists()
+    def test_write_assets_png(self, tmp_path):
+        imagecollection = _cube_with_two_bands().filter_temporal("2017-09-01", "2017-10-01")
+        file_path = str(tmp_path / "res.png")
+        items = imagecollection.write_assets(file_path, format="PNG")
+        item_id = _single_item_id(items)
+        assert items == {
+            item_id: {
+                "type": "Feature",
+                "stac_version": "1.1.0",
+                "id": item_id,
+                "geometry": _BOX_0_4_GEOMETRY,
+                "bbox": [0.0, 0.0, 4.0, 4.0],
+                "properties": {
+                    "datetime": None,
+                    "start_datetime": "2017-09-01T00:00:00Z",
+                    "end_datetime": "2017-10-01T00:00:00Z",
+                },
+                "links": [],
+                "assets": {
+                    "openEO": {
+                        "href": file_path,
+                        "type": "image/png",
+                        "roles": ["data"],
+                        "data_type": "uint8",
+                        "start_datetime": "2017-09-01T00:00:00Z",
+                        "end_datetime": "2017-10-01T00:00:00Z",
+                        "geometry": _BOX_0_4_GEOMETRY,
+                        "bbox": [0.0, 0.0, 4.0, 4.0],
+                    }
+                },
+            }
+        }
+        assert Path(file_path).exists()
+
+    @pytest.mark.parametrize(
+        "temporal_extent",
+        [
+            # naive: interpreted as UTC
+            ("2017-09-01", "2017-10-01"),
+            # timezone aware, non-UTC: converted to UTC
+            ("2017-09-01T02:00:00+02:00", "2017-10-01T02:00:00+02:00"),
+        ],
+    )
+    def test_write_assets_gtiff_stitch_temporal_extent(self, tmp_path, temporal_extent):
+        imagecollection = _cube_with_two_bands().filter_temporal(*temporal_extent)
+        file_path = str(tmp_path / "res.tif")
+        items = imagecollection.write_assets(file_path, format="GTIFF", format_options={"stitch": True})
+        item_id = _single_item_id(items)
+        assert items == {
+            item_id: {
+                "type": "Feature",
+                "stac_version": "1.1.0",
+                "id": item_id,
+                "geometry": _BOX_0_4_GEOMETRY,
+                "bbox": [0.0, 0.0, 4.0, 4.0],
+                "properties": {
+                    "datetime": None,
+                    "start_datetime": "2017-09-01T00:00:00Z",
+                    "end_datetime": "2017-10-01T00:00:00Z",
+                },
+                "links": [],
+                "assets": {
+                    "openEO": {
+                        "href": file_path,
+                        "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                        "roles": ["data"],
+                        "data_type": "int32",
+                        "nodata": -1,
+                        "proj:bbox": [0.0, 0.0, 4.0, 4.0],
+                        "proj:epsg": 4326,
+                        "proj:shape": [16, 16],
+                        "start_datetime": "2017-09-01T00:00:00Z",
+                        "end_datetime": "2017-10-01T00:00:00Z",
+                        "geometry": _BOX_0_4_GEOMETRY,
+                        "bbox": [0.0, 0.0, 4.0, 4.0],
+                    }
+                },
+            }
+        }
+
+    def test_write_assets_netcdf(self, tmp_path):
+        imagecollection = _cube_with_two_bands().filter_temporal("2017-09-01", "2017-10-01")
+        file_path = str(tmp_path / "res.nc")
+        items = imagecollection.write_assets(file_path, format="NETCDF")
+        bands = [
+            {
+                "name": "band_one",
+                "statistics": {"valid_percent": 100.0, "mean": 1.0, "maximum": 1.0, "stddev": 0.0, "minimum": 1.0},
+            },
+            {
+                "name": "band_two",
+                "statistics": {"valid_percent": 100.0, "mean": 2.0, "maximum": 2.0, "stddev": 0.0, "minimum": 2.0},
+            },
+        ]
+        item_id = _single_item_id(items)
+        assert items == {
+            item_id: {
+                "type": "Feature",
+                "stac_version": "1.1.0",
+                "id": item_id,
+                "geometry": _BOX_0_4_GEOMETRY,
+                "bbox": [0.0, 0.0, 4.0, 4.0],
+                "properties": {"datetime": "2017-09-25T11:37:00Z"},
+                "links": [],
+                "assets": {
+                    "openEO": {
+                        "href": file_path,
+                        "type": "application/x-netcdf",
+                        "roles": ["data"],
+                        "data_type": "int32",
+                        "nodata": -1,
+                        "bands": bands,
+                        "raster:bands": bands,
+                        "proj:bbox": [0.0, 0.0, 4.0, 4.0],
+                        "proj:epsg": 4326,
+                        "proj:shape": [16, 16],
+                        "datetime": "2017-09-25T11:37:00Z",
+                        "geometry": _BOX_0_4_GEOMETRY,
+                        "bbox": [0.0, 0.0, 4.0, 4.0],
+                    }
+                },
+            }
+        }
+
+
+_BOX_0_4_GEOMETRY = {
+    "type": "Polygon",
+    "coordinates": [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0], [0.0, 0.0]]],
+}
+
+
+def _single_item_id(items: dict) -> str:
+    """The id of the single item returned by write_assets; the writers give items a random UUID."""
+    (item_id,) = items.keys()
+    assert item_id == dirty_equals.IsUUID()
+    return item_id
+
+
+def _cube_with_two_bands() -> GeopysparkDataCube:
+    cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer_with_two_bands_and_one_date()}))
+    cube.metadata = cube.metadata.add_dimension("band_one", "band_one", "bands")
+    cube.metadata = cube.metadata.append_band(Band("band_two", "", ""))
+    return cube

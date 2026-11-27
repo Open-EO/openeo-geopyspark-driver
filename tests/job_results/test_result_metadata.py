@@ -5,8 +5,10 @@ from openeo_driver.save_result import JSONResult, NullResult
 
 from openeogeotrellis.job_results.result_metadata import (
     CollectNodesVisitor,
+    _extract_temporal_extent_from_items,
     assemble_result_metadata,
     convert_asset_outputs_to_s3_urls,
+    extract_result_metadata,
     href_from_job_local_path,
 )
 from openeogeotrellis.job_results.settings import JobResultsSettings, ResultCubeMetadata
@@ -187,3 +189,82 @@ def test_collect_nodes_shared_node():
         },
     }
     assert len(CollectNodesVisitor().accept_process_graph(process_graph).nodes) == 2
+
+
+class TestExtractTemporalExtentFromItems:
+    def test_range_with_null_datetime(self):
+        items = [
+            {
+                "properties": {
+                    "datetime": None,
+                    "start_datetime": "2020-01-01T00:00:00Z",
+                    "end_datetime": "2020-01-10T00:00:00Z",
+                }
+            }
+        ]
+        start, end = _extract_temporal_extent_from_items(items)
+        assert start.isoformat().startswith("2020-01-01")
+        assert end.isoformat().startswith("2020-01-10")
+
+    def test_item_without_date_is_ignored(self):
+        assert _extract_temporal_extent_from_items([{"properties": {"datetime": None}}]) == (None, None)
+
+    def test_only_datetime(self):
+        start, end = _extract_temporal_extent_from_items([{"properties": {"datetime": "2020-01-05T00:00:00Z"}}])
+        assert start == end
+        assert start.isoformat().startswith("2020-01-05")
+
+    def test_multiple_items_take_min_start_and_max_end(self):
+        items = [
+            {
+                "properties": {
+                    "datetime": None,
+                    "start_datetime": "2020-01-03T00:00:00Z",
+                    "end_datetime": "2020-01-04T00:00:00Z",
+                }
+            },
+            {"properties": {"datetime": "2020-01-01T00:00:00Z"}},
+            {
+                "properties": {
+                    "datetime": None,
+                    "start_datetime": "2020-01-02T00:00:00Z",
+                    "end_datetime": "2020-01-10T00:00:00Z",
+                }
+            },
+        ]
+        start, end = _extract_temporal_extent_from_items(items)
+        assert start.isoformat().startswith("2020-01-01")
+        assert end.isoformat().startswith("2020-01-10")
+
+    def test_partial_range_falls_back_to_datetime(self):
+        items = [{"properties": {"datetime": "2020-01-05T00:00:00Z", "start_datetime": "2020-01-01T00:00:00Z"}}]
+        start, end = _extract_temporal_extent_from_items(items)
+        assert start.isoformat().startswith("2020-01-01")
+        assert end.isoformat().startswith("2020-01-05")
+
+    def test_item_without_properties(self):
+        assert _extract_temporal_extent_from_items([{"id": "a", "assets": {}}]) == (None, None)
+
+
+class TestExtractResultMetadataTemporalExtent:
+    def test_temporal_extent_from_items_without_source_constraints(self):
+        items = [
+            {
+                "properties": {
+                    "datetime": None,
+                    "start_datetime": "2020-01-01T00:00:00Z",
+                    "end_datetime": "2020-01-10T00:00:00Z",
+                }
+            }
+        ]
+        metadata = extract_result_metadata(DryRunDataTracer(), stac_items=items)
+        assert metadata["start_datetime"] == "2020-01-01T00:00:00Z"
+        assert metadata["end_datetime"] == "2020-01-10T00:00:00Z"
+
+    def test_source_constraints_take_precedence_over_items(self):
+        tracer = DryRunDataTracer()
+        tracer.load_collection(collection_id="S2", arguments={"temporal_extent": ["2021-01-01", "2021-02-01"]})
+        items = [{"properties": {"datetime": "2020-01-05T00:00:00Z"}}]
+        metadata = extract_result_metadata(tracer, stac_items=items)
+        assert metadata["start_datetime"] == "2021-01-01T00:00:00Z"
+        assert metadata["end_datetime"] == "2021-02-01T00:00:00Z"

@@ -1144,12 +1144,20 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
             item_assets = stac_collection.extra_fields.get("item_assets")
             assert len(item_assets) == 3 if attach_gdalinfo_assets else len(item_assets) == 1
             assert item_assets.get("openEO") == {
-                'bands': [{
-                    'name': 'Flat:2',
-                    'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 100.0}
-                }],
-                'roles': ['data'],
-                'type': 'image/tiff; application=geotiff; profile=cloud-optimize'
+                "bands": [
+                    {
+                        "name": "Flat:2",
+                        "statistics": {
+                            "maximum": 2.0,
+                            "mean": 2.0,
+                            "minimum": 2.0,
+                            "stddev": 0.0,
+                            "valid_percent": 100.0,
+                        },
+                    }
+                ],
+                "roles": ["data"],
+                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
             }
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
@@ -1201,7 +1209,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         geotiff_asset = item.get_assets()[asset_names[1]]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href.endswith("/openEO_2021-01-05Z.tif")
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimized"
         if stac_version == "1.0":
             assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
             assert geotiff_asset.extra_fields["raster:bands"] == [
@@ -1360,7 +1368,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
         geotiff_asset = assets[0][asset_name[0]]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href.endswith("/openEO_2021-01-05Z_Latitude.tif")
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimized"
         assert bands_name in geotiff_asset.extra_fields
         assert geotiff_asset.extra_fields[bands_name] == [
             {
@@ -1519,7 +1527,7 @@ def test_filepath_per_band(
         geotiff_asset = item.get_assets()["folder1/lon.tif"]
         assert "data" in geotiff_asset.roles
         assert geotiff_asset.href == "./lon.tif"  # relative to the json file
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimize"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff; profile=cloud-optimized"
         assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
         if not use_s3:
             assert geotiff_asset.extra_fields["raster:bands"] == [
@@ -2910,7 +2918,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     assert "href" in asset
     assert asset["href"] == str(tmp_path) + "/openEO.tif"
     assert "type" in asset
-    assert asset["type"] == "image/tiff; application=geotiff; profile=cloud-optimize"
+    assert asset["type"] == "image/tiff; application=geotiff; profile=cloud-optimized"
 
 
 @pytest.mark.parametrize(
@@ -3676,13 +3684,13 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     assert assets["openEO_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
     assert assets["openEO_0.nc"]["geometry"] == {
         "type": "Polygon",
-        "coordinates": [[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]]],
+        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
     }
 
     assert assets["openEO_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
     assert assets["openEO_1.nc"]["geometry"] == {
         "type": "Polygon",
-        "coordinates": [[[5.0, 4.0], [5.0, 5.0], [4.0, 5.0], [4.0, 4.0], [5.0, 4.0]]],
+        "coordinates": [[[4.0, 4.0], [5.0, 4.0], [5.0, 5.0], [4.0, 5.0], [4.0, 4.0]]],
     }
 
 
