@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
+import dirty_equals
 import pytest
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import JSONResult, SaveResult
@@ -410,52 +411,53 @@ def test_metadata_write_phases_logged(tmp_path, caplog):
         workspace_repository=None,
     )
 
-    file_size = metadata_file.stat().st_size
-    about_to_write = [
-        m.groups()
-        for m in (
-            re.fullmatch(
-                r"Serialized job metadata \(phase='([\w-]+)'\): \d+ characters, about to \(over\)write (.+) \(current state: (.+)\)",
-                msg,
-            )
-            for msg in caplog.messages
-        )
-        if m
+    file_info = f"file_size={metadata_file.stat().st_size}"
+    path = re.escape(str(metadata_file))
+    messages = [m for m in caplog.messages if "job metadata" in m]
+    assert messages == [
+        f"Writing job metadata (phase='initial') to {metadata_file} (current state: non-existent)",
+        dirty_equals.IsStr(
+            regex=rf"Wrote job metadata \(phase='initial'\) to {path}: \d+ characters, resulting state: file_size=\d+"
+        ),
+        dirty_equals.IsStr(
+            regex=rf"Writing job metadata \(phase='assets-written'\) to {path} \(current state: file_size=\d+\)"
+        ),
+        dirty_equals.IsStr(
+            regex=rf"Wrote job metadata \(phase='assets-written'\) to {path}: \d+ characters, resulting state: file_size=\d+"
+        ),
+        dirty_equals.IsStr(regex=rf"Writing job metadata \(phase='final'\) to {path} \(current state: file_size=\d+\)"),
+        dirty_equals.IsStr(
+            regex=rf"Wrote job metadata \(phase='final'\) to {path}: \d+ characters, resulting state: {file_info}"
+        ),
     ]
-    assert about_to_write[0] == ("initial", str(metadata_file), "non-existent")
-    assert [phase for phase, _, _ in about_to_write] == ["initial", "assets-written", "final"]
-    assert all(re.fullmatch(r"file_size=\d+", state) for _, _, state in about_to_write[1:])
-
-    wrote = [
-        m.groups()
-        for m in (
-            re.fullmatch(r"Wrote job metadata \(phase='([\w-]+)'\) to (.+): \d+ characters, resulting state: (.+)", msg)
-            for msg in caplog.messages
-        )
-        if m
-    ]
-    assert [phase for phase, _, _ in wrote] == ["initial", "assets-written", "final"]
-    assert all(path == str(metadata_file) for _, path, _ in wrote)
-    assert wrote[-1][2] == f"file_size={file_size}"
 
 
-def test_metadata_serialization_failure_keeps_previous_file(tmp_path, caplog):
-    caplog.set_level(logging.INFO)
+def test_metadata_serialization_failure_keeps_previous_file(tmp_path):
     job_dir, output_file, metadata_file = _job_paths(tmp_path)
 
     class _NotSerializable:
         pass
 
     class _BadUsageHooks(_RecordingHooks):
+        """Usage metadata is serializable for the "initial" write, but not for the later ones."""
+
+        def __init__(self):
+            super().__init__()
+            self.serializable = True
+
         def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
             usage = super().usage_metadata(omit_derived_from_links=omit_derived_from_links)
-            if self.call_names().count("usage_metadata") > 1:
+            if not self.serializable:
                 usage["usage"]["bad"] = _NotSerializable()
             return usage
 
+        def publish_metadata_file(self, metadata_file: Path) -> None:
+            super().publish_metadata_file(metadata_file)
+            self.serializable = False
+
     hooks = _BadUsageHooks()
 
-    with pytest.raises(TypeError, match="not JSON serializable"):
+    with pytest.raises(ValueError, match="Failed to serialize job metadata \\(phase='final'\\)") as exc_info:
         finalize_job(
             JSONResult({"a": 1}),
             tracer=DryRunDataTracer(),
@@ -469,8 +471,9 @@ def test_metadata_serialization_failure_keeps_previous_file(tmp_path, caplog):
             workspace_repository=None,
         )
 
+    assert isinstance(exc_info.value.__cause__, TypeError)
+
     # the initial metadata file is not truncated by the failing (re)writes
     assert metadata_file.stat().st_size > 0
     assert _read_metadata(metadata_file)["usage"] == {}
     assert hooks.call_names().count("publish_metadata_file") == 1
-    assert any(m.startswith("Failed to serialize job metadata (phase='assets-written')") for m in caplog.messages)

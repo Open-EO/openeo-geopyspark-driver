@@ -80,7 +80,7 @@ def finalize_job(
             result_items=result_items,
         )
 
-    def write(*, metadata: dict, phase: str) -> None:
+    def write(metadata: dict, *, phase: str) -> None:
         _write_metadata_file(
             metadata=metadata,
             metadata_file=metadata_file,
@@ -361,15 +361,15 @@ def _assets_for_result_metadata(stac11_mode: bool, assets_metadata: List[dict], 
 
 
 def _write_metadata_file(
-    *,
     metadata: dict,
+    *,
     metadata_file: Path,
     stac11_mode: bool,
     hooks: JobResultsHooks,
     auxiliary_links_cache: Dict[Tuple[str, str, bool], str],
     phase: str = "unknown",
 ) -> None:
-    logger.info(f"Writing job metadata ({phase=}) to {metadata_file}")
+    logger.info(f"Writing job metadata ({phase=}) to {metadata_file} (current state: {_file_info(metadata_file)})")
 
     def log_asset_hrefs(context: str):
         if stac11_mode:
@@ -412,15 +412,7 @@ def _write_metadata_file(
     try:
         serialized = json.dumps(out_metadata, default=json_default)
     except Exception as e:
-        logger.exception(
-            f"Failed to serialize job metadata ({phase=}) for {metadata_file}"
-            f" (current state: {_file_info(metadata_file)}): {e!r}"
-        )
-        raise
-    logger.info(
-        f"Serialized job metadata ({phase=}): {len(serialized)} characters,"
-        f" about to (over)write {metadata_file} (current state: {_file_info(metadata_file)})"
-    )
+        raise ValueError(f"Failed to serialize job metadata ({phase=}) for {metadata_file}: {e!r}") from e
     try:
         with open(metadata_file, "w") as f:
             f.write(serialized)
@@ -435,7 +427,6 @@ def _write_metadata_file(
         f" {len(serialized)} characters, resulting state: {_file_info(metadata_file)}"
     )
     hooks.publish_metadata_file(metadata_file)
-    logger.info(f"Published job metadata ({phase=}) {metadata_file}")
 
 
 def _file_info(path: Path) -> str:
