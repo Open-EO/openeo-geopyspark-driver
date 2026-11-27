@@ -101,11 +101,10 @@ setup(
         'epsel~=1.0.0',
         "Bottleneck~=1.4.0",
         "python-json-logger",
-        "jep_openeo_numpy==4.1.2; python_version == '3.11'", # Required because Jep needs to compile against numpy 2.x
         # Precompiled wheels (built by .github/workflows/build_jep_wheels.yml) are published at
         # https://github.com/Open-EO/openeo-geopyspark-driver/releases/expanded_assets/jep-wheels
         # and must be made available through e.g. `--find-links`/`UV_FIND_LINKS`.
-        "jep==4.1.1; python_version >= '3.14'",
+        "jep==4.1.1",
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         "pystac>=1.8.4",
