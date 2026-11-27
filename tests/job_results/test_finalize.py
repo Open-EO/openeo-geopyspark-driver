@@ -390,3 +390,63 @@ def test_write_failure_metadata_stac11_mode(tmp_path):
 
     metadata = _read_metadata(metadata_file)
     assert metadata["items"] == []
+
+
+def test_metadata_write_phases_logged(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+
+    finalize_job(
+        JSONResult({"a": 1}),
+        tracer=DryRunDataTracer(),
+        process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+        job_specification={"process_graph": {}},
+        job_dir=job_dir,
+        output_file=output_file,
+        metadata_file=metadata_file,
+        settings=_settings(),
+        hooks=_RecordingHooks(),
+        workspace_repository=None,
+    )
+
+    wrote = [m for m in caplog.messages if m.startswith("Wrote job metadata")]
+    assert [m.split("phase=")[1].split(")")[0] for m in wrote] == ["'initial'", "'assets-written'", "'final'"]
+    assert all(str(metadata_file) in m for m in wrote)
+    assert wrote[-1].endswith(f"file size {metadata_file.stat().st_size}")
+
+
+def test_metadata_serialization_failure_keeps_previous_file(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    job_dir, output_file, metadata_file = _job_paths(tmp_path)
+
+    class _NotSerializable:
+        pass
+
+    class _BadUsageHooks(_RecordingHooks):
+        def usage_metadata(self, *, omit_derived_from_links: bool = False) -> dict:
+            usage = super().usage_metadata(omit_derived_from_links=omit_derived_from_links)
+            if self.call_names().count("usage_metadata") > 1:
+                usage["usage"]["bad"] = _NotSerializable()
+            return usage
+
+    hooks = _BadUsageHooks()
+
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        finalize_job(
+            JSONResult({"a": 1}),
+            tracer=DryRunDataTracer(),
+            process_graph={"nop": {"process_id": "discard_result", "arguments": {}, "result": True}},
+            job_specification={"process_graph": {}},
+            job_dir=job_dir,
+            output_file=output_file,
+            metadata_file=metadata_file,
+            settings=_settings(),
+            hooks=hooks,
+            workspace_repository=None,
+        )
+
+    # the initial metadata file is not truncated by the failing (re)writes
+    assert metadata_file.stat().st_size > 0
+    assert _read_metadata(metadata_file)["usage"] == {}
+    assert hooks.call_names().count("publish_metadata_file") == 1
+    assert any(m.startswith("Failed to serialize job metadata (phase='assets-written')") for m in caplog.messages)
