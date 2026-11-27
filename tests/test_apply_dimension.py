@@ -1,5 +1,6 @@
 import datetime
 from typing import Tuple, List
+from unittest import mock
 
 import pytest
 import numpy as np
@@ -66,6 +67,55 @@ def test_apply_dimension_bands_udf(imagecollection_with_two_bands_and_three_date
 
     subresult = result_array[:input.shape[0], :input.shape[1], :input.shape[2]]
     assert_array_almost_equal(input, subresult)
+
+
+@pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
+def test_apply_dimension_bands_udf_repartitions_single_partition(
+    imagecollection_with_two_bands_and_three_dates, udf, request
+):
+    """https://github.com/Open-EO/openeo-geopyspark-driver/issues/2012"""
+    udf = request.getfixturevalue(udf)
+    the_date = datetime.datetime(2017, 9, 25, 11, 37)
+    cube = imagecollection_with_two_bands_and_three_dates.apply_to_levels(lambda layer: layer.repartition(1))
+    assert cube.get_max_level().getNumPartitions() == 1
+
+    input = cube.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
+    result = cube.apply_dimension(process=udf, dimension="bands", target_dimension=None, context={}, env=EvalEnv())
+
+    # Local Spark test setup has 2 cores and the cube has 2x2 spatial tiles
+    assert result.get_max_level().getNumPartitions() == 2
+    result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
+    subresult = result_array[: input.shape[0], : input.shape[1], : input.shape[2]]
+    assert_array_almost_equal(input, subresult)
+
+
+@pytest.mark.parametrize(
+    ["initial_partitions", "expected_partitions"],
+    [
+        # Local Spark test setup has 2 cores and the cube has 2x2 spatial tiles
+        (1, 2),
+        (2, 2),
+        (3, 3),
+    ],
+)
+def test_repartition_for_udf(imagecollection_with_two_bands_and_three_dates, initial_partitions, expected_partitions):
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
+    layer = imagecollection_with_two_bands_and_three_dates.get_max_level().repartition(initial_partitions)
+    assert layer.getNumPartitions() == initial_partitions
+    result = GeopysparkDataCube._repartition_for_udf(layer)
+    assert result.getNumPartitions() == expected_partitions
+    assert result.count() == layer.count()
+
+
+def test_repartition_for_udf_max_executors(imagecollection_with_two_bands_and_three_dates):
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
+    layer = imagecollection_with_two_bands_and_three_dates.get_max_level().repartition(1)
+    with mock.patch.object(GeopysparkDataCube, "_estimate_max_parallelism", return_value=100):
+        result = GeopysparkDataCube._repartition_for_udf(layer)
+    # Bounded by the number of spatial tiles (2x2)
+    assert result.getNumPartitions() == 4
 
 
 def test_apply_metadata(imagecollection_with_two_bands_and_three_dates, identity_udf_rename_bands):

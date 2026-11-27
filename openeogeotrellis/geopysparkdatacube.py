@@ -226,6 +226,48 @@ class GeopysparkDataCube(DriverDataCube):
         tiled_raster_layer = GeopysparkDataCube._transform_metadata(tiled_raster_layer, cellType=cell_type)
         return tiled_raster_layer
 
+    @staticmethod
+    def _estimate_max_parallelism() -> int:
+        """
+        Estimate the maximum number of tasks that can run in parallel on the cluster,
+        based on the Spark default parallelism and the (maximum) number of executors and their cores.
+        """
+        sc = gps.get_spark_context()
+        parallelism = sc.defaultParallelism
+        try:
+            conf = sc.getConf()
+            executor_cores = int(conf.get("spark.executor.cores", "1"))
+            if conf.get("spark.dynamicAllocation.enabled", "false").lower() == "true":
+                executors = conf.get("spark.dynamicAllocation.maxExecutors", None)
+            else:
+                executors = conf.get("spark.executor.instances", None)
+            if executors:
+                parallelism = max(parallelism, int(executors) * executor_cores)
+        except Exception as e:
+            _log.warning(f"Failed to estimate max parallelism from Spark config: {e!r}")
+        return parallelism
+
+    @staticmethod
+    def _repartition_for_udf(layer: TiledRasterLayer) -> TiledRasterLayer:
+        """
+        Repartition the layer if it has too few partitions to properly parallelize a (potentially costly) UDF,
+        e.g. when a high partitioner index reduction put all tiles in a single partition.
+        The target partition count is bounded by the number of spatial tiles and the available parallelism.
+        """
+        num_partitions = layer.getNumPartitions()
+        bounds = layer.layer_metadata.bounds
+        spatial_tile_count = max(bounds.maxKey.col - bounds.minKey.col + 1, 1) * max(
+            bounds.maxKey.row - bounds.minKey.row + 1, 1
+        )
+        target_partitions = min(spatial_tile_count, GeopysparkDataCube._estimate_max_parallelism())
+        if num_partitions * 2 <= target_partitions:
+            _log.info(
+                f"Repartitioning datacube with {num_partitions} partitions ({spatial_tile_count} spatial tiles)"
+                f" to {target_partitions} partitions before running UDF."
+            )
+            layer = layer.repartition(target_partitions)
+        return layer
+
     def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
         jvm = get_jvm()
         spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
@@ -904,7 +946,9 @@ class GeopysparkDataCube(DriverDataCube):
                 return tup._1()
 
             # All JEP implementation work with the float datatype.
-            float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
+            float_cube = self.apply_to_levels(
+                lambda layer: self._convert_celltype(self._repartition_for_udf(layer), "float32")
+            )
             ret = float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
             if new_bands:
                 self.metadata.band_dimension.bands = [Band(b) for b in new_bands]
@@ -959,6 +1003,8 @@ class GeopysparkDataCube(DriverDataCube):
                     return (key, result_tile)
 
                 # Convert TiledRasterLayer to PySpark RDD to access the Scala RDD cell values in Python.
+                # Avoid running a (potentially costly) UDF on very few partitions, which kills parallelism.
+                rdd = GeopysparkDataCube._repartition_for_udf(rdd)
                 numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
 
                 # Apply the UDF to every tile in the RDD.
