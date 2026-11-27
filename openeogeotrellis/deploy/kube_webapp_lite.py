@@ -64,7 +64,7 @@ def create_lite_backend_implementation():
                 user_defined_processes = InMemoryUserDefinedProcessRepository()
             else:
                 user_defined_processes = ZooKeeperUserDefinedProcessRepository(
-                    hosts=ConfigParams().zookeepernodes,
+                    hosts=get_backend_config().zookeeper_hosts,
                     zk_client_reuse=get_backend_config().udp_registry_zookeeper_client_reuse,
                 )
 

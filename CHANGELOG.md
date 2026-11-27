@@ -17,6 +17,7 @@ without compromising stable operations.
 - CWL datacube inputs: pass a STAC catalog with absolute links presigned via the S3 proxy (valid for 24 hours), so CWL pods can read it without credentials.
 - `aggregate_spatial`: new backend config `aggregate_spatial_output_format` (`csv` (default) or `parquet`) for the intermediate JVM output, backed by the output options of openeo-geotrellis-extensions (requires a geotrellis-extensions build with [openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671) when set to `parquet`)
 - `aggregate_spatial`: new backend config `aggregate_spatial_in_memory_max_polygons` (default 0 = disabled): with at most that many polygons the result is collected in memory (no files on the shared volume). Requires a geotrellis-extensions build with in-memory aggregate_spatial ([openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671))
+- `aggregate_spatial` without time dimension (spatial cube) now also honours `aggregate_spatial_output_format` and `aggregate_spatial_in_memory_max_polygons`. Requires a geotrellis-extensions build with [openeo-geotrellis-extensions#969](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/969) when either is set (part of [openeo-geotrellis-extensions#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671))
 - Batch job metadata: store the detailed metrics (`detailed_metrics` job option) as a separate `detailed-metrics.json` document and link to it (`rel`: `related`, title "Detailed metrics") from the job results metadata, instead of only logging them
 - Job logs: support `audience` (`user` (default), `developer` or `all`) in `get_log_entries`, e.g. through `GET /jobs/{job_id}/logs?audience=all`, other values are rejected with HTTP 400 ([openeo-geotrellis-extensions#872](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/872))
 - Add support for the `resample_cube_temporal` process, backed by the implementation in openeo-geotrellis-extensions (`CubeProcessRegistry`)
@@ -54,6 +55,7 @@ without compromising stable operations.
 - Reduce number of STAC API request retries from 25 to 10 to avoid "hanging" jobs and excessive sleeping (eu-cdse/openeo-cdse-infra#1157, [#1783](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1783))
 - `export_workspace`: support not merging `derived_from` links into a STAC Collection by means of the `export-workspace-merge-derived-from-links` job option (defaults to `true`). ([#1922](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1922))
 - Batch job result metadata: omit non-finite band statistics ([#2004](https://github.com/Open-EO/openeo-geopyspark-driver/issues/2004)).
+- Remove `ConfigParams.zookeepernodes` in favor of `GpsBackendConfig.zookeeper_hosts` (same `ZOOKEEPERNODES` env var default)
 
 
 ## 0.73.0

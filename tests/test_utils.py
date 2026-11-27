@@ -3,6 +3,7 @@ import getpass
 import logging
 from contextlib import nullcontext
 from pathlib import Path
+from unittest import mock
 
 import botocore.exceptions
 import pytest
@@ -25,7 +26,8 @@ from openeogeotrellis.utils import (
     FileChangeWatcher,
     get_jvm,
     to_tuple,
-    partition
+    partition,
+    zk_client,
 )
 
 
@@ -230,6 +232,24 @@ def test_to_s3_url_default_bucket_from_config(file_or_folder_path, bucket_name, 
     with gps_config_overrides(s3_bucket_name=bucket_name):
         actual = to_s3_url(file_or_folder_path)
         assert actual == expected_url
+
+
+def test_zk_client_uses_runtime_configured_hosts():
+    with gps_config_overrides(zookeeper_hosts=["zk1:2181", "zk2:2181"]):
+        with mock.patch("openeogeotrellis.utils.KazooClient") as kazoo_client:
+            with zk_client():
+                pass
+
+        assert kazoo_client.call_args.args[0] == "zk1:2181,zk2:2181"
+
+
+def test_zk_client_honors_explicit_hosts():
+    with gps_config_overrides(zookeeper_hosts=["configured:2181"]):
+        with mock.patch("openeogeotrellis.utils.KazooClient") as kazoo_client:
+            with zk_client(hosts="explicit:2181"):
+                pass
+
+        assert kazoo_client.call_args.args[0] == "explicit:2181"
 
 
 spatial_extent_tap = {

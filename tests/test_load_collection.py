@@ -73,12 +73,20 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock, catalog):
     reproject.assert_called_once_with(projected_polys, 32631)
     reprojected = reproject.return_value
 
-    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd",
-                                         "???", "!!!",
-                                         "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-                                         "/openeo/rlguard/access_token_default",
-                                         {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock,
-                                         cellsize_mock, 0.0, 0.0)
+    factory_mock.assert_called_once_with(
+        "https://services.sentinel-hub.com",
+        "sentinel-1-grd",
+        "sentinel-1-grd",
+        "???",
+        "!!!",
+        "zk.test",
+        "/openeo/rlguard/access_token_default",
+        {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True},
+        sample_type_mock,
+        cellsize_mock,
+        0.0,
+        0.0,
+    )
 
     datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
     jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
@@ -106,12 +114,20 @@ def test_load_collection_polarization_based_on_bands(jvm_mock, catalog):
     reproject.assert_called_once_with(projected_polys, 32631)
     reprojected = reproject.return_value
 
-    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd",
-                                         "???", "!!!",
-                                         "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-                                         "/openeo/rlguard/access_token_default",
-                                         {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock,
-                                         cellsize_mock, 0.0, 0.0)
+    factory_mock.assert_called_once_with(
+        "https://services.sentinel-hub.com",
+        "sentinel-1-grd",
+        "sentinel-1-grd",
+        "???",
+        "!!!",
+        "zk.test",
+        "/openeo/rlguard/access_token_default",
+        {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True},
+        sample_type_mock,
+        cellsize_mock,
+        0.0,
+        0.0,
+    )
 
     datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
     jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")

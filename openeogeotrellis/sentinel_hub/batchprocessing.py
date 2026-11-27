@@ -2,7 +2,7 @@ from typing import Optional
 
 import py4j.java_gateway
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.sentinel_hub import OG_BATCH_RESULTS_BUCKET
 from openeogeotrellis.utils import get_jvm
 
@@ -27,7 +27,7 @@ class SentinelHubBatchProcessing:
             bucket_name,
             sentinel_hub_client_id,
             sentinel_hub_client_secret,
-            ",".join(ConfigParams().zookeepernodes),
+            ",".join(get_backend_config().zookeeper_hosts),
             # TODO: get path prefix from config?
             f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}",
         )
