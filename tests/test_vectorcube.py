@@ -428,6 +428,54 @@ def test_zonal_statistics_spatial_default_still_csv(imagecollection_with_two_ban
     assert len(jvm_adapter.compute_generic_timeseries_from_spatial_datacube.call_args.args) == 5
 
 
+def _point_regions():
+    from shapely.geometry import GeometryCollection, Point
+
+    return GeometryCollection([Point(5.07, 51.21), Point(5.08, 51.22)])
+
+
+def test_zonal_statistics_wkt_parquet_output(imagecollection_with_two_bands_and_one_date, monkeypatch):
+    from openeogeotrellis.testing import gps_config_overrides
+
+    jvm_adapter = MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    with gps_config_overrides(aggregate_spatial_output_format="parquet"):
+        result = imagecollection_with_two_bands_and_one_date.zonal_statistics(_point_regions(), "mean")
+
+    assert isinstance(result, AggregateSpatialResultParquet)
+    args = jvm_adapter.compute_generic_timeseries_from_datacube.call_args.args
+    assert len(args) == 7
+    assert args[-2:] == ("parquet", "file")
+
+
+def test_zonal_statistics_wkt_in_memory_output(imagecollection_with_two_bands_and_one_date, monkeypatch):
+    from openeogeotrellis.testing import gps_config_overrides
+
+    jvm_adapter = MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+    monkeypatch.setattr(
+        "openeogeotrellis.geopysparkdatacube.AggregateSpatialResultInMemory",
+        lambda jdf, regions, metadata=None: ("in-memory", jdf),
+    )
+
+    with gps_config_overrides(aggregate_spatial_in_memory_max_polygons=1000):
+        result = imagecollection_with_two_bands_and_one_date.zonal_statistics(_point_regions(), "mean")
+
+    assert result == ("in-memory", jvm_adapter.compute_generic_timeseries_dataframe_from_datacube.return_value)
+    jvm_adapter.compute_generic_timeseries_from_datacube.assert_not_called()
+
+
+def test_zonal_statistics_wkt_default_still_csv(imagecollection_with_two_bands_and_one_date, monkeypatch):
+    jvm_adapter = MagicMock()
+    monkeypatch.setattr(GeopysparkDataCube, "_compute_stats_geotrellis", lambda self: jvm_adapter)
+
+    result = imagecollection_with_two_bands_and_one_date.zonal_statistics(_point_regions(), "mean")
+
+    assert type(result) is AggregateSpatialResultCSV
+    assert len(jvm_adapter.compute_generic_timeseries_from_datacube.call_args.args) == 5
+
+
 def _skip_without_spatial_output_options_jar():
     from openeogeotrellis.utils import get_jvm
 
